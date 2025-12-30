@@ -80,7 +80,18 @@ The recommended way to run the backend continuously (kiosk, home server, Raspber
 - run the Node server under a dedicated **non-admin** OS user
 - register it as a service so it starts automatically after every reboot
 
-### Linux (systemd)
+### Debian Linux (systemd)
+
+0) Install Node.js (18+) and required tools:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl git
+
+# NodeSource (recommended to ensure Node 18+ on older Debian releases)
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
 
 1) Create a dedicated user (no shell login):
 
@@ -167,28 +178,6 @@ Logs:
 ```bash
 journalctl -u jvshomecontrol -f
 ```
-
-### Windows (Task Scheduler)
-
-If you’re running the server on Windows, the simplest no-interaction startup is to use Task Scheduler with a dedicated local user.
-
-1) Create a local unprivileged user (example):
-
-```powershell
-New-LocalUser -Name "jvshome" -NoPassword
-```
-
-2) Ensure that user has write access to `server\data\` (for `config.json` + backups).
-
-3) Create a scheduled task that runs at startup:
-
-```powershell
-$action = New-ScheduledTaskAction -Execute "node.exe" -Argument "E:\\jvshomecontrol\\JVSHomeControl\\server\\server.js"
-$trigger = New-ScheduledTaskTrigger -AtStartup
-Register-ScheduledTask -TaskName "JVSHomeControl" -Action $action -Trigger $trigger -User "jvshome" -RunLevel LeastPrivilege
-```
-
-You’ll still need to provide the Hubitat env vars (e.g., via system environment variables, or wrap `node.exe` in a small `.cmd` that sets them first).
 
 ## Static values to make configurable (for new implementations)
 
