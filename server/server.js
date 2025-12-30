@@ -27,12 +27,17 @@ const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
 const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
 
 // Hubitat Maker API
-// Prefer env vars for deploy safety, but keep the existing defaults.
-const HUBITAT_HOST = process.env.HUBITAT_HOST 
-const HUBITAT_MAKER_APP_ID = process.env.HUBITAT_MAKER_APP_ID
-const HUBITAT_ACCESS_TOKEN = process.env.HUBITAT_ACCESS_TOKEN 
-const HUBITAT_API_BASE = `${HUBITAT_HOST}/apps/api/${HUBITAT_MAKER_APP_ID}`;
-const HUBITAT_API_URL = `${HUBITAT_API_BASE}/devices/all?access_token=${HUBITAT_ACCESS_TOKEN}`;
+// Prefer env vars for deploy safety.
+// Back-compat: accept older HABITAT_* env var names.
+const HUBITAT_HOST = (process.env.HUBITAT_HOST || process.env.HABITAT_HOST || "http://192.168.102.174").replace(/\/$/, '');
+const HUBITAT_APP_ID = process.env.HUBITAT_APP_ID || process.env.HUBITAT_MAKER_APP_ID || process.env.HABITAT_APP_ID || "30";
+const HUBITAT_ACCESS_TOKEN = process.env.HUBITAT_ACCESS_TOKEN || process.env.HABITAT_ACCESS_TOKEN || "";
+const HUBITAT_API_BASE = `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}`;
+const HUBITAT_API_URL = `${HUBITAT_API_BASE}/devices/all?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
+
+if (!HUBITAT_ACCESS_TOKEN) {
+    console.warn('Hubitat access token missing: set HUBITAT_ACCESS_TOKEN in /etc/jvshomecontrol.env');
+}
 
 // Open-Meteo (free) weather
 // Config priority: env vars > server/data/config.json > defaults
@@ -561,7 +566,19 @@ async function fetchHubitatAllDevices() {
         const text = await res.text().catch(() => '');
         throw new Error(`Hubitat API Error: ${res.status} ${text}`);
     }
-    const devices = await res.json();
+    const raw = await res.text().catch(() => '');
+    if (!raw.trim()) {
+        throw new Error('Hubitat API returned an empty response body');
+    }
+
+    let devices;
+    try {
+        devices = JSON.parse(raw);
+    } catch (err) {
+        const contentType = res.headers.get('content-type') || '';
+        const snippet = raw.slice(0, 300).replace(/\s+/g, ' ').trim();
+        throw new Error(`Hubitat API returned invalid JSON (content-type: ${contentType || 'unknown'}). Snippet: ${snippet}`);
+    }
     if (!Array.isArray(devices)) {
         throw new Error(`Hubitat API returned non-array payload`);
     }
