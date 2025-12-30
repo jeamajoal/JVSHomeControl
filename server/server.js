@@ -26,11 +26,11 @@ const FLOORPLAN_SVG_CANDIDATES = [
 
 // Hubitat Maker API
 // Prefer env vars for deploy safety, but keep the existing defaults.
-const HABITAT_HOST = process.env.HABITAT_HOST || "http://192.168.102.174";
-const HABITAT_APP_ID = process.env.HABITAT_APP_ID || "30";
-const HABITAT_ACCESS_TOKEN = process.env.HABITAT_ACCESS_TOKEN || "2c459973-2cf2-4157-aeb8-e13d8789ba6a";
-const HABITAT_API_BASE = `${HABITAT_HOST}/apps/api/${HABITAT_APP_ID}`;
-const HABITAT_API_URL = `${HABITAT_API_BASE}/devices/all?access_token=${HABITAT_ACCESS_TOKEN}`;
+const HUBITAT_HOST = process.env.HUBITAT_HOST || process.env.HABITAT_HOST || "http://192.168.102.174";
+const HUBITAT_APP_ID = process.env.HUBITAT_APP_ID || process.env.HABITAT_APP_ID || "30";
+const HUBITAT_ACCESS_TOKEN = process.env.HUBITAT_ACCESS_TOKEN || process.env.HABITAT_ACCESS_TOKEN || "2c459973-2cf2-4157-aeb8-e13d8789ba6a";
+const HUBITAT_API_BASE = `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}`;
+const HUBITAT_API_URL = `${HUBITAT_API_BASE}/devices/all?access_token=${HUBITAT_ACCESS_TOKEN}`;
 
 // Open-Meteo (free) weather
 // Config priority: env vars > server/data/config.json > defaults
@@ -448,12 +448,12 @@ function importRoomsFromFloorplanSvg({ replace = false } = {}) {
     persistedConfig.rooms = persistedRooms;
     persistConfigToDiskIfChanged(replace ? 'import-floorplan-replace' : 'import-floorplan');
     // Update runtime view immediately
-    syncHabitatData();
+    syncHubitatData();
 
     return { svgPath, imported: boxes.length, roomsUpdated: count, roomsTotal: existingRooms.length };
 }
 
-// --- HABITAT MAPPER ---
+// --- HUBITAT MAPPER ---
 
 function mapDeviceType(capabilities, typeName) {
     if (capabilities.includes("SmokeDetector")) return "smoke";
@@ -594,7 +594,7 @@ async function fetchOpenMeteoForecast() {
     return data;
 }
 
-async function syncHabitatData() {
+async function syncHubitatData() {
     try {
         const devices = await fetchHubitatAllDevices();
 
@@ -792,7 +792,7 @@ async function syncHabitatData() {
 }
 
 async function fetchHubitatAllDevices() {
-    const res = await fetch(HABITAT_API_URL);
+    const res = await fetch(HUBITAT_API_URL);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`Hubitat API Error: ${res.status} ${text}`);
@@ -808,8 +808,8 @@ async function fetchHubitatAllDevices() {
     return devices;
 }
 
-setInterval(syncHabitatData, 2000);
-syncHabitatData();
+setInterval(syncHubitatData, 2000);
+syncHubitatData();
 
 // --- API ---
 
@@ -913,7 +913,7 @@ app.post('/api/devices/:id/command', async (req, res) => {
             ? `/${args.map(a => encodeURIComponent(String(a))).join('/')}`
             : '';
 
-        const url = `${HABITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/command/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(HABITAT_ACCESS_TOKEN)}`;
+        const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/command/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
 
         const hubRes = await fetch(url, { method: 'GET' });
         if (!hubRes.ok) {
@@ -922,7 +922,7 @@ app.post('/api/devices/:id/command', async (req, res) => {
         }
 
         // Trigger an immediate refresh so the UI updates quickly
-        syncHabitatData();
+        syncHubitatData();
         return res.json({ success: true });
     } catch (err) {
         console.error(err);
@@ -976,7 +976,7 @@ app.post('/api/layout', (req, res) => {
     persistConfigToDiskIfChanged('api-layout');
 
     // Re-sync runtime (positions + layouts affect UI)
-    syncHabitatData();
+    syncHubitatData();
     res.json({ success: true });
 });
 
@@ -1017,7 +1017,7 @@ app.delete('/api/layout', (req, res) => {
         }
     }
     persistConfigToDiskIfChanged('api-layout-delete');
-    syncHabitatData();
+    syncHubitatData();
     res.json({ success: true });
 });
 

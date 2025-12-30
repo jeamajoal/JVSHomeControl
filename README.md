@@ -40,9 +40,9 @@ Then open the Vite URL (usually `http://localhost:5173`). The client expects the
 
 Set these environment variables before starting the server:
 
-- `HABITAT_HOST` (example: `http://192.168.1.50`)
-- `HABITAT_APP_ID`
-- `HABITAT_ACCESS_TOKEN` (secret)
+- `HUBITAT_HOST` (example: `http://192.168.1.50`)
+- `HUBITAT_APP_ID`
+- `HUBITAT_ACCESS_TOKEN` (secret)
 
 Security note: the current code contains a fallback/default token value in `server/server.js`. Treat it as compromised and rotate your Maker API token if it’s real.
 
@@ -105,9 +105,9 @@ sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/server && npm ci --omit=dev'
 
 ```bash
 sudo tee /etc/jvshomecontrol.env >/dev/null <<'EOF'
-HABITAT_HOST=http://192.168.1.50
-HABITAT_APP_ID=30
-HABITAT_ACCESS_TOKEN=REPLACE_ME
+HUBITAT_HOST=http://192.168.1.50
+HUBITAT_APP_ID=30
+HUBITAT_ACCESS_TOKEN=REPLACE_ME
 
 # Optional weather overrides
 # OPEN_METEO_LAT=...
@@ -195,7 +195,7 @@ This repo is currently tuned for a specific home/network. For any new installati
 
 - **HTTP port**: `PORT = 3000` in `server/server.js`.
 - **CORS policy**: Socket.IO and Express currently allow `origin: "*"`.
-- **Hubitat connection defaults**: `HABITAT_HOST`, `HABITAT_APP_ID`, `HABITAT_ACCESS_TOKEN` should not have hard-coded fallback values.
+- **Hubitat connection defaults**: `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN` should not have hard-coded fallback values.
 - **Hubitat polling interval**: `setInterval(syncHabitatData, 2000)` (2s refresh).
 - **Weather defaults**: default lat/lon + units + timezone.
 - **Weather cache TTL**: `/api/weather` caches for 5 minutes.
