@@ -78,6 +78,8 @@ Env vars:
 
 - `GET /api/config` — merged rooms/sensors config
 - `GET /api/status` — latest device statuses
+- `POST /api/events` — ingest events (Hubitat Maker API `postURL` target)
+- `GET /api/events` — view recently ingested events
 - `GET /api/weather` — cached Open‑Meteo response
 - `POST /api/devices/:id/command` — Maker API command passthrough
 - `POST /api/layout` — persist room layout + sensor positions

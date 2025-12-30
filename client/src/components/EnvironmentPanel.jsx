@@ -148,7 +148,7 @@ const useFitScale = () => {
     const compute = () => {
       // Safety gutter to avoid sub-pixel rounding causing right-edge peeking
       // on some fullscreen setups (e.g., Firefox/Linux).
-      const SAFE_GUTTER_PX = 40;
+      const SAFE_GUTTER_PX = 16;
       const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
       const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
       const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
@@ -659,7 +659,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
   }, [weather]);
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 pr-6 md:p-6 md:pr-8">
+    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 md:p-6">
       <div
         className="w-full h-full"
         style={{

@@ -84,6 +84,38 @@ let lastWeatherFetchAt = null;
 let lastWeatherError = null;
 let lastWeatherErrorLoggedAt = 0;
 
+// --- EVENT INBOX ---
+// Hubitat Maker API can POST back to our API via the Maker "postURL" endpoint.
+// This keeps a small in-memory ring buffer of recent events so the UI (or logs)
+// can inspect what is arriving.
+const MAX_INGESTED_EVENTS = (() => {
+    const raw = process.env.EVENTS_MAX;
+    const parsed = raw ? Number(raw) : 500;
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 500;
+})();
+
+const EVENTS_INGEST_TOKEN = String(process.env.EVENTS_INGEST_TOKEN || '').trim();
+let ingestedEvents = [];
+
+function pruneIngestedEvents() {
+    if (ingestedEvents.length > MAX_INGESTED_EVENTS) {
+        ingestedEvents = ingestedEvents.slice(-MAX_INGESTED_EVENTS);
+    }
+}
+
+function shouldAcceptIngestedEvent(payload) {
+    // If an allowlist exists and the payload includes a deviceId, enforce it.
+    try {
+        const allowed = getUiAllowedDeviceIds();
+        if (!allowed.length) return true;
+        const deviceId = payload?.deviceId ?? payload?.device_id ?? payload?.id;
+        if (deviceId === undefined || deviceId === null) return true;
+        return allowed.includes(String(deviceId));
+    } catch {
+        return true;
+    }
+}
+
 // --- UI DEVICE ALLOWLIST ---
 // Controls (switch toggles, commands) are restricted to an explicit allowlist.
 // Sources (priority): env var UI_ALLOWED_DEVICE_IDS > server/data/config.json (ui.allowedDeviceIds)
@@ -625,6 +657,7 @@ async function fetchHubitatAllDevices() {
     return devices;
 }
 
+
 if (HUBITAT_CONFIGURED) {
     setInterval(syncHubitatData, 2000);
     syncHubitatData();
@@ -692,6 +725,55 @@ app.get('/api/hubitat/devices/search', (req, res) => {
         count: matches.length,
         matches,
     });
+});
+
+// Event ingest endpoint (Hubitat Maker API "postURL" target)
+// Security: if EVENTS_INGEST_TOKEN is set, require it via:
+// - header: X-Events-Token
+// - or query: ?token=
+app.post('/api/events', (req, res) => {
+    const token = String(req.get('x-events-token') || req.query.token || '').trim();
+    if (EVENTS_INGEST_TOKEN && token !== EVENTS_INGEST_TOKEN) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const payload = req.body;
+    if (!payload || typeof payload !== 'object') {
+        return res.status(400).json({ error: 'Expected JSON object body' });
+    }
+
+    if (!shouldAcceptIngestedEvent(payload)) {
+        return res.status(202).json({ accepted: false, reason: 'not allowlisted' });
+    }
+
+    const event = {
+        receivedAt: new Date().toISOString(),
+        sourceIp: req.ip,
+        payload,
+    };
+
+    ingestedEvents.push(event);
+    pruneIngestedEvents();
+
+    // Best-effort append for debugging (optional; requires write access to server/data)
+    try {
+        ensureDataDirs();
+        fs.appendFileSync(path.join(DATA_DIR, 'events.jsonl'), JSON.stringify(event) + '\n');
+    } catch {
+        // ignore
+    }
+
+    return res.json({ accepted: true });
+});
+
+// Read recent ingested events (newest first)
+app.get('/api/events', (req, res) => {
+    const limitRaw = String(req.query.limit || '').trim();
+    const limitParsed = limitRaw ? Number(limitRaw) : 100;
+    const limit = Number.isFinite(limitParsed) && limitParsed > 0 ? Math.floor(limitParsed) : 100;
+
+    const events = ingestedEvents.slice(-limit).reverse();
+    res.json({ count: events.length, events });
 });
 
 // Open-Meteo weather endpoint (cached)

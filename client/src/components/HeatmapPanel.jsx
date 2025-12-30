@@ -56,7 +56,7 @@ const useFitScale = () => {
     if (!viewportEl || !contentEl) return;
 
     const compute = () => {
-      const SAFE_GUTTER_PX = 40;
+    const SAFE_GUTTER_PX = 16;
       const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
       const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
       const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
@@ -347,7 +347,7 @@ const HeatmapPanel = ({ config, statuses }) => {
   };
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 pr-6 md:p-6 md:pr-8">
+    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 md:p-6">
       <div
         className="w-full h-full"
         style={{
@@ -440,7 +440,7 @@ const HeatmapPanel = ({ config, statuses }) => {
           </div>
 
           <div className="mt-4 glass-panel border border-white/10 overflow-hidden">
-            <div className="relative w-full h-[62vh] bg-black/30 p-4 md:p-5">
+            <div className="relative w-full h-[70vh] bg-black/30 p-3 md:p-4">
               <ReactGridLayout
                 className="layout"
                 cols={GRID_COLS}
@@ -498,17 +498,6 @@ const HeatmapPanel = ({ config, statuses }) => {
                   );
                 })}
               </ReactGridLayout>
-            </div>
-
-            <div className="p-4 md:p-5 border-t border-white/10">
-              <div className="flex items-center justify-between gap-4">
-                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/45 font-semibold">
-                  Rooms: {roomTiles.length}
-                </div>
-                <div className="text-xs text-white/45">
-                  {editMode ? 'Edits save automatically.' : 'Tip: click Edit to move things.'}
-                </div>
-              </div>
             </div>
           </div>
         </div>
