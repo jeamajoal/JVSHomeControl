@@ -112,7 +112,7 @@ sudo chown -R jvshome:jvshome /opt/jvshomecontrol
 
 sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol && git clone https://github.com/jeamajoal/JVSHomeControl.git .'
 sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/server && npm ci --omit=dev'
-sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/client && npm ci --omit=dev && npm run build'
+sudo -u jvshome -H bash -lc 'cd /opt/jvshomecontrol/client && npm ci && npm run build && npm prune --omit=dev'
 ```
 
 3) Create an environment file for secrets/settings:
