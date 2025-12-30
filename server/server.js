@@ -58,6 +58,10 @@ let settings = {
 };
 
 app.use(cors());
+// Hubitat Maker API postURL can send JSON as text/plain (and sometimes with log prefixes).
+// Parse /api/events as raw text first, then normalize inside the handler.
+app.use('/api/events', bodyParser.text({ type: '*/*', limit: '1mb' }));
+
 app.use(bodyParser.json());
 
 if (HAS_BUILT_CLIENT) {
@@ -114,6 +118,75 @@ function shouldAcceptIngestedEvent(payload) {
     } catch {
         return true;
     }
+}
+
+function tryParseJsonFromText(rawText) {
+    const text = String(rawText || '').trim();
+    if (!text) return null;
+
+    // First try: direct JSON
+    try {
+        return JSON.parse(text);
+    } catch {
+        // continue
+    }
+
+    // Second try: extract the JSON object/array from a log-like prefix
+    // Example: "debugdevice event: { ... }" or "device event: {...}"
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const candidate = text.slice(firstBrace, lastBrace + 1);
+        try {
+            return JSON.parse(candidate);
+        } catch {
+            // continue
+        }
+    }
+
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+        const candidate = text.slice(firstBracket, lastBracket + 1);
+        try {
+            return JSON.parse(candidate);
+        } catch {
+            // continue
+        }
+    }
+
+    return null;
+}
+
+function normalizePostedEventsBody(body) {
+    // Accept:
+    // - JSON object event (Maker event payload)
+    // - JSON array of events
+    // - { event: {...} } or { events: [...] }
+    // - text/plain containing JSON or "device event: {...}"
+
+    let parsed = body;
+    if (typeof body === 'string') {
+        parsed = tryParseJsonFromText(body);
+    }
+
+    if (!parsed) return [];
+
+    if (Array.isArray(parsed)) {
+        return parsed.filter((e) => e && typeof e === 'object');
+    }
+
+    if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.events)) {
+            return parsed.events.filter((e) => e && typeof e === 'object');
+        }
+        if (parsed.event && typeof parsed.event === 'object') {
+            return [parsed.event];
+        }
+        return [parsed];
+    }
+
+    return [];
 }
 
 // --- UI DEVICE ALLOWLIST ---
@@ -737,33 +810,47 @@ app.post('/api/events', (req, res) => {
         return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const payload = req.body;
-    if (!payload || typeof payload !== 'object') {
-        return res.status(400).json({ error: 'Expected JSON object body' });
+    const events = normalizePostedEventsBody(req.body);
+    if (!events.length) {
+        return res.status(400).json({
+            error: 'Expected JSON event payload',
+            hint: 'Send application/json (or text/plain containing JSON). Example: {"name":"motion","value":"active","displayName":"Kitchen Motion","deviceId":"24"}',
+        });
     }
 
-    if (!shouldAcceptIngestedEvent(payload)) {
-        return res.status(202).json({ accepted: false, reason: 'not allowlisted' });
+    let acceptedCount = 0;
+    let rejectedCount = 0;
+
+    for (const payload of events) {
+        if (!shouldAcceptIngestedEvent(payload)) {
+            rejectedCount += 1;
+            continue;
+        }
+
+        const event = {
+            receivedAt: new Date().toISOString(),
+            sourceIp: req.ip,
+            payload,
+        };
+
+        ingestedEvents.push(event);
+        acceptedCount += 1;
+
+        // Best-effort append for debugging (optional; requires write access to server/data)
+        try {
+            ensureDataDirs();
+            fs.appendFileSync(path.join(DATA_DIR, 'events.jsonl'), JSON.stringify(event) + '\n');
+        } catch {
+            // ignore
+        }
     }
 
-    const event = {
-        receivedAt: new Date().toISOString(),
-        sourceIp: req.ip,
-        payload,
-    };
-
-    ingestedEvents.push(event);
     pruneIngestedEvents();
-
-    // Best-effort append for debugging (optional; requires write access to server/data)
-    try {
-        ensureDataDirs();
-        fs.appendFileSync(path.join(DATA_DIR, 'events.jsonl'), JSON.stringify(event) + '\n');
-    } catch {
-        // ignore
-    }
-
-    return res.json({ accepted: true });
+    return res.status(acceptedCount ? 200 : 202).json({
+        accepted: acceptedCount > 0,
+        acceptedCount,
+        rejectedCount,
+    });
 });
 
 // Read recent ingested events (newest first)
