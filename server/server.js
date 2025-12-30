@@ -14,6 +14,11 @@ const PORT = 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const MAX_BACKUP_FILES = (() => {
+    const raw = process.env.BACKUP_MAX_FILES;
+    const parsed = raw ? Number(raw) : 200;
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 200;
+})();
 const FLOORPLAN_SVG_CANDIDATES = [
     path.join(DATA_DIR, 'floorplan.svg'),
     path.join(__dirname, '..', 'client', 'public', 'floorplan.svg'),
@@ -77,6 +82,40 @@ function stableStringify(value) {
     return JSON.stringify(value, null, 2);
 }
 
+function pruneBackupsSync({ maxFiles = MAX_BACKUP_FILES } = {}) {
+    try {
+        ensureDataDirs();
+        const entries = fs.readdirSync(BACKUP_DIR, { withFileTypes: true })
+            .filter(d => d.isFile())
+            .map(d => ({
+                name: d.name,
+                fullPath: path.join(BACKUP_DIR, d.name),
+            }))
+            .map((f) => {
+                try {
+                    const st = fs.statSync(f.fullPath);
+                    return { ...f, mtimeMs: st.mtimeMs };
+                } catch {
+                    return { ...f, mtimeMs: 0 };
+                }
+            });
+
+        if (entries.length <= maxFiles) return;
+
+        entries.sort((a, b) => (b.mtimeMs || 0) - (a.mtimeMs || 0));
+        const toDelete = entries.slice(maxFiles);
+        for (const f of toDelete) {
+            try {
+                fs.rmSync(f.fullPath, { force: true });
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    } catch {
+        // best-effort cleanup
+    }
+}
+
 function backupFileSync(filePath, label) {
     try {
         if (!fs.existsSync(filePath)) return null;
@@ -88,6 +127,7 @@ function backupFileSync(filePath, label) {
         const target = path.join(BACKUP_DIR, backupName);
 
         fs.copyFileSync(filePath, target);
+        pruneBackupsSync();
         return target;
     } catch (err) {
         console.error('Failed to back up file:', err);
