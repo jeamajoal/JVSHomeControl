@@ -144,6 +144,11 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel })
 const InteractionPanel = ({ config, statuses, connected }) => {
   const { viewportRef, contentRef, scale } = useFitScale();
 
+  const allowedControlIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : [];
+    return new Set(ids.map((v) => String(v)));
+  }, [config?.ui?.allowedDeviceIds]);
+
   const rooms = useMemo(() => {
     const byRoomId = new Map();
     for (const r of config?.rooms || []) byRoomId.set(r.id, { room: r, devices: [] });
@@ -228,6 +233,7 @@ const InteractionPanel = ({ config, statuses, connected }) => {
                       commands,
                     };
                   })
+                  .filter((d) => allowedControlIds.has(String(d.id)))
                   .filter((d) => d.commands.length || typeof d.attrs.switch === 'string');
 
                 if (!controllables.length) return null;

@@ -67,7 +67,7 @@ if (HAS_BUILT_CLIENT) {
 // State
 let persistedConfig = { weather: settings.weather, rooms: [], sensors: [] }; // Stored in server/data/config.json
 let lastPersistedSerialized = '';
-let config = { rooms: [], sensors: [] }; // The merged view sent to client
+let config = { rooms: [], sensors: [], ui: { allowedDeviceIds: [] } }; // The merged view sent to client
 let sensorStatuses = {};
 
 let lastConfigWriteAtMs = 0;
@@ -83,6 +83,37 @@ let lastWeather = null;
 let lastWeatherFetchAt = null;
 let lastWeatherError = null;
 let lastWeatherErrorLoggedAt = 0;
+
+// --- UI DEVICE ALLOWLIST ---
+// Controls (switch toggles, commands) are restricted to an explicit allowlist.
+// Sources (priority): env var UI_ALLOWED_DEVICE_IDS > server/data/config.json (ui.allowedDeviceIds)
+// Default: deny (no controls) when allowlist is empty.
+function parseCommaList(raw) {
+    return String(raw || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+
+function getUiAllowedDeviceIds() {
+    const envList = parseCommaList(process.env.UI_ALLOWED_DEVICE_IDS);
+    if (envList.length) return envList;
+
+    const fromConfig = persistedConfig?.ui?.allowedDeviceIds;
+    if (Array.isArray(fromConfig)) {
+        return fromConfig
+            .map((v) => String(v || '').trim())
+            .filter(Boolean);
+    }
+
+    return [];
+}
+
+function isUiDeviceAllowedForControl(deviceId) {
+    const allowed = getUiAllowedDeviceIds();
+    if (!allowed.length) return false;
+    return allowed.includes(String(deviceId));
+}
 
 // --- PERSISTENCE ---
 
@@ -517,7 +548,7 @@ async function syncHubitatData() {
             if (!orderedSensors.some(s => String(s.id) === String(next.id))) orderedSensors.push(next);
         }
 
-        config = { rooms: mergedRooms, sensors: orderedSensors };
+        config = { rooms: mergedRooms, sensors: orderedSensors, ui: { allowedDeviceIds: getUiAllowedDeviceIds() } };
         sensorStatuses = newStatuses;
 
         // Persisted config becomes source of truth for layout + mapping.
@@ -613,7 +644,13 @@ app.get('/api/config', (req, res) => {
     // Persist the latest discovered mapping/layout into config.json.
     // This makes config.json the stable source of truth.
     persistConfigToDiskIfChanged('api-config');
-    res.json(config);
+    res.json({
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            allowedDeviceIds: getUiAllowedDeviceIds(),
+        },
+    });
 });
 app.get('/api/status', (req, res) => res.json(sensorStatuses));
 
@@ -702,6 +739,12 @@ app.post('/api/devices/:id/command', async (req, res) => {
             return res.status(503).json({ error: 'Hubitat not configured' });
         }
         const deviceId = req.params.id;
+        if (!isUiDeviceAllowedForControl(deviceId)) {
+            return res.status(403).json({
+                error: 'Device not allowed',
+                message: 'This device is not in the UI allowlist. Set UI_ALLOWED_DEVICE_IDS (or ui.allowedDeviceIds in server/data/config.json).',
+            });
+        }
         const { command, args = [] } = req.body || {};
         if (!command || typeof command !== 'string') {
             return res.status(400).json({ error: 'Missing command' });

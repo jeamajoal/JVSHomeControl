@@ -322,7 +322,7 @@ const pickOutsideDevices = (rooms) => {
   return all.filter((d) => isOutsideRoomName(d.label));
 };
 
-const computeRoomMetrics = (devices) => {
+const computeRoomMetrics = (devices, allowedControlIds) => {
   const temps = [];
   const hums = [];
   const lux = [];
@@ -344,7 +344,7 @@ const computeRoomMetrics = (devices) => {
 
     if (attrs.motion === 'active') motionActive = true;
 
-    if (typeof attrs.switch === 'string') {
+    if (typeof attrs.switch === 'string' && allowedControlIds?.has(String(dev.id))) {
       switches.push({
         id: dev.id,
         label: dev.label,
@@ -376,11 +376,11 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds }) => {
   const [busySwitches, setBusySwitches] = useState(() => new Set());
   const [busyActions, setBusyActions] = useState(() => new Set());
 
-  const metrics = useMemo(() => computeRoomMetrics(devices), [devices]);
+  const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
 
   const supportedActions = useMemo(() => {
     const allow = new Set(['on', 'off', 'toggle', 'refresh', 'push']);
@@ -391,13 +391,14 @@ const RoomPanel = ({ roomName, devices, connected }) => {
         commands: d.status?.commands || [],
         attrs: d.status?.attributes || {},
       }))
+      .filter((d) => allowedControlIds?.has(String(d.id)))
       .filter((d) => Array.isArray(d.commands) && d.commands.length)
       .map((d) => ({
         ...d,
         commands: d.commands.filter((c) => allow.has(c)),
       }))
       .filter((d) => d.commands.length);
-  }, [devices]);
+  }, [devices, allowedControlIds]);
 
   const toggleSwitch = async (switchId, currentState) => {
     const nextCommand = currentState === 'on' ? 'off' : 'on';
@@ -574,6 +575,11 @@ const RoomPanel = ({ roomName, devices, connected }) => {
 };
 
 const EnvironmentPanel = ({ config, statuses, connected }) => {
+  const allowedControlIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : [];
+    return new Set(ids.map((v) => String(v)));
+  }, [config?.ui?.allowedDeviceIds]);
+
   const rooms = useMemo(() => buildRooms(config, statuses), [config, statuses]);
   const now = useClock(1000);
   const { viewportRef, contentRef, scale } = useFitScale();
@@ -583,13 +589,13 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
 
   const overall = useMemo(() => {
     const allDevices = (rooms || []).flatMap((r) => r.devices);
-    return computeRoomMetrics(allDevices);
-  }, [rooms]);
+    return computeRoomMetrics(allDevices, allowedControlIds);
+  }, [rooms, allowedControlIds]);
 
   const outsideSensors = useMemo(() => {
     const outsideDevices = pickOutsideDevices(rooms);
-    return computeRoomMetrics(outsideDevices);
-  }, [rooms]);
+    return computeRoomMetrics(outsideDevices, allowedControlIds);
+  }, [rooms, allowedControlIds]);
 
   const season = useMemo(() => getSeason(now), [now]);
 
@@ -769,6 +775,7 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
                   roomName={r.room.name}
                   devices={r.devices}
                   connected={connected}
+                  allowedControlIds={allowedControlIds}
                 />
               ))
             ) : (

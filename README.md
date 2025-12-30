@@ -48,6 +48,15 @@ Set these environment variables before starting the server:
 
 If these are not set, the server will still start, but Hubitat polling/commands are disabled.
 
+### Dashboard device allowlist
+
+For safety, the dashboard only shows (and the server only accepts commands for) devices in an explicit allowlist.
+
+Set one of:
+
+- `UI_ALLOWED_DEVICE_IDS` (comma-separated Hubitat device IDs)
+- or `server/data/config.json` → `ui.allowedDeviceIds` (array of IDs)
+
 ### Weather (Open‑Meteo)
 
 Config priority is:
