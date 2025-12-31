@@ -15,6 +15,61 @@ async function saveAllowlists(payload) {
   return res.json().catch(() => ({}));
 }
 
+async function saveColorScheme(colorScheme) {
+  const res = await fetch(`${API_HOST}/api/ui/color-scheme`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ colorScheme }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Color scheme save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+const UI_COLOR_SCHEMES = {
+  'electric-blue': {
+    actionButton: 'text-neon-blue border-neon-blue/30 bg-neon-blue/10',
+    checkboxAccent: 'accent-neon-blue',
+    swatch: 'bg-neon-blue',
+  },
+  'classic-blue': {
+    actionButton: 'text-primary border-primary/30 bg-primary/10',
+    checkboxAccent: 'accent-primary',
+    swatch: 'bg-primary',
+  },
+  emerald: {
+    actionButton: 'text-success border-success/30 bg-success/10',
+    checkboxAccent: 'accent-success',
+    swatch: 'bg-success',
+  },
+  amber: {
+    actionButton: 'text-warning border-warning/30 bg-warning/10',
+    checkboxAccent: 'accent-warning',
+    swatch: 'bg-warning',
+  },
+  'neon-green': {
+    actionButton: 'text-neon-green border-neon-green/30 bg-neon-green/10',
+    checkboxAccent: 'accent-neon-green',
+    swatch: 'bg-neon-green',
+  },
+  'neon-red': {
+    actionButton: 'text-neon-red border-neon-red/30 bg-neon-red/10',
+    checkboxAccent: 'accent-neon-red',
+    swatch: 'bg-neon-red',
+  },
+};
+
+const COLOR_SCHEME_CHOICES = [
+  { id: 'classic-blue', label: 'Classic Blue', vibe: 'Classy' },
+  { id: 'emerald', label: 'Emerald', vibe: 'Classy' },
+  { id: 'amber', label: 'Amber', vibe: 'Classy' },
+  { id: 'electric-blue', label: 'Electric Blue', vibe: 'Wild' },
+  { id: 'neon-green', label: 'Neon Green', vibe: 'Wild' },
+  { id: 'neon-red', label: 'Neon Red', vibe: 'Wild' },
+];
+
 async function addManualRoom(name) {
   const res = await fetch(`${API_HOST}/api/rooms`, {
     method: 'POST',
@@ -79,6 +134,9 @@ async function deleteLabel(labelId) {
 const ConfigPanel = ({ config, statuses, connected }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
+  const scheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
@@ -224,7 +282,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                           <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
                             <input
                               type="checkbox"
-                              className="h-5 w-5 accent-neon-blue"
+                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
                               disabled={!connected || busy || mainLocked}
                               checked={isMain}
                               onChange={(e) => setAllowed(d.id, 'main', e.target.checked)}
@@ -235,7 +293,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                           <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
                             <input
                               type="checkbox"
-                              className="h-5 w-5 accent-neon-blue"
+                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
                               disabled={!connected || busy || ctrlLocked}
                               checked={isCtrl}
                               onChange={(e) => setAllowed(d.id, 'ctrl', e.target.checked)}
@@ -255,6 +313,69 @@ const ConfigPanel = ({ config, statuses, connected }) => {
             {!connected ? (
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
+          </div>
+
+          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Appearance
+            </div>
+            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+              Color Scheme
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Pick a single accent color for the UI.
+            </div>
+
+            {error ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
+            ) : null}
+
+            <div className="mt-4">
+              {['Classy', 'Wild'].map((vibe) => (
+                <div key={vibe} className={vibe === 'Wild' ? 'mt-4' : ''}>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-white/55 font-semibold">
+                    {vibe}
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {COLOR_SCHEME_CHOICES.filter((c) => c.vibe === vibe).map((choice) => {
+                      const isSelected = choice.id === colorSchemeId;
+                      const choiceScheme = UI_COLOR_SCHEMES[choice.id] || UI_COLOR_SCHEMES['electric-blue'];
+                      return (
+                        <button
+                          key={choice.id}
+                          type="button"
+                          disabled={!connected || busy}
+                          onClick={async () => {
+                            setError(null);
+                            setBusy(true);
+                            try {
+                              await saveColorScheme(choice.id);
+                            } catch (e) {
+                              setError(e?.message || String(e));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          className={`rounded-xl border px-3 py-3 text-left transition-colors ${isSelected ? 'border-white/30 bg-white/10' : 'border-white/10 bg-black/20 hover:bg-white/5'} ${(!connected || busy) ? 'opacity-50' : ''}`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`h-3.5 w-3.5 rounded-full ${choiceScheme.swatch}`} />
+                            <div className="min-w-0">
+                              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/80 truncate">
+                                {choice.label}
+                              </div>
+                              {isSelected ? (
+                                <div className="mt-1 text-[10px] text-white/40">Selected</div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
@@ -291,7 +412,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                     setBusy(false);
                   }
                 }}
-                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-neon-blue border-neon-blue/30 bg-neon-blue/10 ${(!connected || busy || !newRoomName.trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !newRoomName.trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
               >
                 Add
               </button>
@@ -361,7 +482,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                     setBusy(false);
                   }
                 }}
-                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-neon-blue border-neon-blue/30 bg-neon-blue/10 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
               >
                 Add Label
               </button>
@@ -398,7 +519,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                             setBusy(false);
                           }
                         }}
-                        className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-neon-blue border-neon-blue/30 bg-neon-blue/10 ${(!connected || busy || !String(labelDrafts[l.id] ?? '').trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                        className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !String(labelDrafts[l.id] ?? '').trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
                       >
                         Save Text
                       </button>

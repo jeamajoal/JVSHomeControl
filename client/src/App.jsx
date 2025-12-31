@@ -12,6 +12,39 @@ import { Activity, Maximize, Minimize } from 'lucide-react';
 const API_HOST = `http://${window.location.hostname}:3000`;
 const socket = io(API_HOST);
 
+const UI_COLOR_SCHEMES = {
+  'electric-blue': {
+    tabActive: 'bg-neon-blue/10 text-neon-blue',
+    headerIcon: 'bg-neon-blue/20 border-neon-blue/50 text-neon-blue',
+    headerGlow: 'animate-glow-blue',
+  },
+  'classic-blue': {
+    tabActive: 'bg-primary/10 text-primary',
+    headerIcon: 'bg-primary/20 border-primary/50 text-primary',
+    headerGlow: 'animate-glow-blue',
+  },
+  emerald: {
+    tabActive: 'bg-success/10 text-success',
+    headerIcon: 'bg-success/20 border-success/50 text-success',
+    headerGlow: '',
+  },
+  amber: {
+    tabActive: 'bg-warning/10 text-warning',
+    headerIcon: 'bg-warning/20 border-warning/50 text-warning',
+    headerGlow: 'animate-glow-orange',
+  },
+  'neon-green': {
+    tabActive: 'bg-neon-green/10 text-neon-green',
+    headerIcon: 'bg-neon-green/20 border-neon-green/50 text-neon-green',
+    headerGlow: '',
+  },
+  'neon-red': {
+    tabActive: 'bg-neon-red/10 text-neon-red',
+    headerIcon: 'bg-neon-red/20 border-neon-red/50 text-neon-red',
+    headerGlow: 'animate-glow-red',
+  },
+};
+
 function App() {
   const [sensors, setSensors] = useState({});
   const [config, setConfig] = useState({ rooms: [], sensors: [] });
@@ -20,6 +53,9 @@ function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
   const [page, setPage] = useState(0); // 0=Main, 1=Environment, 2=Forecast, 3=Actions, 4=Config, 5=About
+
+  const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
+  const uiScheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
 
   const pageLabel = page === 0 ? 'Main' : page === 1 ? 'Environment' : page === 2 ? 'Forecast' : page === 3 ? 'Actions' : page === 4 ? 'Config' : 'About';
 
@@ -70,7 +106,7 @@ function App() {
       {/* Header */}
       <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 backdrop-blur-md z-20 bg-black/20">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.3)] bg-primary/20 border border-primary/50 text-primary">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${uiScheme.headerGlow} ${uiScheme.headerIcon}`}>
             <Activity size={20} />
           </div>
           <div>
@@ -89,7 +125,7 @@ function App() {
               type="button"
               onClick={() => setPage(0)}
               className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 0 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+                page === 0 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
               Main
@@ -98,7 +134,7 @@ function App() {
               type="button"
               onClick={() => setPage(1)}
               className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 1 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+                page === 1 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
               Environment
@@ -107,7 +143,7 @@ function App() {
               type="button"
               onClick={() => setPage(2)}
               className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 2 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+                page === 2 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
               Forecast
@@ -116,7 +152,7 @@ function App() {
               type="button"
               onClick={() => setPage(3)}
               className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 3 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+                page === 3 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
               Actions
@@ -125,7 +161,7 @@ function App() {
               type="button"
               onClick={() => setPage(4)}
               className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 4 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+                page === 4 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
               Config
@@ -134,7 +170,7 @@ function App() {
               type="button"
               onClick={() => setPage(5)}
               className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
-                page === 5 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+                page === 5 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
               About

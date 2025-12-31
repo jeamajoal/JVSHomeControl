@@ -10,6 +10,7 @@
     }
   },
   "ui": {
+    "colorScheme": "electric-blue",
     "mainAllowedDeviceIds": [],
     "ctrlAllowedDeviceIds": []
   },

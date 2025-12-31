@@ -20,6 +20,15 @@ const MAX_BACKUP_FILES = (() => {
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 200;
 })();
 
+const UI_COLOR_SCHEMES = Object.freeze([
+    'electric-blue',
+    'classic-blue',
+    'emerald',
+    'amber',
+    'neon-green',
+    'neon-red',
+]);
+
 // If the UI is built (`client/dist`), serve it from the backend so a single service
 // provides both the API and the dashboard.
 const CLIENT_DIST_DIR = path.join(__dirname, '..', 'client', 'dist');
@@ -370,11 +379,15 @@ function normalizePersistedConfig(raw) {
         ? uiRaw.mainAllowedDeviceIds
         : [];
 
+    const rawScheme = String(uiRaw.colorScheme || '').trim();
+    const colorScheme = UI_COLOR_SCHEMES.includes(rawScheme) ? rawScheme : 'electric-blue';
+
     out.ui = {
         // Keep legacy key for older clients (harmless), but prefer the new split keys.
         allowedDeviceIds: legacyAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
+        colorScheme,
     };
 
     return out;
@@ -911,6 +924,7 @@ async function syncHubitatData() {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 // Back-compat
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         sensorStatuses = newStatuses;
@@ -1087,6 +1101,7 @@ app.post('/api/rooms', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         emitConfigUpdateSafe();
@@ -1132,6 +1147,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         emitConfigUpdateSafe();
@@ -1167,6 +1183,7 @@ app.post('/api/labels', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         emitConfigUpdateSafe();
@@ -1200,6 +1217,7 @@ app.put('/api/labels/:id', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         emitConfigUpdateSafe();
@@ -1231,6 +1249,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         emitConfigUpdateSafe();
@@ -1316,6 +1335,41 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
             ...(config?.ui || {}),
         },
     });
+});
+
+// Update UI color scheme from the kiosk.
+app.put('/api/ui/color-scheme', (req, res) => {
+    const raw = String(req.body?.colorScheme || '').trim();
+    if (!raw) {
+        return res.status(400).json({ error: 'Missing colorScheme' });
+    }
+    if (!UI_COLOR_SCHEMES.includes(raw)) {
+        return res.status(400).json({
+            error: 'Invalid colorScheme',
+            allowed: UI_COLOR_SCHEMES,
+        });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            colorScheme: raw,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-color-scheme');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            colorScheme: persistedConfig?.ui?.colorScheme,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
 // Debug/inspection endpoints (do not include access token)
@@ -1606,6 +1660,7 @@ app.post('/api/layout', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         io.emit('config_update', config);
@@ -1642,6 +1697,7 @@ app.delete('/api/layout', (req, res) => {
                 ctrlAllowedDeviceIds: getUiCtrlAllowedDeviceIds(),
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+                colorScheme: persistedConfig?.ui?.colorScheme,
             },
         };
         io.emit('config_update', config);
