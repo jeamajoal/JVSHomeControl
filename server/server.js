@@ -602,6 +602,71 @@ async function fetchOpenMeteoForecast() {
     return data;
 }
 
+function asFiniteNumber(value) {
+    const num = (typeof value === 'number') ? value : Number(String(value));
+    return Number.isFinite(num) ? num : null;
+}
+
+function normalizeOpenMeteoPayload(raw) {
+    const open = settings?.weather?.openMeteo || {};
+    const { lat, lon } = getOpenMeteoCoords();
+
+    const current = raw && typeof raw === 'object' ? raw.current : null;
+    const daily = raw && typeof raw === 'object' ? raw.daily : null;
+
+    const todayIdx = 0;
+    const pickDaily = (arr) => (Array.isArray(arr) ? (arr[todayIdx] ?? null) : null);
+
+    return {
+        source: 'open-meteo',
+        fetchedAt: lastWeatherFetchAt,
+        location: {
+            lat: Number.isFinite(lat) ? lat : null,
+            lon: Number.isFinite(lon) ? lon : null,
+            timezone: (raw && typeof raw === 'object' && typeof raw.timezone === 'string')
+                ? raw.timezone
+                : (open.timezone || 'auto'),
+        },
+        units: {
+            temperature: open.temperatureUnit || 'fahrenheit',
+            windSpeed: open.windSpeedUnit || 'mph',
+            precipitation: open.precipitationUnit || 'inch',
+        },
+        current: current ? {
+            temperature: asFiniteNumber(current.temperature_2m),
+            humidity: asFiniteNumber(current.relative_humidity_2m),
+            apparentTemperature: asFiniteNumber(current.apparent_temperature),
+            precipitation: asFiniteNumber(current.precipitation),
+            weatherCode: asFiniteNumber(current.weather_code),
+            windSpeed: asFiniteNumber(current.wind_speed_10m),
+            windDirection: asFiniteNumber(current.wind_direction_10m),
+            time: (typeof current.time === 'string') ? current.time : null,
+        } : {
+            temperature: null,
+            humidity: null,
+            apparentTemperature: null,
+            precipitation: null,
+            weatherCode: null,
+            windSpeed: null,
+            windDirection: null,
+            time: null,
+        },
+        today: daily ? {
+            weatherCode: asFiniteNumber(pickDaily(daily.weather_code)),
+            temperatureMax: asFiniteNumber(pickDaily(daily.temperature_2m_max)),
+            temperatureMin: asFiniteNumber(pickDaily(daily.temperature_2m_min)),
+            precipitationProbabilityMax: asFiniteNumber(pickDaily(daily.precipitation_probability_max)),
+            date: (Array.isArray(daily.time) && typeof daily.time[todayIdx] === 'string') ? daily.time[todayIdx] : null,
+        } : {
+            weatherCode: null,
+            temperatureMax: null,
+            temperatureMin: null,
+            precipitationProbabilityMax: null,
+            date: null,
+        },
+    };
+}
+
 async function syncHubitatData() {
     try {
         const devices = await fetchHubitatAllDevices();
@@ -1313,16 +1378,19 @@ app.get('/api/events', (req, res) => {
 app.get('/api/weather', async (req, res) => {
     try {
         const force = String(req.query.force || '').toLowerCase() === 'true';
+        const includeRaw = String(req.query.raw || '').toLowerCase() === 'true';
         const ttlMs = 5 * 60 * 1000;
         const now = Date.now();
         const lastAt = lastWeatherFetchAt ? Date.parse(lastWeatherFetchAt) : 0;
 
         if (!force && lastWeather && Number.isFinite(lastAt) && (now - lastAt) < ttlMs) {
-            return res.json({ fetchedAt: lastWeatherFetchAt, cached: true, weather: lastWeather });
+            const normalized = normalizeOpenMeteoPayload(lastWeather);
+            return res.json({ fetchedAt: lastWeatherFetchAt, cached: true, weather: normalized, ...(includeRaw ? { raw: lastWeather } : {}) });
         }
 
-        const weather = await fetchOpenMeteoForecast();
-        return res.json({ fetchedAt: lastWeatherFetchAt, cached: false, weather });
+        const raw = await fetchOpenMeteoForecast();
+        const normalized = normalizeOpenMeteoPayload(raw);
+        return res.json({ fetchedAt: lastWeatherFetchAt, cached: false, weather: normalized, ...(includeRaw ? { raw } : {}) });
     } catch (err) {
         lastWeatherError = err?.message || String(err);
         const now = Date.now();

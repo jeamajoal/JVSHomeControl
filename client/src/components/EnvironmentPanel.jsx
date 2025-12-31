@@ -616,21 +616,21 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
 
   const outsideDisplay = useMemo(() => {
     const current = weather?.current || null;
-    const daily = weather?.daily || null;
+    const today = weather?.today || null;
 
-    const currentTemp = current ? current.temperature_2m : null;
-    const currentHumidity = current ? current.relative_humidity_2m : null;
-    const apparentTemp = current ? current.apparent_temperature : null;
-    const windSpeed = current ? current.wind_speed_10m : null;
-    const windDir = current ? current.wind_direction_10m : null;
+    const currentTemp = current ? current.temperature : null;
+    const currentHumidity = current ? current.humidity : null;
+    const apparentTemp = current ? current.apparentTemperature : null;
+    const windSpeed = current ? current.windSpeed : null;
+    const windDir = current ? current.windDirection : null;
     const precipNow = current ? current.precipitation : null;
-    const code = current ? current.weather_code : null;
+    const code = current ? current.weatherCode : null;
     const condition = describeWeatherCode(code);
 
-    const todayHigh = daily?.temperature_2m_max?.[0] ?? null;
-    const todayLow = daily?.temperature_2m_min?.[0] ?? null;
-    const precipProb = daily?.precipitation_probability_max?.[0] ?? null;
-    const todayCode = daily?.weather_code?.[0] ?? null;
+    const todayHigh = today ? today.temperatureMax : null;
+    const todayLow = today ? today.temperatureMin : null;
+    const precipProb = today ? today.precipitationProbabilityMax : null;
+    const todayCode = today ? today.weatherCode : null;
     const todayCondition = describeWeatherCode(todayCode);
 
     return {
@@ -672,7 +672,11 @@ const EnvironmentPanel = ({ config, statuses, connected }) => {
               sub={
                 asText(outsideDisplay.condition)
                   ? `${outsideDisplay.condition}${outsideDisplay.currentHumidity !== null ? ` • ${formatPercent(outsideDisplay.currentHumidity)}` : ''}`
-                  : (outsideSensors.humidity === null ? (weatherError ? `Weather offline (${weatherError})` : 'Weather loading…') : `Humidity ${formatPercent(outsideSensors.humidity)}`)
+                  : (
+                    outsideSensors.humidity === null
+                      ? (weatherError ? `Weather offline (${weatherError})` : 'Weather loading…')
+                      : `Outside sensors • Humidity ${formatPercent(outsideSensors.humidity)}`
+                  )
               }
               icon={Thermometer}
               accentClassName="border-white/10"
