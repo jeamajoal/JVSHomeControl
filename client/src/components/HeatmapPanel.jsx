@@ -467,7 +467,7 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
   };
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">
+    <div ref={viewportRef} className="w-full h-full overflow-auto p-4 md:p-6">
       <style>{`
         /* Make the react-grid-layout resize handle visible and touch-friendly in edit mode */
         .jvs-heatmap-grid .react-resizable-handle {
