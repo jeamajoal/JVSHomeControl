@@ -58,6 +58,15 @@ const useFitScale = () => {
     if (!viewportEl || !contentEl) return;
 
     const compute = () => {
+      const isMdUp = typeof window !== 'undefined'
+        ? window.matchMedia('(min-width: 768px)').matches
+        : true;
+
+      if (!isMdUp) {
+        setScale(1);
+        return;
+      }
+
     const SAFE_GUTTER_PX = 16;
       const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
       const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);

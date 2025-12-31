@@ -76,7 +76,7 @@ function App() {
   };
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
+    <div className="h-[100dvh] w-screen flex flex-col overflow-hidden bg-background">
       {/* Header */}
       <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 backdrop-blur-md z-20 bg-black/20">
         <div className="flex items-center gap-3">
@@ -175,7 +175,7 @@ function App() {
       </header>
 
       {/* Main Grid */}
-      <main className="flex-1 w-full h-full overflow-auto md:overflow-hidden relative bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black">
+      <main className="flex-1 min-h-0 w-full overflow-y-auto md:overflow-hidden relative bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black">
         {!dataLoaded ? (
           <div className="flex items-center justify-center h-full text-gray-500 animate-pulse">LOADING SYSTEM...</div>
         ) : (
