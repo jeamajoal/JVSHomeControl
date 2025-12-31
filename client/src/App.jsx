@@ -138,13 +138,13 @@ function App() {
 
         {/* Desktop menu (compact) */}
         <div className="hidden md:block absolute left-1/2 -translate-x-1/2">
-          <div className="rounded-xl border border-white/10 bg-black/20 px-2 py-1">
-            <div className="flex items-center gap-2">
-              <div className={`h-2.5 w-2.5 rounded-full ${uiScheme.swatch} opacity-80`} />
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+            <div className="flex items-center gap-3">
+              <div className={`h-3 w-3 rounded-full ${uiScheme.swatch} opacity-80`} />
               <select
                 value={page}
                 onChange={(e) => setPage(Number(e.target.value))}
-                className={`rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/85 ${uiScheme.focusRing}`}
+                className={`min-w-[180px] rounded-xl border border-white/10 bg-black/10 px-4 py-2.5 text-sm font-bold uppercase tracking-[0.18em] text-white/85 hover:bg-white/5 ${uiScheme.focusRing}`}
               >
                 <option value={0}>Home</option>
                 <option value={1}>Climate</option>
