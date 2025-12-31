@@ -528,27 +528,6 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
         </div>
       ) : null}
 
-      {metrics.switches.length ? (
-        <div className="mt-4">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/45 font-semibold mb-3">
-            Lights
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {metrics.switches.map((sw) => (
-              <SwitchButton
-                key={sw.id}
-                label={sw.label}
-                isOn={sw.state === 'on'}
-                disabled={!connected}
-                busy={busySwitches.has(sw.id)}
-                onToggle={() => toggleSwitch(sw.id, sw.state)}
-                uiScheme={uiScheme}
-              />
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       {supportedActions.length ? (
         <div className="mt-4">
           <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/45 font-semibold mb-3">
@@ -612,7 +591,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
         </div>
       ) : null}
 
-      {!metrics.switches.length && !hasEnv ? (
+      {!supportedActions.length && !hasEnv ? (
         <div className="mt-4 text-sm text-white/40">No supported devices in this room.</div>
       ) : null}
     </section>
