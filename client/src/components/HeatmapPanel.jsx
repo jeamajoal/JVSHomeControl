@@ -4,11 +4,10 @@ import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import Draggable from 'react-draggable';
 
 import { getUiScheme } from '../uiScheme';
+import { API_HOST } from '../apiHost';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-
-const API_HOST = `http://${window.location.hostname}:3000`;
 
 const GRID_COLS = 12;
 const GRID_MAX_ROWS = 24;

@@ -2,8 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
-
-const API_HOST = `http://${window.location.hostname}:3000`;
+import { API_HOST } from '../apiHost';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Plus, X, Trash2, Layout, ScanLine } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
+import { API_HOST } from '../apiHost';
 
 const AdminPanel = ({ config, isOpen, onClose, uiScheme }) => {
     const [activeTab, setActiveTab] = useState('sensors');
@@ -22,7 +23,7 @@ const AdminPanel = ({ config, isOpen, onClose, uiScheme }) => {
         e.preventDefault();
         try {
             const payload = { ...newSensor, metadata: { statusUri: newSensor.statusUri } };
-            await fetch('http://localhost:3000/api/sensors', {
+            await fetch(`${API_HOST}/api/sensors`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
@@ -35,14 +36,14 @@ const AdminPanel = ({ config, isOpen, onClose, uiScheme }) => {
     const handleDeleteSensor = async (id) => {
         if (!confirm('Delete this sensor?')) return;
         try {
-            await fetch(`http://localhost:3000/api/sensors/${id}`, { method: 'DELETE' });
+            await fetch(`${API_HOST}/api/sensors/${id}`, { method: 'DELETE' });
         } catch (err) { console.error(err); }
     };
 
     const handleAddRoom = async (e) => {
         e.preventDefault();
         try {
-            await fetch('http://localhost:3000/api/rooms', {
+            await fetch(`${API_HOST}/api/rooms`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(newRoom)
@@ -55,7 +56,7 @@ const AdminPanel = ({ config, isOpen, onClose, uiScheme }) => {
     const handleDeleteRoom = async (id) => {
         if (!confirm('Delete this room?')) return;
         try {
-            await fetch(`http://localhost:3000/api/rooms/${id}`, { method: 'DELETE' });
+            await fetch(`${API_HOST}/api/rooms/${id}`, { method: 'DELETE' });
         } catch (err) { console.error(err); }
     };
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
-import { API_HOST, socket } from '../socket';
+import { API_HOST } from '../apiHost';
+import { socket } from '../socket';
 
 async function saveAllowlists(payload) {
   const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {

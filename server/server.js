@@ -2,13 +2,22 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { Server } = require('socket.io');
 
+let UndiciAgent = null;
+try {
+    // Node's built-in fetch is backed by undici; this lets us disable TLS verification per-request.
+    // (Useful when HUBITAT_HOST is https:// with a self-signed cert.)
+    // eslint-disable-next-line global-require
+    UndiciAgent = require('undici').Agent;
+} catch {
+    UndiciAgent = null;
+}
+
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 const PORT = 3000;
 const DATA_DIR = path.join(__dirname, 'data');
@@ -36,6 +45,33 @@ const CLIENT_DIST_DIR = path.join(__dirname, '..', 'client', 'dist');
 const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
 const HAS_BUILT_CLIENT = fs.existsSync(CLIENT_INDEX_HTML);
 
+// --- HTTPS (optional) ---
+// Defaults: server/data/certs/localhost.key + server/data/certs/localhost.crt
+const truthy = (v) => ['1', 'true', 'yes', 'on'].includes(String(v || '').trim().toLowerCase());
+const falsy = (v) => ['0', 'false', 'no', 'off'].includes(String(v || '').trim().toLowerCase());
+
+const CERT_DIR_DEFAULT = path.join(DATA_DIR, 'certs');
+const HTTPS_KEY_PATH = String(process.env.HTTPS_KEY_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.key');
+const HTTPS_CERT_PATH = String(process.env.HTTPS_CERT_PATH || '').trim() || path.join(CERT_DIR_DEFAULT, 'localhost.crt');
+
+const HTTPS_FORCED_OFF = truthy(process.env.HTTP_ONLY) || falsy(process.env.HTTPS);
+const HTTPS_FORCED_ON = truthy(process.env.HTTPS);
+const HTTPS_HAS_CERT = fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH);
+
+const USE_HTTPS = !HTTPS_FORCED_OFF && (HTTPS_FORCED_ON || HTTPS_HAS_CERT);
+
+const server = USE_HTTPS
+    ? https.createServer(
+        {
+            key: fs.readFileSync(HTTPS_KEY_PATH),
+            cert: fs.readFileSync(HTTPS_CERT_PATH),
+        },
+        app,
+    )
+    : http.createServer(app);
+
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
+
 // Hubitat Maker API
 // Public-repo posture: no built-in defaults or legacy env var fallbacks.
 // If Hubitat isn't configured, the server still runs but Hubitat polling/commands are disabled.
@@ -45,6 +81,15 @@ const HUBITAT_HOST = envTrim('HUBITAT_HOST').replace(/\/$/, '');
 const HUBITAT_APP_ID = envTrim('HUBITAT_APP_ID');
 const HUBITAT_ACCESS_TOKEN = envTrim('HUBITAT_ACCESS_TOKEN');
 const HUBITAT_CONFIGURED = Boolean(HUBITAT_HOST && HUBITAT_APP_ID && HUBITAT_ACCESS_TOKEN);
+
+const HUBITAT_TLS_INSECURE = (() => {
+    const raw = String(process.env.HUBITAT_TLS_INSECURE || '').trim().toLowerCase();
+    return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
+
+const HUBITAT_FETCH_DISPATCHER = (HUBITAT_TLS_INSECURE && UndiciAgent)
+    ? new UndiciAgent({ connect: { rejectUnauthorized: false } })
+    : null;
 
 const HUBITAT_API_BASE = HUBITAT_CONFIGURED ? `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}` : '';
 const HUBITAT_API_URL = HUBITAT_CONFIGURED
@@ -1043,7 +1088,7 @@ async function fetchHubitatAllDevices() {
     if (!HUBITAT_CONFIGURED) {
         throw new Error('Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.');
     }
-    const res = await fetch(HUBITAT_API_URL);
+    const res = await fetch(HUBITAT_API_URL, HUBITAT_FETCH_DISPATCHER ? { dispatcher: HUBITAT_FETCH_DISPATCHER } : undefined);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`Hubitat API Error: ${res.status} ${text}`);
@@ -1979,5 +2024,10 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
+    const proto = USE_HTTPS ? 'https' : 'http';
+    console.log(`Server running on ${proto}://0.0.0.0:${PORT}`);
+    if (USE_HTTPS) {
+        console.log(`HTTPS certificate: ${HTTPS_CERT_PATH}`);
+        console.log('NOTE: If browsers warn, trust the cert on the client device.');
+    }
 });

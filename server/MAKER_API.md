@@ -12,6 +12,34 @@ Treat your Maker API `access_token` as a secret.
 - Prefer storing it in an environment variable or in `server/data/config.json` (which should remain local/private).
 - If you’ve pasted a real token into chat/logs, consider rotating it in Hubitat.
 
+## HTTPS notes (self-signed certs)
+
+This project can run the dashboard/API over **HTTPS** using a local certificate.
+
+- If a cert/key exist, the server will automatically use them.
+- If they do not exist, starting the server will offer to generate a **self-signed** cert.
+
+### Trust the cert (important)
+
+If you generate a self-signed certificate, you must **trust** it on the device/browser that loads the dashboard.
+If you don’t, the browser will show warnings and you may see repeated alerts/errors.
+
+### Maker API `postURL` and TLS verification
+
+If you set Maker API `postURL` to an `https://.../api/events` URL and Hubitat does not trust your certificate,
+you must either:
+
+- Configure Hubitat/Maker to **ignore certificate warnings** (if that option is available), or
+- Use an `http://.../api/events` URL instead.
+
+### Hubitat polling with HTTPS
+
+If your `HUBITAT_HOST` is `https://...` and Hubitat uses a self-signed cert, set:
+
+- `HUBITAT_TLS_INSECURE=1`
+
+This disables TLS verification for the Hubitat fetch calls from this server.
+
 ## Endpoint patterns
 
 Replace these placeholders:

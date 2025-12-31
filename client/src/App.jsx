@@ -9,8 +9,9 @@ import AboutPanel from './components/AboutPanel';
 import { Activity, Maximize, Minimize } from 'lucide-react';
 
 import { getUiScheme } from './uiScheme';
+import { API_HOST } from './apiHost';
 
-import { API_HOST, socket } from './socket';
+import { socket } from './socket';
 
 function App() {
   const [sensors, setSensors] = useState({});
@@ -239,7 +240,7 @@ function App() {
                     <div className="mt-2 text-xs text-neon-red break-words">{loadError}</div>
                   ) : null}
                   <div className="mt-3 text-xs text-white/45">
-                    Check <span className="text-white/70">http://{window.location.hostname}:3000/api/config</span>
+                    Check <span className="text-white/70">{API_HOST}/api/config</span>
                   </div>
                 </div>
               </div>
