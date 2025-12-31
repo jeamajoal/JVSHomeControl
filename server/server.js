@@ -58,7 +58,15 @@ const HTTPS_FORCED_OFF = truthy(process.env.HTTP_ONLY) || falsy(process.env.HTTP
 const HTTPS_FORCED_ON = truthy(process.env.HTTPS);
 const HTTPS_HAS_CERT = fs.existsSync(HTTPS_KEY_PATH) && fs.existsSync(HTTPS_CERT_PATH);
 
-const USE_HTTPS = !HTTPS_FORCED_OFF && (HTTPS_FORCED_ON || HTTPS_HAS_CERT);
+const HTTPS_REQUESTED = !HTTPS_FORCED_OFF && (HTTPS_FORCED_ON || HTTPS_HAS_CERT);
+const USE_HTTPS = HTTPS_REQUESTED && HTTPS_HAS_CERT;
+
+if (HTTPS_REQUESTED && !HTTPS_HAS_CERT) {
+    console.warn('HTTPS: enabled/requested but certificate not found; starting in HTTP mode.');
+    console.warn(`HTTPS_CERT_PATH: ${HTTPS_CERT_PATH}`);
+    console.warn(`HTTPS_KEY_PATH:  ${HTTPS_KEY_PATH}`);
+    console.warn('Run: node server/scripts/https-setup.js (or re-run the install script interactively) to create a self-signed certificate.');
+}
 
 const server = USE_HTTPS
     ? https.createServer(

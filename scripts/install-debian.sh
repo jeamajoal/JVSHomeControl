@@ -20,6 +20,7 @@ REPO_URL="https://github.com/jeamajoal/JVSHomeControl.git"
 ENV_FILE="/etc/jvshomecontrol.env"
 SERVICE_FILE="/etc/systemd/system/jvshomecontrol.service"
 CONFIG_FILE_REL="server/data/config.json"
+CERT_DIR_REL="server/data/certs"
 
 log() { echo "[install] $*"; }
 warn() { echo "[install][WARN] $*"; }
@@ -131,6 +132,21 @@ ensure_repo() {
     cp -a "${cfg}" "${cfg_backup}"
   fi
 
+  # Preserve any existing HTTPS certs across git operations.
+  # These are installation-specific and should not be deleted by `git clean`.
+  local cert_dir
+  cert_dir="${APP_DIR}/${CERT_DIR_REL}"
+  local cert_backup_dir
+  cert_backup_dir=""
+  if [[ -d "${cert_dir}" ]]; then
+    local stamp
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    cert_backup_dir="/tmp/jvshomecontrol.certs.${stamp}"
+    log "Backing up existing certs dir to ${cert_backup_dir}…"
+    mkdir -p "${cert_backup_dir}"
+    cp -a "${cert_dir}/." "${cert_backup_dir}/" || true
+  fi
+
   if [[ -d "${APP_DIR}/.git" ]]; then
     log "Updating existing repo in ${APP_DIR}…"
     # The app may create/modify files inside the repo (e.g., config.json) and users may have local edits.
@@ -147,6 +163,13 @@ ensure_repo() {
     cp -a "${cfg_backup}" "${cfg}"
     chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
   fi
+
+  if [[ -n "${cert_backup_dir}" && -d "${cert_backup_dir}" ]]; then
+    log "Restoring certs dir to ${cert_dir}…"
+    mkdir -p "${cert_dir}"
+    cp -a "${cert_backup_dir}/." "${cert_dir}/" || true
+    chown -R "${APP_USER}:${APP_GROUP}" "${cert_dir}" || true
+  fi
 }
 
 install_and_build() {
@@ -158,12 +181,33 @@ install_and_build() {
 }
 
 ensure_https_setup() {
-  # This runs the same helper used by `npm start` (server/scripts/https-setup.js).
-  # - If a cert already exists, it will be reused.
-  # - If no cert exists and we're interactive, it will prompt to create a self-signed cert.
-  # - If we're non-interactive, it will print guidance and continue.
-  log "HTTPS setup (optional)…"
-  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && node scripts/https-setup.js"
+  # Offer to create a self-signed certificate and place it in server/data/certs.
+  # - If a cert already exists, we keep it.
+  # - If we're non-interactive, we skip prompting.
+  local cert_dir
+  cert_dir="${APP_DIR}/${CERT_DIR_REL}"
+  local cert_path key_path
+  cert_path="${cert_dir}/localhost.crt"
+  key_path="${cert_dir}/localhost.key"
+
+  if [[ -f "${cert_path}" && -f "${key_path}" ]]; then
+    log "HTTPS cert already present: ${cert_path}"
+    return 0
+  fi
+
+  if [[ ! -t 0 ]]; then
+    warn "Non-interactive session; skipping HTTPS certificate prompt."
+    warn "To create a self-signed cert later: cd '${APP_DIR}/server' && node scripts/https-setup.js"
+    return 0
+  fi
+
+  if ! confirm "HTTPS certificate not found. Create a self-signed certificate now?"; then
+    log "HTTPS: skipping certificate creation. Server will run HTTP unless you add a cert."
+    return 0
+  fi
+
+  log "Creating self-signed HTTPS certificate in ${cert_dir}…"
+  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && HTTPS=1 node scripts/https-setup.js"
 }
 
 ensure_env_file() {
