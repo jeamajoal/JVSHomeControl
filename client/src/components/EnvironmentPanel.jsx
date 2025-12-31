@@ -165,10 +165,11 @@ const useFitScale = () => {
       const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
       const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
 
-      // Allow modest scale-up when there is extra space (kiosk TVs/tablets),
-      // while still guaranteeing the content fits without scrolling.
+      // Prefer readability over always fitting.
+      // Allow modest scale-up when there is extra space, but never shrink;
+      // if content grows (more sensors/rooms), we scroll instead.
       const raw = Math.min(vw / cw, vh / ch) * 0.99;
-      const next = Math.min(raw, 1.15);
+      const next = Math.min(Math.max(raw, 1), 1.15);
       setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
     };
 
@@ -338,6 +339,11 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
   const hums = [];
   const lux = [];
   let motionActive = false;
+  let motionActiveCount = 0;
+
+  let doorCount = 0;
+  let doorOpen = false;
+  let doorOpenCount = 0;
 
   const switches = [];
 
@@ -353,7 +359,21 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
     const lx = asNumber(attrs.illuminance);
     if (lx !== null) lux.push(lx);
 
-    if (attrs.motion === 'active') motionActive = true;
+    if (attrs.motion === 'active') {
+      motionActive = true;
+      motionActiveCount += 1;
+    }
+
+    if (typeof attrs.contact === 'string') {
+      const v = String(attrs.contact).toLowerCase();
+      if (v === 'open' || v === 'closed') {
+        doorCount += 1;
+        if (v === 'open') {
+          doorOpen = true;
+          doorOpenCount += 1;
+        }
+      }
+    }
 
     if (typeof attrs.switch === 'string' && allowedControlIds?.has(String(dev.id))) {
       switches.push({
@@ -371,6 +391,10 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
     humidity: avg(hums),
     illuminance: avg(lux),
     motionActive,
+    motionActiveCount,
+    doorCount,
+    doorOpen,
+    doorOpenCount,
     switches,
   };
 };
@@ -445,9 +469,10 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
     metrics.temperature !== null ||
     metrics.humidity !== null ||
     metrics.illuminance !== null ||
-    devices.some((d) => d.status?.attributes?.motion);
+    devices.some((d) => d.status?.attributes?.motion) ||
+    devices.some((d) => typeof d.status?.attributes?.contact === 'string');
 
-  const headerGlow = metrics.motionActive
+  const headerGlow = (metrics.motionActive || metrics.doorOpen)
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
@@ -458,6 +483,20 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
           <h2 className="text-base md:text-lg font-extrabold tracking-wide text-white truncate">
             {roomName}
           </h2>
+          {(metrics.motionActive || metrics.doorOpen) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {metrics.motionActive ? (
+                <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${uiScheme?.selectedText || 'text-neon-blue'} border-white/10 bg-white/5`}>
+                  Motion
+                </span>
+              ) : null}
+              {metrics.doorOpen ? (
+                <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${uiScheme?.selectedText || 'text-neon-blue'} border-white/10 bg-white/5`}>
+                  Door
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -673,7 +712,7 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
   }, [weather]);
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-auto md:overflow-hidden p-2 md:p-3">
+    <div ref={viewportRef} className="w-full h-full overflow-auto p-2 md:p-3">
       <div
         className="w-full h-full"
         style={{
@@ -722,11 +761,19 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
             <MetricCard
               title="Home"
               value={connected ? 'ONLINE' : 'OFFLINE'}
-              sub={overall.motionActive ? 'Motion active' : 'All clear'}
+              sub={
+                !connected
+                  ? 'Disconnected'
+                  : (
+                    (overall.motionActive || overall.doorOpen)
+                      ? `${overall.motionActive ? 'Motion active' : 'No motion'}${overall.doorOpen ? ` • Doors open: ${overall.doorOpenCount}` : ''}`
+                      : 'All clear'
+                  )
+              }
               icon={Activity}
               accentClassName={
                 connected
-                  ? (overall.motionActive ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.headerGlow}` : 'border-white/10')
+                  ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.headerGlow}` : 'border-white/10')
                   : 'border-danger/30'
               }
               valueClassName={connected ? 'text-neon-green' : 'text-neon-red'}
