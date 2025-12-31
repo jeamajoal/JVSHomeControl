@@ -270,7 +270,7 @@ const WeatherPanel = ({ uiScheme }) => {
 
           <div className="mt-5">
             <DividerTitle title="Hourly (next 24)" />
-            <div className="mt-2" dir="rtl">
+            <div className="mt-2">
               {hourly.length ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-3">
                   {hourly.map((h) => {
@@ -278,7 +278,6 @@ const WeatherPanel = ({ uiScheme }) => {
                     return (
                       <div
                         key={h.time}
-                        dir="ltr"
                         title={desc || undefined}
                         className="rounded-2xl border border-white/10 bg-white/5 p-3"
                       >
@@ -309,7 +308,7 @@ const WeatherPanel = ({ uiScheme }) => {
 
           <div className="mt-5">
             <DividerTitle title="Daily" />
-            <div className="mt-2" dir="rtl">
+            <div className="mt-2">
               {daily.length ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
                   {daily.map((d) => {
@@ -317,7 +316,6 @@ const WeatherPanel = ({ uiScheme }) => {
                     return (
                       <div
                         key={d.date || String(d.weatherCode)}
-                        dir="ltr"
                         title={desc || undefined}
                         className="rounded-2xl border border-white/10 bg-white/5 p-4 md:p-5"
                       >
