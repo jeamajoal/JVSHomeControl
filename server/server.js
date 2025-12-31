@@ -105,6 +105,10 @@ const HUBITAT_TLS_INSECURE = (() => {
     return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
 })();
 
+if (HUBITAT_TLS_INSECURE && !UndiciAgent) {
+    console.warn('HUBITAT_TLS_INSECURE=1 was set but undici could not be loaded; TLS verification may still fail for Hubitat HTTPS.');
+}
+
 const HUBITAT_FETCH_DISPATCHER = (HUBITAT_TLS_INSECURE && UndiciAgent)
     ? new UndiciAgent({ connect: { rejectUnauthorized: false } })
     : null;
@@ -115,6 +119,35 @@ function hubitatFetch(url, options) {
         return fetch(url, { ...base, dispatcher: HUBITAT_FETCH_DISPATCHER });
     }
     return fetch(url, base);
+}
+
+function redactAccessToken(url) {
+    try {
+        const u = new URL(String(url));
+        if (u.searchParams.has('access_token')) {
+            u.searchParams.set('access_token', 'REDACTED');
+        }
+        return u.toString();
+    } catch {
+        return String(url);
+    }
+}
+
+function describeFetchError(err) {
+    const message = err?.message || String(err);
+    const cause = err?.cause;
+    if (!cause || typeof cause !== 'object') return message;
+
+    const extra = [];
+    const code = cause.code || cause.name;
+    if (code) extra.push(String(code));
+    if (cause.errno) extra.push(`errno=${cause.errno}`);
+    if (cause.syscall) extra.push(`syscall=${cause.syscall}`);
+    if (cause.address) extra.push(`addr=${cause.address}`);
+    if (cause.port) extra.push(`port=${cause.port}`);
+    if (cause.message && cause.message !== message) extra.push(String(cause.message));
+
+    return extra.length ? `${message} (${extra.join(', ')})` : message;
 }
 
 const HUBITAT_API_BASE = HUBITAT_CONFIGURED ? `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}` : '';
@@ -1100,7 +1133,7 @@ async function syncHubitatData() {
         io.emit('device_refresh', sensorStatuses);
 
     } catch (err) {
-        lastHubitatError = err?.message || String(err);
+        lastHubitatError = describeFetchError(err);
         const now = Date.now();
         // Throttle to avoid log spam if Hubitat is down.
         if (now - lastHubitatErrorLoggedAt > 30_000) {
@@ -1114,7 +1147,13 @@ async function fetchHubitatAllDevices() {
     if (!HUBITAT_CONFIGURED) {
         throw new Error('Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.');
     }
-    const res = await hubitatFetch(HUBITAT_API_URL);
+    let res;
+    try {
+        res = await hubitatFetch(HUBITAT_API_URL);
+    } catch (err) {
+        const safeUrl = redactAccessToken(HUBITAT_API_URL);
+        throw new Error(`Hubitat fetch failed: ${describeFetchError(err)} (url: ${safeUrl})`);
+    }
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`Hubitat API Error: ${res.status} ${text}`);
@@ -1694,6 +1733,11 @@ app.put('/api/ui/alert-sounds', (req, res) => {
 app.get('/api/hubitat/health', (req, res) => {
     res.json({
         ok: !lastHubitatError,
+        configured: HUBITAT_CONFIGURED,
+        host: HUBITAT_HOST || null,
+        appId: HUBITAT_APP_ID || null,
+        tlsInsecure: HUBITAT_TLS_INSECURE,
+        tlsDispatcher: Boolean(HUBITAT_FETCH_DISPATCHER),
         lastFetchAt: lastHubitatFetchAt,
         lastError: lastHubitatError,
         cachedCount: Array.isArray(lastHubitatDevices) ? lastHubitatDevices.length : 0,
