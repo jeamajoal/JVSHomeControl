@@ -9,7 +9,7 @@ import { Activity, Maximize, Minimize } from 'lucide-react';
 
 import { getUiScheme } from './uiScheme';
 
-import { socket } from './socket';
+import { API_HOST, socket } from './socket';
 
 function App() {
   const [sensors, setSensors] = useState({});
