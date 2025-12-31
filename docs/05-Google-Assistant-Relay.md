@@ -2,6 +2,14 @@
 
 This repo does not include a GAR server implementation, but it can integrate with one.
 
+## Stability note (Gemini / monetization)
+
+GAR relies on Google Assistant / Google Home behaviors that can change over time.
+
+As Google rolls out **Gemini** and evolves (or monetizes) “smarter” Home/Assistant features, it’s unclear when/if existing GAR-style endpoints may change, degrade, or stop working.
+
+If GAR is important to your setup, plan for possible breakage and keep your core automations/local control in Hubitat where possible.
+
 ## Why GAR
 
 Some “works with Google” / cloud-only devices are cheap and convenient, but don’t expose a clean local API and may not integrate with Hubitat directly.

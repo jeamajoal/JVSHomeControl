@@ -31,6 +31,8 @@ The common flow:
 
 See: [05-Google-Assistant-Relay.md](05-Google-Assistant-Relay.md)
 
+Note: GAR’s long-term reliability may change as Google rolls out Gemini and adjusts Home/Assistant capabilities and pricing. See the stability note in the GAR doc.
+
 ## Custom switch driver (Hubitat)
 
 A common pattern is a custom virtual switch driver in Hubitat that:
