@@ -20,7 +20,7 @@ A GAR server can:
 - Expose simple HTTP endpoints
 - Trigger Google Assistant actions (devices, routines)
 
-## Common integration pattern
+## Common integration flow
 
 - Hubitat has a virtual switch representing a Google action.
 - The driver turns switch `on/off` into an HTTP call to GAR.

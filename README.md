@@ -16,7 +16,7 @@ Local-first home automation dashboard (UI + backend) designed for a wall tablet 
 	- Climate (heatmap for temperature/humidity/illuminance)
 	- Weather (built-in Open‑Meteo)
 	- Activity + basic controls
-- Supports a common “bridge” pattern for cheap Google-linked devices:
+- Supports a common “bridge” approach for cheap Google-linked devices:
 	- Google Assistant Relay (GAR) + a Hubitat virtual switch driver → control Google devices *through Hubitat* → controllable by this panel.
 	- Note: GAR reliability may change over time as Google rolls out Gemini; see: [docs/05-Google-Assistant-Relay.md](docs/05-Google-Assistant-Relay.md)
 

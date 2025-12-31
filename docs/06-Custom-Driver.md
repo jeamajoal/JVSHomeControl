@@ -1,6 +1,8 @@
 # Custom Switch Driver (Hubitat)
 
-This repo does not ship a Hubitat driver, but it is designed to work well with the “virtual switch → HTTP call” pattern.
+This repo includes a Hubitat driver that supports the “virtual switch → HTTP call” approach.
+
+- Driver source: [hubitat/driver/virtual-web-request-switch.groovy](../hubitat/driver/virtual-web-request-switch.groovy)
 
 ## What the driver typically does
 
@@ -19,6 +21,11 @@ Once the Google-linked device is represented as a Hubitat device, it becomes con
 
 ## Recommended documentation
 
-If you have a separate repo for the custom driver, link it here:
+## Install in Hubitat
 
-- <INSERT_DRIVER_REPO_URL_HERE>
+1. In Hubitat, go to **Drivers Code** → **New Driver**.
+2. Copy/paste the contents of the driver file into the editor.
+3. Click **Save**.
+4. Create a device: **Devices** → **Add Device** → **Virtual**.
+5. Set the device **Type** to **Virtual Web Request Switch**.
+6. Configure the device preferences (URLs/methods/headers/body) for your ON/OFF actions.

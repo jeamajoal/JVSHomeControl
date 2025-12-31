@@ -35,7 +35,7 @@ Note: GAR’s long-term reliability may change as Google rolls out Gemini and ad
 
 ## Custom switch driver (Hubitat)
 
-A common pattern is a custom virtual switch driver in Hubitat that:
+A common setup is a custom virtual switch driver in Hubitat that:
 
 - Represents a Google-linked device (or a Google routine) as a Hubitat switch
 - On switch command, calls your GAR endpoint
