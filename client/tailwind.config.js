@@ -22,6 +22,7 @@ export default {
                 'glow-blue': 'glow-blue 3s ease-in-out infinite',
                 'glow-red': 'glow-red 2s ease-in-out infinite', // Faster for alarm
                 'glow-orange': 'glow-orange 3s ease-in-out infinite',
+                'glow-accent': 'glow-accent 3s ease-in-out infinite',
             },
             keyframes: {
                 'glow-blue': {
@@ -35,7 +36,17 @@ export default {
                 'glow-orange': {
                     '0%, 100%': { boxShadow: '0 0 15px rgba(245, 158, 11, 0.3)', borderColor: 'rgba(245, 158, 11, 0.4)' },
                     '50%': { boxShadow: '0 0 30px rgba(245, 158, 11, 0.6)', borderColor: 'rgba(245, 158, 11, 0.8)' },
-                }
+                },
+                'glow-accent': {
+                    '0%, 100%': {
+                        boxShadow: '0 0 15px rgb(var(--accent-rgb) / 0.30)',
+                        borderColor: 'rgb(var(--accent-rgb) / 0.40)'
+                    },
+                    '50%': {
+                        boxShadow: '0 0 30px rgb(var(--accent-rgb) / 0.60)',
+                        borderColor: 'rgb(var(--accent-rgb) / 0.80)'
+                    },
+                },
             }
         },
     },

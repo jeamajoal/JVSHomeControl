@@ -206,7 +206,7 @@ const MetricCard = ({ title, value, sub, icon: IconComponent, accentClassName, v
 
 const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
   const stateClass = isOn
-    ? `${uiScheme?.selectedCard || 'bg-neon-blue/15 border-neon-blue/40'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-blue'}`
+    ? `${uiScheme?.selectedCard || 'bg-neon-blue/15 border-neon-blue/40'} ${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'bg-white/5 border-white/10 text-white/70';
 
   return (
@@ -439,7 +439,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
     devices.some((d) => d.status?.attributes?.motion);
 
   const headerGlow = metrics.motionActive
-    ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-blue'}`
+    ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
   return (
