@@ -22,11 +22,27 @@ Core idea: Hubitat is the local “brain”, and this panel provides a fast, kio
 - `server/` — Express + Socket.IO backend
 - `server/data/config.json` — persisted, installation-specific config (rooms/sensors mapping + layout + UI settings)
 
-## Quick start (local dev)
+## Quick start (standard install)
 
-Prereqs:
+This project is typically run as **one service** on **port 3000** (backend + built frontend served together).
 
-- Node.js 18+
+Build the client (`client/dist`) and start the backend:
+
+```bash
+cd client
+npm install
+npm run build
+
+cd ../server
+npm install
+npm start
+```
+
+Browse to `http(s)://<host>:3000/`.
+
+## Optional: local development (two processes)
+
+If you’re actively developing the UI, you can run Vite separately.
 
 Terminal 1 (server):
 
@@ -44,23 +60,7 @@ npm install
 npm run dev
 ```
 
-Then open the Vite URL (usually `http://localhost:5173`).
-
-## Production note
-
-Build the client (`client/dist`) and the backend will serve it:
-
-```bash
-cd client
-npm install
-npm run build
-
-cd ../server
-npm install
-npm start
-```
-
-Browse to `http(s)://<host>:3000/`.
+In this mode, the UI is served by Vite (commonly on `http://localhost:5173`) and the API is still on port 3000.
 
 - **Rooms**: names, IDs, floors, and grid/layout positions are specific to one floorplan.
 - **Sensors**: Hubitat device IDs and the room mapping are installation-specific.

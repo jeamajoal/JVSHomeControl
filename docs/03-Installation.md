@@ -2,7 +2,23 @@
 
 This doc covers local development and a production install.
 
-## Local development
+## Standard install (recommended)
+
+This project is typically deployed as a **single service** on **port 3000** (backend + built frontend).
+
+```bash
+cd client
+npm install
+npm run build
+
+cd ../server
+npm install
+npm start
+```
+
+Browse to `http(s)://<host>:3000/`.
+
+## Local development (optional)
 
 Prereqs:
 
@@ -24,23 +40,12 @@ npm install
 npm run dev
 ```
 
-Open the Vite URL (usually `http://localhost:5173`).
+In this dev mode, the UI is served by Vite (commonly on `http://localhost:5173`) and the API is on port 3000.
 
-## Production (single service)
+## Notes
 
-In production, you typically build the client and let the server serve it:
-
-```bash
-cd client
-npm install
-npm run build
-
-cd ../server
-npm install
-npm start
-```
-
-Then browse to `http(s)://<host>:3000/`.
+- Production/default is port 3000 for both UI + API.
+- Vite (`:5173`) is only used during active UI development.
 
 ## Running as a service (Debian / systemd)
 
