@@ -7,6 +7,13 @@ The server can run as HTTP or HTTPS.
 - If a certificate exists, the server will automatically use HTTPS.
 - If not, starting the server will offer to create a self-signed certificate.
 
+Note: If you start the server as a systemd service, it runs non-interactively, so you will not see an interactive prompt. In that case, run the helper once in a terminal to generate a cert:
+
+```bash
+cd server
+node scripts/https-setup.js
+```
+
 Default certificate paths:
 
 - `server/data/certs/localhost.crt`

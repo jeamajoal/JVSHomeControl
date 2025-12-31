@@ -157,6 +157,15 @@ install_and_build() {
   sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/client' && npm ci && npm run build && npm prune --omit=dev"
 }
 
+ensure_https_setup() {
+  # This runs the same helper used by `npm start` (server/scripts/https-setup.js).
+  # - If a cert already exists, it will be reused.
+  # - If no cert exists and we're interactive, it will prompt to create a self-signed cert.
+  # - If we're non-interactive, it will print guidance and continue.
+  log "HTTPS setup (optional)…"
+  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && node scripts/https-setup.js"
+}
+
 ensure_env_file() {
   if [[ -f "${ENV_FILE}" ]]; then
     log "Env file exists: ${ENV_FILE} (will not overwrite)"
@@ -246,6 +255,7 @@ main() {
   ensure_user
   ensure_repo
   install_and_build
+  ensure_https_setup
   ensure_env_file
   ensure_service
 

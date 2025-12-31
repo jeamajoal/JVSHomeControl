@@ -56,6 +56,8 @@ There are two ways:
 
 - [scripts/install-debian.sh](../scripts/install-debian.sh)
 
+Note: The Debian install script will run the HTTPS setup helper once during install/update. When run interactively, it will offer to generate a self-signed certificate if one is not present.
+
 If you change environment variables (for example switching `http://` to `https://`), you must restart the service:
 
 ```bash
