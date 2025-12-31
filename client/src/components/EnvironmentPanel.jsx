@@ -664,7 +664,7 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
   }, [weather]);
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-hidden p-2 md:p-3">
+    <div ref={viewportRef} className="w-full h-full overflow-auto md:overflow-hidden p-2 md:p-3">
       <div
         className="w-full h-full"
         style={{

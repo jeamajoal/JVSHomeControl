@@ -194,7 +194,7 @@ const InteractionPanel = ({ config, statuses, connected, uiScheme }) => {
   };
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 md:p-6">
+    <div ref={viewportRef} className="w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">
       <div
         className="w-full h-full"
         style={{

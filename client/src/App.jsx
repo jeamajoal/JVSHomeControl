@@ -93,8 +93,8 @@ function App() {
           </div>
         </div>
 
-        <div className="absolute left-1/2 -translate-x-1/2">
-          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/20 p-1">
+        <div className="absolute left-1/2 -translate-x-1/2 max-w-[70vw] md:max-w-none">
+          <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/20 p-1 overflow-x-auto whitespace-nowrap">
             <button
               type="button"
               onClick={() => setPage(0)}
@@ -175,7 +175,7 @@ function App() {
       </header>
 
       {/* Main Grid */}
-      <main className="flex-1 w-full h-full overflow-hidden relative bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black">
+      <main className="flex-1 w-full h-full overflow-auto md:overflow-hidden relative bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black">
         {!dataLoaded ? (
           <div className="flex items-center justify-center h-full text-gray-500 animate-pulse">LOADING SYSTEM...</div>
         ) : (

@@ -390,7 +390,7 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
   };
 
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-hidden p-4 md:p-6">
+    <div ref={viewportRef} className="w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">
       <style>{`
         /* Make the react-grid-layout resize handle visible and touch-friendly in edit mode */
         .jvs-heatmap-grid .react-resizable-handle {
@@ -426,8 +426,8 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
         }}
       >
         <div ref={contentRef} className="w-full">
-          <div className="flex gap-3 md:gap-4">
-            <aside className="glass-panel border border-white/10 p-3 md:p-4 w-40 md:w-48 shrink-0">
+          <div className="flex flex-col md:flex-row gap-3 md:gap-4">
+            <aside className="glass-panel border border-white/10 p-3 md:p-4 w-full md:w-48 md:shrink-0">
               <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
                 Heatmap
               </div>
