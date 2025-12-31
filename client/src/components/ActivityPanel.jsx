@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity } from 'lucide-react';
+import { DoorOpen, Footprints, Volume2, VolumeX } from 'lucide-react';
+
+import { socket } from '../socket';
 
 const asText = (value) => {
   if (value === null || value === undefined) return null;
@@ -130,20 +132,11 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
     return audioCtxRef.current;
   };
 
+  // Track state transitions from polling refreshes (visual correctness + fallback audio).
   useEffect(() => {
-    if (!alertsEnabled) {
-      // Still keep prev state in sync so enabling later doesn’t spam.
-      prevRef.current.initialized = false;
-      return;
-    }
-
-    const audioCtx = audioCtxRef.current;
-    if (!audioCtx) return;
-
     const nowMs = Date.now();
 
     const nextById = new Map();
-
     for (const r of rooms) {
       for (const d of r.devices) {
         nextById.set(d.id, { motion: d.motion, contact: d.contact });
@@ -154,6 +147,17 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
     if (!prev.initialized) {
       prev.byId = nextById;
       prev.initialized = true;
+      return;
+    }
+
+    if (!alertsEnabled) {
+      prev.byId = nextById;
+      return;
+    }
+
+    const audioCtx = audioCtxRef.current;
+    if (!audioCtx) {
+      prev.byId = nextById;
       return;
     }
 
@@ -178,26 +182,75 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
       last.perSensor.set(perKey, nowMs);
       last.globalAt = nowMs;
 
-      // Fire-and-forget sound.
-      if (doorTriggered) {
-        playDoorSound(audioCtx).catch(() => undefined);
-      } else {
-        playMotionSound(audioCtx).catch(() => undefined);
-      }
+      if (doorTriggered) playDoorSound(audioCtx).catch(() => undefined);
+      else playMotionSound(audioCtx).catch(() => undefined);
     }
 
     prev.byId = nextById;
   }, [alertsEnabled, rooms]);
+
+  // Prefer realtime Maker postURL events for audio cues (more immediate than polling).
+  useEffect(() => {
+    const handler = async ({ events } = {}) => {
+      if (!alertsEnabled) return;
+      if (!Array.isArray(events) || !events.length) return;
+
+      const audioCtx = await ensureAudio();
+      if (!audioCtx) return;
+
+      const nowMs = Date.now();
+
+      for (const e of events) {
+        const payload = e?.payload || {};
+        const deviceId = payload?.deviceId ?? payload?.device_id ?? payload?.id;
+        const name = asText(payload?.name) || asText(payload?.attribute) || asText(payload?.attributeName);
+        const value = asText(payload?.value);
+
+        const id = deviceId !== null && deviceId !== undefined ? String(deviceId) : '';
+        if (!id) continue;
+
+        const isDoor = name && name.toLowerCase() === 'contact' && value && value.toLowerCase() === 'open';
+        const isMotion = name && name.toLowerCase() === 'motion' && value && value.toLowerCase() === 'active';
+        if (!isDoor && !isMotion) continue;
+
+        const last = lastPlayedRef.current;
+        const perKey = `${id}:${isDoor ? 'door' : 'motion'}`;
+        const lastAt = last.perSensor.get(perKey) || 0;
+        const sinceKey = nowMs - lastAt;
+        const sinceGlobal = nowMs - last.globalAt;
+
+        if (sinceKey < 3500) continue;
+        if (sinceGlobal < 400) continue;
+
+        last.perSensor.set(perKey, nowMs);
+        last.globalAt = nowMs;
+
+        if (isDoor) playDoorSound(audioCtx).catch(() => undefined);
+        else playMotionSound(audioCtx).catch(() => undefined);
+      }
+    };
+
+    socket.on('events_ingested', handler);
+    return () => socket.off('events_ingested', handler);
+  }, [alertsEnabled]);
 
   return (
     <div className="w-full h-full overflow-auto p-3 md:p-5">
       <div className="glass-panel border border-white/10 p-4 md:p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">Activity</div>
-            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">Motion & Doors</div>
-            <div className="mt-1 text-xs text-white/45">
-              {connected ? 'Live status' : 'Offline'} • Motion active: {summary.motionActive} • Doors open: {summary.doorOpen}
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-1 text-white/80">
+                <Footprints className={`w-5 h-5 ${summary.motionActive ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/35'}`} />
+                <span className="text-lg md:text-xl font-extrabold tabular-nums">{summary.motionActive}</span>
+              </div>
+              <div className="inline-flex items-center gap-1 text-white/80">
+                <DoorOpen className={`w-5 h-5 ${summary.doorOpen ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/35'}`} />
+                <span className="text-lg md:text-xl font-extrabold tabular-nums">{summary.doorOpen}</span>
+              </div>
+              <div className={`text-[10px] uppercase tracking-[0.2em] font-semibold ${connected ? 'text-white/50' : 'text-neon-red'}`}>
+                {connected ? 'Live' : 'Offline'}
+              </div>
             </div>
           </div>
 
@@ -208,30 +261,28 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
                 if (!alertsEnabled) {
                   const ctx = await ensureAudio();
                   if (!ctx) return;
+                  // Quick confirmation chirp so users know audio is working.
+                  playMotionSound(ctx).catch(() => undefined);
                   setAlertsEnabled(true);
                   return;
                 }
                 setAlertsEnabled(false);
               }}
-              className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${alertsEnabled ? (uiScheme?.selectedCard || 'bg-white/10 border-white/20') : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10')}`}
+              className={`rounded-xl border px-3 py-2 transition-colors active:scale-[0.99] ${alertsEnabled ? (uiScheme?.selectedCard || 'bg-white/10 border-white/20') : 'border-white/10 bg-black/20 hover:bg-white/5'}`}
             >
               <span className="inline-flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                {alertsEnabled ? 'Alerts: On' : 'Alerts: Quiet'}
+                {alertsEnabled ? (
+                  <Volume2 className={`w-4 h-4 ${uiScheme?.selectedText || 'text-neon-blue'}`} />
+                ) : (
+                  <VolumeX className="w-4 h-4 text-white/50" />
+                )}
+                <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/70">
+                  {alertsEnabled ? 'On' : 'Quiet'}
+                </span>
               </span>
             </button>
           </div>
         </div>
-
-        {alertsEnabled ? (
-          <div className="mt-3 text-xs text-white/45">
-            Alerts enabled (rate-limited). Toggle back to Quiet to disable.
-          </div>
-        ) : (
-          <div className="mt-3 text-xs text-white/45">
-            Quiet by default. Tap “Alerts” once to enable sounds.
-          </div>
-        )}
       </div>
 
       <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -248,14 +299,19 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
               <section key={String(r.room?.id)} className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">Room</div>
                     <div className="mt-1 text-base md:text-lg font-extrabold tracking-wide text-white truncate">
                       {String(r.room?.name || r.room?.id)}
                     </div>
-                    <div className="mt-2 text-xs text-white/45">
-                      {motionActive ? `Motion: ${motionActive} active` : 'No motion'}
-                      {' • '}
-                      {doorOpen ? `Doors: ${doorOpen} open` : 'Doors closed'}
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-3">
+                    <div className="inline-flex items-center gap-1">
+                      <Footprints className={`w-4 h-4 ${motionActive ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/30'}`} />
+                      <span className="text-sm font-extrabold tabular-nums text-white/80">{motionActive}</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1">
+                      <DoorOpen className={`w-4 h-4 ${doorOpen ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/30'}`} />
+                      <span className="text-sm font-extrabold tabular-nums text-white/80">{doorOpen}</span>
                     </div>
                   </div>
                 </div>
@@ -280,14 +336,15 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
                               <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
                                 {d.label}
                               </div>
-                              <div className="mt-1 text-sm font-bold text-white/85">
-                                {motionState ? `Motion: ${motionState}` : ''}
-                                {motionState && contactState ? ' • ' : ''}
-                                {contactState ? `Door: ${contactState}` : ''}
-                              </div>
                             </div>
-                            <div className="shrink-0 text-[10px] uppercase tracking-[0.2em] text-white/35">
-                              {d.lastUpdated ? 'Updated' : ''}
+
+                            <div className="shrink-0 flex items-center gap-3">
+                              {motionState ? (
+                                <Footprints className={`w-4 h-4 ${motionState === 'active' ? `animate-pulse ${uiScheme?.selectedText || 'text-neon-blue'}` : 'text-white/30'}`} />
+                              ) : null}
+                              {contactState ? (
+                                <DoorOpen className={`w-4 h-4 ${contactState === 'open' ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/30'}`} />
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -299,9 +356,8 @@ const ActivityPanel = ({ config, statuses, connected, uiScheme }) => {
           })
         ) : (
           <div className="glass-panel p-8 border border-white/10 text-center text-white/50">
-            <div className="text-sm uppercase tracking-[0.2em]">No activity devices</div>
-            <div className="mt-2 text-xl font-extrabold text-white">Add motion/contact sensors to rooms</div>
-            <div className="mt-2 text-xs text-white/45">This page shows devices that report motion or contact (doors).</div>
+            <div className="text-sm uppercase tracking-[0.2em]">No activity</div>
+            <div className="mt-2 text-xl font-extrabold text-white">Add motion/contact sensors</div>
           </div>
         )}
       </div>
