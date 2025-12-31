@@ -4,7 +4,7 @@
 
 Set these before starting the server:
 
-- `HUBITAT_HOST` (example: `http://192.168.1.50`)
+- `HUBITAT_HOST` (example: `https://192.168.1.50`)
 - `HUBITAT_APP_ID`
 - `HUBITAT_ACCESS_TOKEN`
 
@@ -13,6 +13,8 @@ If you decide to use HTTPS for Hubitat:
 - Set `HUBITAT_HOST=https://...`
 - If Hubitat uses a self-signed cert, also set `HUBITAT_TLS_INSECURE=1`
 - Restart your service after env var changes
+
+Note: If you provide `HUBITAT_HOST` as just an IP/hostname (no scheme), the server will assume `https://`.
 
 ## Maker event callback (postURL)
 

@@ -27,10 +27,11 @@ If you don’t, the browser will show warnings and you may see repeated alerts/e
 ### Maker API `postURL` and TLS verification
 
 If you set Maker API `postURL` to an `https://.../api/events` URL and Hubitat does not trust your certificate,
-you must either:
+the intended setup is:
 
-- Configure Hubitat/Maker to **ignore certificate warnings** (if that option is available), or
-- Use an `http://.../api/events` URL instead.
+- Configure Hubitat/Maker to **ignore certificate warnings** (if that option is available).
+
+If you can’t ignore warnings (or can’t install a trusted cert), fall back to using an `http://.../api/events` URL.
 
 ### Hubitat polling with HTTPS
 
@@ -44,7 +45,7 @@ This disables TLS verification for the Hubitat fetch calls from this server.
 
 Replace these placeholders:
 
-- `<HUBITAT_HOST>`: e.g., `192.168.x.x`
+- `<HUBITAT_HOST>`: Hubitat base URL including scheme, e.g. `https://192.168.x.x` (or `http://...`)
 - `<APP_ID>`: Maker API app id
 - `<ACCESS_TOKEN>`: Maker API access token
 - `<DEVICE_ID>`: subscribed device id
@@ -57,42 +58,42 @@ Replace these placeholders:
 
 ### Get device info
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>?access_token=<ACCESS_TOKEN>`
 
 ### Get device event history
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/events?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/events?access_token=<ACCESS_TOKEN>`
 
 ### Get device commands
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/commands?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/commands?access_token=<ACCESS_TOKEN>`
 
 ### Get device capabilities
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/capabilities?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/capabilities?access_token=<ACCESS_TOKEN>`
 
 ### Get a single device attribute
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/attribute/<ATTRIBUTE>?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/attribute/<ATTRIBUTE>?access_token=<ACCESS_TOKEN>`
 
 ### Send a device command
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/<COMMAND>/<SECONDARY>?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/devices/<DEVICE_ID>/<COMMAND>/<SECONDARY>?access_token=<ACCESS_TOKEN>`
 
 (Secondary value is optional; omit the `/<SECONDARY>` segment if unused.)
 
 ### Send POST URL
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/postURL/<URL_ENCODED>?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/postURL/<URL_ENCODED>?access_token=<ACCESS_TOKEN>`
 
 ### Set hub variable
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/hubvariables/<VARIABLE_NAME>/<VALUE>?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/hubvariables/<VARIABLE_NAME>/<VALUE>?access_token=<ACCESS_TOKEN>`
 
 ### Get modes list
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/modes?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/modes?access_token=<ACCESS_TOKEN>`
 
 ### Set mode
 
-`http://<HUBITAT_HOST>/apps/api/<APP_ID>/modes/<MODE_ID>?access_token=<ACCESS_TOKEN>`
+`<HUBITAT_HOST>/apps/api/<APP_ID>/modes/<MODE_ID>?access_token=<ACCESS_TOKEN>`

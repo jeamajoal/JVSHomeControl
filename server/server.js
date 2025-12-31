@@ -77,7 +77,17 @@ const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } 
 // If Hubitat isn't configured, the server still runs but Hubitat polling/commands are disabled.
 const envTrim = (name) => String(process.env[name] || '').trim();
 
-const HUBITAT_HOST = envTrim('HUBITAT_HOST').replace(/\/$/, '');
+const normalizeHubitatHost = (raw) => {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) return '';
+    const noTrailingSlash = trimmed.replace(/\/$/, '');
+    // If the user provides just an IP/hostname, default to HTTPS.
+    // Use http:// explicitly if your Hubitat is only available over HTTP.
+    if (!/^https?:\/\//i.test(noTrailingSlash)) return `https://${noTrailingSlash}`;
+    return noTrailingSlash;
+};
+
+const HUBITAT_HOST = normalizeHubitatHost(envTrim('HUBITAT_HOST'));
 const HUBITAT_APP_ID = envTrim('HUBITAT_APP_ID');
 const HUBITAT_ACCESS_TOKEN = envTrim('HUBITAT_ACCESS_TOKEN');
 const HUBITAT_CONFIGURED = Boolean(HUBITAT_HOST && HUBITAT_APP_ID && HUBITAT_ACCESS_TOKEN);
@@ -90,6 +100,14 @@ const HUBITAT_TLS_INSECURE = (() => {
 const HUBITAT_FETCH_DISPATCHER = (HUBITAT_TLS_INSECURE && UndiciAgent)
     ? new UndiciAgent({ connect: { rejectUnauthorized: false } })
     : null;
+
+function hubitatFetch(url, options) {
+    const base = options && typeof options === 'object' ? { ...options } : {};
+    if (HUBITAT_FETCH_DISPATCHER) {
+        return fetch(url, { ...base, dispatcher: HUBITAT_FETCH_DISPATCHER });
+    }
+    return fetch(url, base);
+}
 
 const HUBITAT_API_BASE = HUBITAT_CONFIGURED ? `${HUBITAT_HOST}/apps/api/${HUBITAT_APP_ID}` : '';
 const HUBITAT_API_URL = HUBITAT_CONFIGURED
@@ -1088,7 +1106,7 @@ async function fetchHubitatAllDevices() {
     if (!HUBITAT_CONFIGURED) {
         throw new Error('Hubitat not configured. Set HUBITAT_HOST, HUBITAT_APP_ID, and HUBITAT_ACCESS_TOKEN to enable Hubitat polling.');
     }
-    const res = await fetch(HUBITAT_API_URL, HUBITAT_FETCH_DISPATCHER ? { dispatcher: HUBITAT_FETCH_DISPATCHER } : undefined);
+    const res = await hubitatFetch(HUBITAT_API_URL);
     if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(`Hubitat API Error: ${res.status} ${text}`);
@@ -1874,7 +1892,7 @@ app.post('/api/devices/:id/command', async (req, res) => {
         // Do NOT include an extra "/command/" path segment.
         const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(command)}${argsPath}?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
 
-        const hubRes = await fetch(url, { method: 'GET' });
+        const hubRes = await hubitatFetch(url, { method: 'GET' });
         if (!hubRes.ok) {
             const text = await hubRes.text().catch(() => '');
             return res.status(502).json({ error: 'Hubitat command failed', status: hubRes.status, details: text });
