@@ -101,3 +101,7 @@ In this mode, the UI is served by Vite (commonly on `http://localhost:5173`) and
 
 - The server auto-backs up `server/data/config.json` into `server/data/backups/` on writes and keeps only the most recent 200 backup files by default (override with `BACKUP_MAX_FILES`). Consider excluding backups from source control for long-term use.
 - See `server/MAKER_API.md` for Maker API endpoint patterns.
+
+## Ideas
+
+- **Weather “data hub” microservice**: build a small app that pulls **Open‑Meteo** on a schedule, stores the latest values (and optionally history) in something simple like SQLite/JSON, and exposes them via a tiny HTTP API (or MQTT) so other apps can consume one consistent local weather feed.
