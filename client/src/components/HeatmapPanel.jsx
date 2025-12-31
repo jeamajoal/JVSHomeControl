@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Droplets, Edit3, Sun, Thermometer, X } from 'lucide-react';
+import { Edit3, X } from 'lucide-react';
 import GridLayout, { WidthProvider } from 'react-grid-layout/legacy';
 import Draggable from 'react-draggable';
 
@@ -42,7 +42,7 @@ const formatPercent = (value) => {
 const formatLux = (value) => {
   const num = asNumber(value);
   if (num === null) return '—';
-  return `${Math.round(num)} lx`;
+  return `${Math.round(num)}`;
 };
 
 const useFitScale = () => {
@@ -239,11 +239,6 @@ const HeatmapPanel = ({ config, statuses }) => {
     mode === 'humidity' ? 'Humidity' :
     'Illuminance';
 
-  const modeIcon =
-    mode === 'temperature' ? Thermometer :
-    mode === 'humidity' ? Droplets :
-    Sun;
-
   const formatValue = (value) => {
     if (mode === 'temperature') return formatTemp(value);
     if (mode === 'humidity') return formatPercent(value);
@@ -320,7 +315,7 @@ const HeatmapPanel = ({ config, statuses }) => {
     }
   };
 
-  const RoomSensors = ({ roomId, sensors: roomSensors }) => {
+  const RoomSensors = ({ sensors: roomSensors }) => {
     const ref = useRef(null);
     const { width, height } = useResizeObserver(ref);
     const w = Math.max(1, width);

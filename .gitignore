@@ -27,3 +27,9 @@ Thumbs.db
 
 # Optional: Ignore data if considered ephemeral, but keeping it for now as requested
 # server/data/
+
+# Ignore config backups (generated automatically)
+server/data/backups/
+
+# Ignore the runtime config (user-specific; do not commit to public repo)
+server/data/config.json

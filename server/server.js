@@ -565,7 +565,7 @@ async function fetchOpenMeteoForecast() {
 
     const open = settings?.weather?.openMeteo || {};
 
-    // Current + daily summary. Keep fields minimal.
+    // Current + daily + hourly. Keep fields focused on what the UI needs.
     const url = new URL('https://api.open-meteo.com/v1/forecast');
     url.searchParams.set('latitude', String(lat));
     url.searchParams.set('longitude', String(lon));
@@ -573,11 +573,22 @@ async function fetchOpenMeteoForecast() {
     url.searchParams.set('temperature_unit', open.temperatureUnit || 'fahrenheit');
     url.searchParams.set('wind_speed_unit', open.windSpeedUnit || 'mph');
     url.searchParams.set('precipitation_unit', open.precipitationUnit || 'inch');
+    url.searchParams.set('forecast_days', '7');
     url.searchParams.set('current', [
         'temperature_2m',
         'relative_humidity_2m',
         'apparent_temperature',
         'precipitation',
+        'weather_code',
+        'wind_speed_10m',
+        'wind_direction_10m'
+    ].join(','));
+    url.searchParams.set('hourly', [
+        'temperature_2m',
+        'relative_humidity_2m',
+        'apparent_temperature',
+        'precipitation',
+        'precipitation_probability',
         'weather_code',
         'wind_speed_10m',
         'wind_direction_10m'
@@ -612,10 +623,44 @@ function normalizeOpenMeteoPayload(raw) {
     const { lat, lon } = getOpenMeteoCoords();
 
     const current = raw && typeof raw === 'object' ? raw.current : null;
-    const daily = raw && typeof raw === 'object' ? raw.daily : null;
+    const hourlyRaw = raw && typeof raw === 'object' ? raw.hourly : null;
+    const dailyRaw = raw && typeof raw === 'object' ? raw.daily : null;
 
-    const todayIdx = 0;
-    const pickDaily = (arr) => (Array.isArray(arr) ? (arr[todayIdx] ?? null) : null);
+    const hourly = [];
+    if (hourlyRaw && typeof hourlyRaw === 'object' && Array.isArray(hourlyRaw.time)) {
+        const len = hourlyRaw.time.length;
+        for (let i = 0; i < len; i += 1) {
+            const time = (typeof hourlyRaw.time[i] === 'string') ? hourlyRaw.time[i] : null;
+            hourly.push({
+                time,
+                temperature: asFiniteNumber(hourlyRaw.temperature_2m?.[i]),
+                humidity: asFiniteNumber(hourlyRaw.relative_humidity_2m?.[i]),
+                apparentTemperature: asFiniteNumber(hourlyRaw.apparent_temperature?.[i]),
+                precipitation: asFiniteNumber(hourlyRaw.precipitation?.[i]),
+                precipitationProbability: asFiniteNumber(hourlyRaw.precipitation_probability?.[i]),
+                weatherCode: asFiniteNumber(hourlyRaw.weather_code?.[i]),
+                windSpeed: asFiniteNumber(hourlyRaw.wind_speed_10m?.[i]),
+                windDirection: asFiniteNumber(hourlyRaw.wind_direction_10m?.[i]),
+            });
+        }
+    }
+
+    const daily = [];
+    if (dailyRaw && typeof dailyRaw === 'object' && Array.isArray(dailyRaw.time)) {
+        const len = dailyRaw.time.length;
+        for (let i = 0; i < len; i += 1) {
+            const date = (typeof dailyRaw.time[i] === 'string') ? dailyRaw.time[i] : null;
+            daily.push({
+                date,
+                weatherCode: asFiniteNumber(dailyRaw.weather_code?.[i]),
+                temperatureMax: asFiniteNumber(dailyRaw.temperature_2m_max?.[i]),
+                temperatureMin: asFiniteNumber(dailyRaw.temperature_2m_min?.[i]),
+                precipitationProbabilityMax: asFiniteNumber(dailyRaw.precipitation_probability_max?.[i]),
+            });
+        }
+    }
+
+    const today = daily.length ? daily[0] : null;
 
     return {
         source: 'open-meteo',
@@ -651,12 +696,12 @@ function normalizeOpenMeteoPayload(raw) {
             windDirection: null,
             time: null,
         },
-        today: daily ? {
-            weatherCode: asFiniteNumber(pickDaily(daily.weather_code)),
-            temperatureMax: asFiniteNumber(pickDaily(daily.temperature_2m_max)),
-            temperatureMin: asFiniteNumber(pickDaily(daily.temperature_2m_min)),
-            precipitationProbabilityMax: asFiniteNumber(pickDaily(daily.precipitation_probability_max)),
-            date: (Array.isArray(daily.time) && typeof daily.time[todayIdx] === 'string') ? daily.time[todayIdx] : null,
+        today: today ? {
+            weatherCode: today.weatherCode,
+            temperatureMax: today.temperatureMax,
+            temperatureMin: today.temperatureMin,
+            precipitationProbabilityMax: today.precipitationProbabilityMax,
+            date: today.date,
         } : {
             weatherCode: null,
             temperatureMax: null,
@@ -664,6 +709,8 @@ function normalizeOpenMeteoPayload(raw) {
             precipitationProbabilityMax: null,
             date: null,
         },
+        hourly,
+        daily,
     };
 }
 

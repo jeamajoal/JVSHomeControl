@@ -1,0 +1,19 @@
+{
+  "weather": {
+    "openMeteo": {
+      "lat": "35°29'44.9\"N",
+      "lon": "86°04'53.8\"W",
+      "timezone": "auto",
+      "temperatureUnit": "fahrenheit",
+      "windSpeedUnit": "mph",
+      "precipitationUnit": "inch"
+    }
+  },
+  "ui": {
+    "mainAllowedDeviceIds": [],
+    "ctrlAllowedDeviceIds": []
+  },
+  "rooms": [],
+  "sensors": [],
+  "labels": []
+}

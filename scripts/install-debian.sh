@@ -14,6 +14,7 @@ APP_DIR="/opt/jvshomecontrol"
 REPO_URL="https://github.com/jeamajoal/JVSHomeControl.git"
 ENV_FILE="/etc/jvshomecontrol.env"
 SERVICE_FILE="/etc/systemd/system/jvshomecontrol.service"
+CONFIG_FILE_REL="server/data/config.json"
 
 log() { echo "[install] $*"; }
 warn() { echo "[install][WARN] $*"; }
@@ -68,12 +69,33 @@ ensure_repo() {
   mkdir -p "${APP_DIR}"
   chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
 
+  # Preserve any existing config.json across git operations.
+  # This repo is public; config is user-specific and must not be overwritten.
+  local cfg
+  cfg="${APP_DIR}/${CONFIG_FILE_REL}"
+  local cfg_backup
+  cfg_backup=""
+  if [[ -f "${cfg}" ]]; then
+    local stamp
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    cfg_backup="/tmp/jvshomecontrol.config.${stamp}.json"
+    log "Backing up existing config.json to ${cfg_backup}…"
+    cp -a "${cfg}" "${cfg_backup}"
+  fi
+
   if [[ -d "${APP_DIR}/.git" ]]; then
     log "Updating existing repo in ${APP_DIR}…"
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin && git checkout main && git pull --ff-only origin main"
   else
     log "Cloning repo into ${APP_DIR}…"
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git clone '${REPO_URL}' ."
+  fi
+
+  if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
+    log "Restoring config.json to ${cfg}…"
+    mkdir -p "$(dirname "${cfg}")"
+    cp -a "${cfg_backup}" "${cfg}"
+    chown "${APP_USER}:${APP_GROUP}" "${cfg}" || true
   fi
 }
 

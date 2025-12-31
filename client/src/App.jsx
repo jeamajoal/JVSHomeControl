@@ -4,6 +4,8 @@ import EnvironmentPanel from './components/EnvironmentPanel';
 import HeatmapPanel from './components/HeatmapPanel';
 import InteractionPanel from './components/InteractionPanel';
 import ConfigPanel from './components/ConfigPanel';
+import WeatherPanel from './components/WeatherPanel';
+import AboutPanel from './components/AboutPanel';
 import { Activity, Maximize, Minimize } from 'lucide-react';
 
 // Connect to the same host that served the page, but on port 3000
@@ -17,9 +19,9 @@ function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  const [page, setPage] = useState(0); // 0=Dashboard, 1=Heatmap, 2=Interactions, 3=Config
+  const [page, setPage] = useState(0); // 0=Main, 1=Environment, 2=Forecast, 3=Actions, 4=Config, 5=About
 
-  const pageLabel = page === 0 ? 'Environment Panel' : page === 1 ? 'Heatmap' : page === 2 ? 'Interactions' : 'Config';
+  const pageLabel = page === 0 ? 'Main' : page === 1 ? 'Environment' : page === 2 ? 'Forecast' : page === 3 ? 'Actions' : page === 4 ? 'Config' : 'About';
 
   useEffect(() => {
     // Initial fetch
@@ -66,7 +68,7 @@ function App() {
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-background">
       {/* Header */}
-      <header className="flex-none flex items-center justify-between p-3 border-b border-white/5 backdrop-blur-md z-20 bg-black/20">
+      <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 backdrop-blur-md z-20 bg-black/20">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(59,130,246,0.3)] bg-primary/20 border border-primary/50 text-primary">
             <Activity size={20} />
@@ -81,7 +83,7 @@ function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="absolute left-1/2 -translate-x-1/2">
           <div className="flex items-center gap-1 rounded-xl border border-white/10 bg-black/20 p-1">
             <button
               type="button"
@@ -90,7 +92,7 @@ function App() {
                 page === 0 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Dash
+              Main
             </button>
             <button
               type="button"
@@ -99,7 +101,7 @@ function App() {
                 page === 1 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Heat
+              Environment
             </button>
             <button
               type="button"
@@ -108,7 +110,7 @@ function App() {
                 page === 2 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Ctrl
+              Forecast
             </button>
             <button
               type="button"
@@ -117,10 +119,30 @@ function App() {
                 page === 3 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
+              Actions
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage(4)}
+              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                page === 4 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+              }`}
+            >
               Config
             </button>
+            <button
+              type="button"
+              onClick={() => setPage(5)}
+              className={`px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                page === 5 ? 'bg-neon-blue/10 text-neon-blue' : 'text-white/50 hover:bg-white/5 hover:text-white/70'
+              }`}
+            >
+              About
+            </button>
           </div>
+        </div>
 
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Status</span>
             <span
@@ -173,10 +195,16 @@ function App() {
               <HeatmapPanel config={config} statuses={sensors} />
             ) : null}
             {page === 2 ? (
-              <InteractionPanel config={config} statuses={sensors} connected={connected} />
+              <WeatherPanel />
             ) : null}
             {page === 3 ? (
+              <InteractionPanel config={config} statuses={sensors} connected={connected} />
+            ) : null}
+            {page === 4 ? (
               <ConfigPanel config={config} statuses={sensors} connected={connected} />
+            ) : null}
+            {page === 5 ? (
+              <AboutPanel />
             ) : null}
           </>
         )}

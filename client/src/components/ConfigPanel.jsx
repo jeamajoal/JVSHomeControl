@@ -185,7 +185,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose where each device appears: Main (Dash) and/or Ctrl (room controls).
+              Choose where each device appears: Main and/or Actions.
             </div>
 
             {mainLocked ? (
@@ -195,7 +195,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
             ) : null}
             {ctrlLocked ? (
               <div className="mt-2 text-[11px] text-neon-red">
-                Ctrl list locked by server env var UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS).
+                Actions list locked by server env var UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS).
               </div>
             ) : null}
             {error ? (
@@ -240,7 +240,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                               checked={isCtrl}
                               onChange={(e) => setAllowed(d.id, 'ctrl', e.target.checked)}
                             />
-                            Ctrl
+                            Actions
                           </label>
                         </div>
                       </div>
@@ -265,7 +265,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
               Manual Rooms
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Add/remove rooms that aren’t discovered from Hubitat. They can be placed/resized on the Heat dashboard.
+              Add/remove rooms that aren’t discovered from Hubitat. They can be placed/resized on the Environment page.
             </div>
 
             <div className="mt-4 flex gap-2">
@@ -343,7 +343,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
               Freeform Text
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Add labels here, then position/resize them on the Heat dashboard in Edit mode.
+              Add labels here, then position/resize them on the Environment page in Edit mode.
             </div>
 
             <div className="mt-4">

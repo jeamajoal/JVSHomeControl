@@ -36,7 +36,7 @@ const formatPercent = (value) => {
 const formatLux = (value) => {
   const num = asNumber(value);
   if (num === null) return '—';
-  return `${Math.round(num)} lx`;
+  return `${Math.round(num)}`;
 };
 
 const formatSpeed = (value) => {
