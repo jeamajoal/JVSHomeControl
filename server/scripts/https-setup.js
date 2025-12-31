@@ -69,6 +69,8 @@ async function main() {
     return;
   }
 
+  const assumeYes = truthy(process.env.HTTPS_SETUP_ASSUME_YES) || truthy(process.env.JVS_ASSUME_YES) || truthy(process.env.CI);
+
   const paths = resolveCertPaths();
 
   if (certExists(paths)) {
@@ -77,13 +79,13 @@ async function main() {
   }
 
   const interactive = Boolean(process.stdin.isTTY);
-  if (!interactive) {
+  if (!interactive && !assumeYes) {
     console.log('HTTPS: certificate not found (non-interactive session).');
     console.log('Run again in an interactive terminal to create a self-signed cert, or provide HTTPS_CERT_PATH/HTTPS_KEY_PATH.');
     return;
   }
 
-  const create = await promptYesNo('HTTPS certificate not found. Create a self-signed certificate now and enable HTTPS?', true);
+  const create = assumeYes ? true : await promptYesNo('HTTPS certificate not found. Create a self-signed certificate now?', true);
   if (!create) {
     console.log('HTTPS: skipping certificate creation. Server will fall back to HTTP unless you provide a cert.');
     return;

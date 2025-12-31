@@ -133,6 +133,9 @@ ensure_https_setup() {
   cert_path="${cert_dir}/localhost.crt"
   key_path="${cert_dir}/localhost.key"
 
+  local should_create
+  should_create=0
+
   if [[ -f "${cert_path}" && -f "${key_path}" ]]; then
     if [[ ! -t 0 ]]; then
       log "HTTPS cert already present: ${cert_path}"
@@ -143,6 +146,8 @@ ensure_https_setup() {
       log "Keeping existing HTTPS certificate: ${cert_path}"
       return 0
     fi
+
+    should_create=1
 
     local stamp
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -158,8 +163,16 @@ ensure_https_setup() {
     return 0
   fi
 
-  if ! confirm "HTTPS certificate not found. Create a self-signed certificate now?"; then
-    log "HTTPS: skipping certificate creation. Server will run HTTP unless you add a cert."
+  if (( should_create == 0 )); then
+    if ! confirm "HTTPS certificate not found. Create a self-signed certificate now?"; then
+      log "HTTPS: skipping certificate creation. Server will run HTTP unless you add a cert."
+      return 0
+    fi
+
+    should_create=1
+  fi
+
+  if (( should_create == 0 )); then
     return 0
   fi
 
@@ -170,7 +183,7 @@ ensure_https_setup() {
   cert_host="${cert_host:-${default_host}}"
 
   log "Creating self-signed HTTPS certificate in ${cert_dir} for '${cert_host}'…"
-  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && HTTPS=1 HTTPS_CERT_HOSTNAME='${cert_host}' node scripts/https-setup.js"
+  sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}/server' && HTTPS=1 HTTPS_SETUP_ASSUME_YES=1 HTTPS_CERT_HOSTNAME='${cert_host}' node scripts/https-setup.js"
 }
 
 ensure_env_file() {
