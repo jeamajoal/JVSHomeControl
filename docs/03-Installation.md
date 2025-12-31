@@ -56,12 +56,28 @@ There are two ways:
 
 - [scripts/install-debian.sh](../scripts/install-debian.sh)
 
+If you're on Debian/Ubuntu and just want the easiest setup/update experience, use the helper script above.
+It is intended to be a one-stop flow for:
+
+- Install
+- Update
+- Create a HTTPS certificate the first time
+- Recreate/replace the HTTPS certificate later
+
+It updates the repo by overwriting tracked files (a clean checkout), while preserving your installation-specific data:
+
+- `server/data/config.json`
+- `server/data/certs/`
+
 The Debian installer is split into two files:
 
 - `scripts/install-debian.sh` (bootstrap): updates/clones the repo, then runs the repo version installer.
 - `scripts/install-debian-run.sh` (runner): the actual install logic executed from the updated checkout.
 
-Note: The Debian install script will run the HTTPS setup helper once during install/update. When run interactively, it will offer to generate a self-signed certificate if one is not present.
+Note: The Debian install script runs the HTTPS setup helper during install/update and guides you through the prompts.
+In normal interactive use, there is no need to run the certificate helper separately.
+
+If you're running non-interactively (for example via systemd or an SSH session with no TTY), prompts are skipped; in that case you can generate/recreate the cert later from an interactive terminal.
 
 If you change environment variables (for example switching `http://` to `https://`), you must restart the service:
 

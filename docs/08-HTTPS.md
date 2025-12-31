@@ -16,6 +16,14 @@ node scripts/https-setup.js
 
 If you start the server via `npm start`, the server package runs the HTTPS helper as a `prestart` step. That helper will prompt only in an interactive terminal.
 
+## Recommended (Debian/Ubuntu)
+
+For most users on Debian/Ubuntu, the easiest path is the guided installer:
+
+- [scripts/install-debian.sh](../scripts/install-debian.sh)
+
+It handles install/update and can create or recreate the HTTPS certificate during the prompts.
+
 Default certificate paths:
 
 - `server/data/certs/localhost.crt`
