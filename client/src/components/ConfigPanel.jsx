@@ -394,7 +394,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
                 placeholder="New room name"
-                className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35"
+                className={`flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
                 disabled={!connected || busy}
               />
               <button
@@ -420,7 +420,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
               {manualRooms.length ? (
-                manualRooms.map((r) => (
+                          className={`rounded-xl border px-3 py-3 text-left transition-colors ${isSelected ? scheme.selectedCard : 'border-white/10 bg-black/20 hover:bg-white/5'} ${(!connected || busy) ? 'opacity-50' : ''}`}
                   <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -429,7 +429,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                         </div>
                         <div className="mt-1 text-xs text-white/45 truncate">ID: {r.id}</div>
                       </div>
-                      <button
+                                <div className={`mt-1 text-[10px] ${scheme.selectedText}`}>Selected</div>
                         type="button"
                         disabled={!connected || busy}
                         onClick={async () => {
@@ -499,7 +499,7 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                       value={labelDrafts[l.id] ?? l.text}
                       onChange={(e) => setLabelDrafts((prev) => ({ ...prev, [l.id]: e.target.value }))}
                       rows={2}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35"
+                      className={`mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
                       disabled={!connected || busy}
                       placeholder="Label text"
                     />
