@@ -52,6 +52,19 @@ async function saveAlertSounds(alertSounds) {
   return res.json().catch(() => ({}));
 }
 
+async function saveClimateTolerances(climateTolerances) {
+  const res = await fetch(`${API_HOST}/api/ui/climate-tolerances`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ climateTolerances: climateTolerances || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Climate tolerances save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 const UI_COLOR_SCHEMES = {
   'electric-blue': {
     actionButton: 'text-neon-blue border-neon-blue/30 bg-neon-blue/10',
@@ -177,6 +190,47 @@ const ConfigPanel = ({ config, statuses, connected }) => {
       doorClose: typeof raw.doorClose === 'string' ? raw.doorClose : '',
     };
   }, [config?.ui?.alertSounds]);
+
+  const climateTolerances = useMemo(() => {
+    const raw = (config?.ui?.climateTolerances && typeof config.ui.climateTolerances === 'object')
+      ? config.ui.climateTolerances
+      : {};
+
+    const t = (raw.temperatureF && typeof raw.temperatureF === 'object') ? raw.temperatureF : {};
+    const h = (raw.humidityPct && typeof raw.humidityPct === 'object') ? raw.humidityPct : {};
+    const l = (raw.illuminanceLux && typeof raw.illuminanceLux === 'object') ? raw.illuminanceLux : {};
+
+    return {
+      temperatureF: {
+        cold: Number.isFinite(Number(t.cold)) ? Number(t.cold) : 68,
+        comfy: Number.isFinite(Number(t.comfy)) ? Number(t.comfy) : 72,
+        warm: Number.isFinite(Number(t.warm)) ? Number(t.warm) : 74,
+      },
+      humidityPct: {
+        dry: Number.isFinite(Number(h.dry)) ? Number(h.dry) : 35,
+        comfy: Number.isFinite(Number(h.comfy)) ? Number(h.comfy) : 55,
+        humid: Number.isFinite(Number(h.humid)) ? Number(h.humid) : 65,
+      },
+      illuminanceLux: {
+        dark: Number.isFinite(Number(l.dark)) ? Number(l.dark) : 50,
+        dim: Number.isFinite(Number(l.dim)) ? Number(l.dim) : 250,
+        bright: Number.isFinite(Number(l.bright)) ? Number(l.bright) : 600,
+      },
+    };
+  }, [config?.ui?.climateTolerances]);
+
+  const [climateDraft, setClimateDraft] = useState(() => ({
+    temperatureF: { cold: 68, comfy: 72, warm: 74 },
+    humidityPct: { dry: 35, comfy: 55, humid: 65 },
+    illuminanceLux: { dark: 50, dim: 250, bright: 600 },
+  }));
+  const [climateDirty, setClimateDirty] = useState(false);
+  const [climateError, setClimateError] = useState(null);
+
+  useEffect(() => {
+    if (climateDirty) return;
+    setClimateDraft(climateTolerances);
+  }, [climateDirty, climateTolerances]);
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
@@ -534,6 +588,153 @@ const ConfigPanel = ({ config, statuses, connected }) => {
                   </select>
                 </label>
               ))}
+            </div>
+
+            {!connected ? (
+              <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 glass-panel border border-white/10 p-4 md:p-5">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Climate
+            </div>
+            <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+              Heatmap Tolerances
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Adjust the thresholds used for Climate colors (Temperature/Humidity/Illuminance).
+            </div>
+
+            {climateError ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {climateError}</div>
+            ) : null}
+
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Temperature (°F)</div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {[{ k: 'cold', label: 'Cold <' }, { k: 'comfy', label: 'Comfy <' }, { k: 'warm', label: 'Warm <' }].map(({ k, label }) => (
+                    <label key={k} className="block">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{label}</div>
+                      <input
+                        type="number"
+                        value={climateDraft.temperatureF[k]}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setClimateDirty(true);
+                          setClimateDraft((prev) => ({
+                            ...prev,
+                            temperatureF: { ...prev.temperatureF, [k]: v },
+                          }));
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Humidity (%)</div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {[{ k: 'dry', label: 'Dry <' }, { k: 'comfy', label: 'Comfy <' }, { k: 'humid', label: 'Humid <' }].map(({ k, label }) => (
+                    <label key={k} className="block">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{label}</div>
+                      <input
+                        type="number"
+                        value={climateDraft.humidityPct[k]}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setClimateDirty(true);
+                          setClimateDraft((prev) => ({
+                            ...prev,
+                            humidityPct: { ...prev.humidityPct, [k]: v },
+                          }));
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Illuminance (lux)</div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {[{ k: 'dark', label: 'Dark <' }, { k: 'dim', label: 'Dim <' }, { k: 'bright', label: 'Bright <' }].map(({ k, label }) => (
+                    <label key={k} className="block">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">{label}</div>
+                      <input
+                        type="number"
+                        value={climateDraft.illuminanceLux[k]}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setClimateDirty(true);
+                          setClimateDraft((prev) => ({
+                            ...prev,
+                            illuminanceLux: { ...prev.illuminanceLux, [k]: v },
+                          }));
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                disabled={!connected || busy || !climateDirty}
+                onClick={async () => {
+                  const inc3 = (a, b, c) => Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && a < b && b < c;
+                  const t = climateDraft.temperatureF;
+                  const h = climateDraft.humidityPct;
+                  const l = climateDraft.illuminanceLux;
+
+                  if (!inc3(t.cold, t.comfy, t.warm)) {
+                    setClimateError('Temperature thresholds must be increasing (cold < comfy < warm).');
+                    return;
+                  }
+                  if (!inc3(h.dry, h.comfy, h.humid)) {
+                    setClimateError('Humidity thresholds must be increasing (dry < comfy < humid).');
+                    return;
+                  }
+                  if (!inc3(l.dark, l.dim, l.bright)) {
+                    setClimateError('Illuminance thresholds must be increasing (dark < dim < bright).');
+                    return;
+                  }
+
+                  setClimateError(null);
+                  setBusy(true);
+                  try {
+                    await saveClimateTolerances({
+                      temperatureF: { cold: t.cold, comfy: t.comfy, warm: t.warm },
+                      humidityPct: { dry: h.dry, comfy: h.comfy, humid: h.humid },
+                      illuminanceLux: { dark: l.dark, dim: l.dim, bright: l.bright },
+                    });
+                    setClimateDirty(false);
+                  } catch (e) {
+                    setClimateError(e?.message || String(e));
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                className={`rounded-xl border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors active:scale-[0.99] ${scheme.actionButton} ${(!connected || busy || !climateDirty) ? 'opacity-50' : ''}`}
+              >
+                Save
+              </button>
+
+              {climateDirty ? (
+                <div className="text-xs text-white/45">Unsaved changes</div>
+              ) : (
+                <div className="text-xs text-white/45">Saved</div>
+              )}
             </div>
 
             {!connected ? (

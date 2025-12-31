@@ -393,9 +393,43 @@ function normalizePersistedConfig(raw) {
     const colorScheme = UI_COLOR_SCHEMES.includes(rawScheme) ? rawScheme : 'electric-blue';
 
     const soundsRaw = (uiRaw.alertSounds && typeof uiRaw.alertSounds === 'object') ? uiRaw.alertSounds : {};
+    const climateRaw = (uiRaw.climateTolerances && typeof uiRaw.climateTolerances === 'object') ? uiRaw.climateTolerances : {};
     const asFile = (v) => {
         const s = String(v ?? '').trim();
         return s.length ? s : null;
+    };
+
+    const asFinite = (v) => {
+        const num = (typeof v === 'number') ? v : Number(v);
+        return Number.isFinite(num) ? num : null;
+    };
+
+    const defaultClimate = {
+        // Thresholds define 4 bands. Example for temperature:
+        // < cold => cold color, < comfy => comfy color, < warm => warm color, else => hot color
+        temperatureF: { cold: 68, comfy: 72, warm: 74 },
+        // For humidity:
+        // < dry => dry, < comfy => comfy, < humid => humid, else => very humid
+        humidityPct: { dry: 35, comfy: 55, humid: 65 },
+        // For illuminance:
+        // < dark => dark, < dim => dim, < bright => bright, else => very bright
+        illuminanceLux: { dark: 50, dim: 250, bright: 600 },
+    };
+
+    const normalizeTriplet = (rawObj, keys, fallback) => {
+        const outObj = { ...fallback };
+        if (!rawObj || typeof rawObj !== 'object') return outObj;
+        for (const k of keys) {
+            const n = asFinite(rawObj[k]);
+            if (n !== null) outObj[k] = n;
+        }
+        return outObj;
+    };
+
+    const climateTolerances = {
+        temperatureF: normalizeTriplet(climateRaw.temperatureF, ['cold', 'comfy', 'warm'], defaultClimate.temperatureF),
+        humidityPct: normalizeTriplet(climateRaw.humidityPct, ['dry', 'comfy', 'humid'], defaultClimate.humidityPct),
+        illuminanceLux: normalizeTriplet(climateRaw.illuminanceLux, ['dark', 'dim', 'bright'], defaultClimate.illuminanceLux),
     };
 
     out.ui = {
@@ -410,6 +444,8 @@ function normalizePersistedConfig(raw) {
             doorOpen: asFile(soundsRaw.doorOpen),
             doorClose: asFile(soundsRaw.doorClose),
         },
+        // Back-compat: always include climate tolerances so clients can rely on them.
+        climateTolerances,
     };
 
     return out;
@@ -434,11 +470,12 @@ function loadPersistedConfig() {
         if (fs.existsSync(CONFIG_FILE)) {
             const raw = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
             const hadAlertSounds = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.alertSounds && typeof raw.ui.alertSounds === 'object');
+            const hadClimateTolerances = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.climateTolerances && typeof raw.ui.climateTolerances === 'object');
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds) {
+            if (!hadAlertSounds || !hadClimateTolerances) {
                 lastPersistedSerialized = stableStringify(raw);
-                persistConfigToDiskIfChanged('migrate-ui-alert-sounds', { force: true });
+                persistConfigToDiskIfChanged(!hadAlertSounds ? 'migrate-ui-alert-sounds' : 'migrate-ui-climate-tolerances', { force: true });
             }
         } else {
             persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
@@ -954,6 +991,7 @@ async function syncHubitatData() {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         sensorStatuses = newStatuses;
@@ -1147,6 +1185,8 @@ app.post('/api/rooms', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         emitConfigUpdateSafe();
@@ -1193,6 +1233,8 @@ app.delete('/api/rooms/:id', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         emitConfigUpdateSafe();
@@ -1229,6 +1271,8 @@ app.post('/api/labels', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         emitConfigUpdateSafe();
@@ -1263,6 +1307,8 @@ app.put('/api/labels/:id', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         emitConfigUpdateSafe();
@@ -1295,6 +1341,8 @@ app.delete('/api/labels/:id', (req, res) => {
                 mainAllowedDeviceIds: getUiMainAllowedDeviceIds(),
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
+                alertSounds: persistedConfig?.ui?.alertSounds,
+                climateTolerances: persistedConfig?.ui?.climateTolerances,
             },
         };
         emitConfigUpdateSafe();
@@ -1410,6 +1458,96 @@ app.put('/api/ui/color-scheme', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             colorScheme: persistedConfig?.ui?.colorScheme,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update UI climate tolerances from the kiosk.
+// Expected payload: { climateTolerances: { temperatureF: { cold, comfy, warm }, humidityPct: { dry, comfy, humid }, illuminanceLux: { dark, dim, bright } } }
+app.put('/api/ui/climate-tolerances', (req, res) => {
+    const incoming = req.body?.climateTolerances;
+    if (!incoming || typeof incoming !== 'object') {
+        return res.status(400).json({ error: 'Missing climateTolerances' });
+    }
+
+    const toFinite = (v) => {
+        const n = (typeof v === 'number') ? v : Number(v);
+        return Number.isFinite(n) ? n : null;
+    };
+
+    const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.climateTolerances && typeof persistedConfig.ui.climateTolerances === 'object')
+        ? persistedConfig.ui.climateTolerances
+        : {};
+
+    const pickTriplet = (groupKey, keys) => {
+        const base = (prev[groupKey] && typeof prev[groupKey] === 'object') ? prev[groupKey] : {};
+        const inc = (incoming[groupKey] && typeof incoming[groupKey] === 'object') ? incoming[groupKey] : {};
+        const out = { ...base };
+        for (const k of keys) {
+            if (inc[k] === undefined) continue;
+            const n = toFinite(inc[k]);
+            if (n === null) {
+                return { error: 'Invalid number', field: `${groupKey}.${k}` };
+            }
+            out[k] = n;
+        }
+        return { value: out };
+    };
+
+    const t = pickTriplet('temperatureF', ['cold', 'comfy', 'warm']);
+    if (t.error) return res.status(400).json(t);
+    const h = pickTriplet('humidityPct', ['dry', 'comfy', 'humid']);
+    if (h.error) return res.status(400).json(h);
+    const l = pickTriplet('illuminanceLux', ['dark', 'dim', 'bright']);
+    if (l.error) return res.status(400).json(l);
+
+    const isIncreasing = (a, b, c) => Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && a < b && b < c;
+    if (!isIncreasing(t.value.cold, t.value.comfy, t.value.warm)) {
+        return res.status(400).json({
+            error: 'Invalid temperatureF thresholds',
+            message: 'Expected cold < comfy < warm',
+            value: t.value,
+        });
+    }
+    if (!isIncreasing(h.value.dry, h.value.comfy, h.value.humid)) {
+        return res.status(400).json({
+            error: 'Invalid humidityPct thresholds',
+            message: 'Expected dry < comfy < humid',
+            value: h.value,
+        });
+    }
+    if (!isIncreasing(l.value.dark, l.value.dim, l.value.bright)) {
+        return res.status(400).json({
+            error: 'Invalid illuminanceLux thresholds',
+            message: 'Expected dark < dim < bright',
+            value: l.value,
+        });
+    }
+
+    const next = {
+        temperatureF: t.value,
+        humidityPct: h.value,
+        illuminanceLux: l.value,
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            climateTolerances: next,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-climate-tolerances');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            climateTolerances: persistedConfig?.ui?.climateTolerances,
         },
     };
     io.emit('config_update', config);

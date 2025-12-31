@@ -21,7 +21,7 @@ function App() {
   const [autoFullscreenArmed, setAutoFullscreenArmed] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  const [page, setPage] = useState(0); // 0=Home, 1=Map, 2=Weather, 3=Activity, 4=Controls, 5=Settings, 6=Info
+  const [page, setPage] = useState(0); // 0=Home, 1=Climate, 2=Weather, 3=Activity, 4=Controls, 5=Settings, 6=Info
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const uiScheme = getUiScheme(colorSchemeId);
@@ -34,7 +34,7 @@ function App() {
     }
   }, [uiScheme.rgb]);
 
-  const pageLabel = page === 0 ? 'Home' : page === 1 ? 'Map' : page === 2 ? 'Weather' : page === 3 ? 'Activity' : page === 4 ? 'Controls' : page === 5 ? 'Settings' : 'Info';
+  const pageLabel = page === 0 ? 'Home' : page === 1 ? 'Climate' : page === 2 ? 'Weather' : page === 3 ? 'Activity' : page === 4 ? 'Controls' : page === 5 ? 'Settings' : 'Info';
 
   useEffect(() => {
     // Initial fetch
@@ -137,7 +137,7 @@ function App() {
                 page === 1 ? uiScheme.tabActive : 'text-white/50 hover:bg-white/5 hover:text-white/70'
               }`}
             >
-              Map
+              Climate
             </button>
             <button
               type="button"
@@ -222,7 +222,7 @@ function App() {
             className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold text-white/85"
           >
             <option value={0}>Home</option>
-            <option value={1}>Map</option>
+            <option value={1}>Climate</option>
             <option value={2}>Weather</option>
             <option value={3}>Activity</option>
             <option value={4}>Controls</option>

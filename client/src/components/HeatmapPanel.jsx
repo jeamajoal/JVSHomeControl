@@ -142,6 +142,34 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
   const sensors = config?.sensors || [];
   const labels = Array.isArray(config?.labels) ? config.labels : [];
 
+  const climateTolerances = useMemo(() => {
+    const raw = (config?.ui?.climateTolerances && typeof config.ui.climateTolerances === 'object')
+      ? config.ui.climateTolerances
+      : {};
+
+    const t = (raw.temperatureF && typeof raw.temperatureF === 'object') ? raw.temperatureF : {};
+    const h = (raw.humidityPct && typeof raw.humidityPct === 'object') ? raw.humidityPct : {};
+    const l = (raw.illuminanceLux && typeof raw.illuminanceLux === 'object') ? raw.illuminanceLux : {};
+
+    return {
+      temperatureF: {
+        cold: asNumber(t.cold) ?? 68,
+        comfy: asNumber(t.comfy) ?? 72,
+        warm: asNumber(t.warm) ?? 74,
+      },
+      humidityPct: {
+        dry: asNumber(h.dry) ?? 35,
+        comfy: asNumber(h.comfy) ?? 55,
+        humid: asNumber(h.humid) ?? 65,
+      },
+      illuminanceLux: {
+        dark: asNumber(l.dark) ?? 50,
+        dim: asNumber(l.dim) ?? 250,
+        bright: asNumber(l.bright) ?? 600,
+      },
+    };
+  }, [config?.ui?.climateTolerances]);
+
   const roomTiles = useMemo(() => {
     const byRoomId = new Map();
     for (const room of rooms) {
@@ -184,7 +212,21 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
       .map(({ room, sensors: roomSensors }) => {
         const values = roomSensors.map((s) => asNumber(s.value)).filter((n) => n !== null);
         const roomValue = avg(values);
-        return { room, sensors: roomSensors, value: roomValue };
+
+        const temps = roomSensors.map((s) => asNumber(s.temperature)).filter((n) => n !== null);
+        const hums = roomSensors.map((s) => asNumber(s.humidity)).filter((n) => n !== null);
+        const luxs = roomSensors.map((s) => asNumber(s.illuminance)).filter((n) => n !== null);
+
+        return {
+          room,
+          sensors: roomSensors,
+          value: roomValue,
+          metrics: {
+            temperature: avg(temps),
+            humidity: avg(hums),
+            illuminance: avg(luxs),
+          },
+        };
       });
 
     // Ensure stable ordering even if y comes across as null
@@ -234,20 +276,26 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
     if (v === null) return { colorClass: 'bg-white/10', ringClass: 'ring-white/10' };
 
     if (mode === 'temperature') {
-      if (v < 68) return { colorClass: 'bg-neon-blue/25', ringClass: 'ring-neon-blue/30' };
-      if (v < 74) return { colorClass: 'bg-neon-green/25', ringClass: 'ring-neon-green/30' };
+      const { cold, comfy, warm } = climateTolerances.temperatureF;
+      if (v < cold) return { colorClass: 'bg-neon-blue/25', ringClass: 'ring-neon-blue/30' };
+      if (v < comfy) return { colorClass: 'bg-neon-green/25', ringClass: 'ring-neon-green/30' };
+      if (v < warm) return { colorClass: 'bg-warning/15', ringClass: 'ring-warning/30' };
       return { colorClass: 'bg-neon-red/25', ringClass: 'ring-neon-red/30' };
     }
 
     if (mode === 'humidity') {
-      if (v < 35) return { colorClass: 'bg-neon-red/20', ringClass: 'ring-neon-red/30' };
-      if (v < 55) return { colorClass: 'bg-neon-green/20', ringClass: 'ring-neon-green/30' };
-      return { colorClass: 'bg-neon-blue/20', ringClass: 'ring-neon-blue/30' };
+      const { dry, comfy, humid } = climateTolerances.humidityPct;
+      if (v < dry) return { colorClass: 'bg-neon-blue/20', ringClass: 'ring-neon-blue/30' };
+      if (v < comfy) return { colorClass: 'bg-neon-green/20', ringClass: 'ring-neon-green/30' };
+      if (v < humid) return { colorClass: 'bg-warning/12', ringClass: 'ring-warning/30' };
+      return { colorClass: 'bg-neon-red/20', ringClass: 'ring-neon-red/30' };
     }
 
     // illuminance
-    if (v < 50) return { colorClass: 'bg-neon-blue/20', ringClass: 'ring-neon-blue/30' };
-    if (v < 250) return { colorClass: 'bg-neon-green/20', ringClass: 'ring-neon-green/30' };
+    const { dark, dim, bright } = climateTolerances.illuminanceLux;
+    if (v < dark) return { colorClass: 'bg-neon-blue/20', ringClass: 'ring-neon-blue/30' };
+    if (v < dim) return { colorClass: 'bg-neon-green/20', ringClass: 'ring-neon-green/30' };
+    if (v < bright) return { colorClass: 'bg-warning/12', ringClass: 'ring-warning/30' };
     return { colorClass: 'bg-neon-green/30', ringClass: 'ring-neon-green/40' };
   };
 
@@ -564,8 +612,24 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
                                   {t.room.name}
                                 </div>
                               </div>
-                              <div className="shrink-0 px-2 py-1 rounded-lg border border-white/10 bg-black/40 text-[10px] font-bold uppercase tracking-[0.16em] text-white/80">
-                                {t.value === null ? '—' : formatValue(t.value)}
+                              <div className="shrink-0 flex items-center gap-1">
+                                {[
+                                  { key: 'temperature', label: 'T', value: t.metrics?.temperature, active: mode === 'temperature' },
+                                  { key: 'humidity', label: 'H', value: t.metrics?.humidity, active: mode === 'humidity' },
+                                  { key: 'illuminance', label: 'L', value: t.metrics?.illuminance, active: mode === 'illuminance' },
+                                ].map(({ key, label, value, active }) => (
+                                  <div
+                                    key={key}
+                                    className={`px-2 py-1 rounded-lg border bg-black/40 text-[10px] font-bold uppercase tracking-[0.16em] ${active ? `${resolvedUiScheme.selectedCard} ${resolvedUiScheme.selectedText}` : 'border-white/10 text-white/75'}`}
+                                    title={key}
+                                  >
+                                    {label} {value === null || value === undefined ? '—' : (
+                                      key === 'temperature' ? formatTemp(value) :
+                                      key === 'humidity' ? formatPercent(value) :
+                                      formatLux(value)
+                                    )}
+                                  </div>
+                                ))}
                               </div>
                             </div>
 
