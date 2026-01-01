@@ -5,6 +5,7 @@ import Draggable from 'react-draggable';
 
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
+import { useAppState } from '../appState';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -124,7 +125,12 @@ async function saveLayoutPatch(payload) {
   }
 }
 
-const HeatmapPanel = ({ config, statuses, uiScheme }) => {
+const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: uiSchemeProp }) => {
+  const ctx = useAppState();
+  const config = configProp ?? ctx?.config;
+  const statuses = statusesProp ?? ctx?.statuses;
+  const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
+
   const { viewportRef, contentRef, scale } = useFitScale();
 
   const [isMdUp, setIsMdUp] = useState(() => {

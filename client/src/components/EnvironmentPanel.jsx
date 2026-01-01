@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
+import { useAppState } from '../appState';
+import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
 
 const asNumber = (value) => {
@@ -285,40 +287,7 @@ const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, acc
   );
 };
 
-const buildRooms = (config, statuses) => {
-  const rooms = (config?.rooms || []).map((r) => ({ ...r }));
-  const sensors = config?.sensors || [];
-
-  const byRoomId = new Map();
-  for (const room of rooms) byRoomId.set(room.id, { room, devices: [] });
-
-  for (const dev of sensors) {
-    const bucket = byRoomId.get(dev.roomId);
-    if (!bucket) continue;
-    bucket.devices.push({
-      ...dev,
-      status: statuses?.[dev.id] || null,
-    });
-  }
-
-  // Include unassigned devices under a synthetic room if needed
-  const unassigned = sensors
-    .filter((d) => !byRoomId.has(d.roomId))
-    .map((dev) => ({ ...dev, status: statuses?.[dev.id] || null }));
-
-  const result = Array.from(byRoomId.values())
-    .map(({ room, devices }) => ({ room, devices }))
-    .filter((r) => r.devices.length > 0);
-
-  if (unassigned.length) {
-    result.push({
-      room: { id: 'unassigned', name: 'Unassigned' },
-      devices: unassigned,
-    });
-  }
-
-  return result;
-};
+// Room/device joins are centralized in ../deviceSelectors.
 
 const isOutsideRoomName = (name) => {
   const n = String(name || '').toLowerCase();
@@ -581,20 +550,20 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
   );
 };
 
-const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
+const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, uiScheme: uiSchemeProp }) => {
+  const ctx = useAppState();
+  const config = configProp ?? ctx?.config;
+  const statuses = statusesProp ?? ctx?.statuses;
+  const connected = connectedProp ?? ctx?.connected;
+  const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
+
   const resolvedUiScheme = useMemo(
     () => uiScheme || getUiScheme(config?.ui?.colorScheme),
     [uiScheme, config?.ui?.colorScheme],
   );
 
-  const allowedControlIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds)
-      ? config.ui.mainAllowedDeviceIds
-      : (Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : []);
-    return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.mainAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
-
-  const rooms = useMemo(() => buildRooms(config, statuses), [config, statuses]);
+  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
+  const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
   const { viewportRef, contentRef, scale } = useFitScale();
 

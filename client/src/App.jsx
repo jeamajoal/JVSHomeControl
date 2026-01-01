@@ -10,6 +10,7 @@ import { Activity, Maximize, Minimize } from 'lucide-react';
 
 import { getUiScheme } from './uiScheme';
 import { API_HOST } from './apiHost';
+import { AppStateProvider } from './AppStateProvider';
 
 import { socket } from './socket';
 
@@ -232,7 +233,7 @@ function App() {
         {!dataLoaded ? (
           <div className="flex items-center justify-center h-full text-gray-500 animate-pulse">LOADING SYSTEM...</div>
         ) : (
-          <>
+          <AppStateProvider value={{ config, statuses: sensors, connected, uiScheme, refreshNow }}>
             {(Array.isArray(config?.rooms) && config.rooms.length === 0) ? (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="glass-panel border border-white/10 p-6 max-w-xl w-full text-center">
@@ -272,7 +273,7 @@ function App() {
             {page === 6 ? (
               <AboutPanel uiScheme={uiScheme} />
             ) : null}
-          </>
+          </AppStateProvider>
         )}
       </main>
     </div>
