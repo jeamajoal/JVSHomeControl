@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { DoorOpen, Footprints, Volume2, VolumeX } from 'lucide-react';
 
 import { socket } from '../socket';
+import { useAppState } from '../appState';
+import { buildRoomsWithActivity } from '../deviceSelectors';
 
 const SOUND_COOLDOWN_PER_SENSOR_MS = 12000;
 const SOUND_COOLDOWN_GLOBAL_MS = 1500;
@@ -30,53 +32,7 @@ const getAlertSoundUrls = (config) => {
   };
 };
 
-const buildRoomsWithActivity = (config, statuses) => {
-  const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
-  const sensors = Array.isArray(config?.sensors) ? config.sensors : [];
-
-  const byRoomId = new Map();
-  for (const r of rooms) byRoomId.set(String(r.id), { room: r, devices: [] });
-
-  const unassigned = [];
-
-  for (const s of sensors) {
-    const id = String(s?.id ?? '').trim();
-    if (!id) continue;
-
-    const st = statuses?.[id] || null;
-    const attrs = st?.attributes && typeof st.attributes === 'object' ? st.attributes : {};
-
-    const motion = asText(attrs.motion);
-    const contact = asText(attrs.contact);
-
-    const hasActivity = (motion === 'active' || motion === 'inactive') || (contact === 'open' || contact === 'closed');
-    if (!hasActivity) continue;
-
-    const entry = {
-      id,
-      label: String(s?.label || st?.label || id),
-      motion,
-      contact,
-      lastUpdated: asText(st?.lastUpdated),
-      roomId: String(s?.roomId ?? ''),
-    };
-
-    const bucket = byRoomId.get(entry.roomId);
-    if (bucket) bucket.devices.push(entry);
-    else unassigned.push(entry);
-  }
-
-  const result = Array.from(byRoomId.values())
-    .map(({ room, devices }) => ({ room, devices }))
-    .filter((r) => r.devices.length > 0)
-    .sort((a, b) => String(a.room?.name || '').localeCompare(String(b.room?.name || '')));
-
-  if (unassigned.length) {
-    result.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
-  }
-
-  return result;
-};
+// Room/device joins are centralized in ../deviceSelectors.
 
 const tone = async (audioCtx, { freq = 440, durationMs = 120, gain = 0.08 } = {}) => {
   const osc = audioCtx.createOscillator();
@@ -142,7 +98,11 @@ const loadAudioBuffer = async (audioCtx, url) => {
   return decoded;
 };
 
-const ActivityPanel = ({ config, statuses, uiScheme }) => {
+const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: uiSchemeProp }) => {
+  const ctx = useAppState();
+  const config = configProp ?? ctx?.config;
+  const statuses = statusesProp ?? ctx?.statuses;
+  const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const audioCtxRef = useRef(null);
   const soundRef = useRef({ urls: null, buffers: { motion: null, doorOpen: null, doorClose: null } });

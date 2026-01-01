@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { API_HOST } from '../apiHost';
 import { socket } from '../socket';
+import { useAppState } from '../appState';
 
 async function saveAllowlists(payload) {
   const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {
@@ -169,7 +170,12 @@ async function deleteLabel(labelId) {
   return res.json().catch(() => ({}));
 }
 
-const ConfigPanel = ({ config, statuses, connected }) => {
+const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp }) => {
+  const ctx = useAppState();
+  const config = configProp ?? ctx?.config;
+  const statuses = statusesProp ?? ctx?.statuses;
+  const connected = connectedProp ?? ctx?.connected;
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 

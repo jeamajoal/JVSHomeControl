@@ -7,12 +7,15 @@ import {
   Power,
   Loader2,
   Clock,
+  Cloud,
   Wind,
   CloudRain,
   SlidersHorizontal,
 } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
+import { useAppState } from '../appState';
+import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
 
 const asNumber = (value) => {
@@ -178,9 +181,20 @@ const useFitScale = () => {
   return { viewportRef, contentRef, scale };
 };
 
-const MetricCard = ({ title, value, sub, icon: IconComponent, accentClassName, valueClassName, uiScheme }) => {
+const MetricCard = ({
+  title,
+  value,
+  sub,
+  icon: IconComponent,
+  accentClassName,
+  valueClassName,
+  subClassName,
+  iconWrapClassName,
+  className,
+  uiScheme,
+}) => {
   return (
-    <div className={`glass-panel p-4 md:p-5 border ${accentClassName}`}>
+    <div className={`glass-panel p-4 md:p-5 border ${accentClassName} ${className || ''}`.trim()}>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
@@ -190,11 +204,13 @@ const MetricCard = ({ title, value, sub, icon: IconComponent, accentClassName, v
             {value}
           </div>
           {sub ? (
-            <div className="mt-1 text-xs text-white/45 truncate">{sub}</div>
+            <div className={subClassName || 'mt-1 text-xs text-white/45 truncate'}>{sub}</div>
           ) : null}
         </div>
 
-        <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
+        <div
+          className={`shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+        >
           {React.createElement(IconComponent, {
             className: `w-6 h-6 md:w-7 md:h-7 ${uiScheme?.metricIcon || 'text-neon-blue'}`,
           })}
@@ -276,40 +292,7 @@ const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, acc
   );
 };
 
-const buildRooms = (config, statuses) => {
-  const rooms = (config?.rooms || []).map((r) => ({ ...r }));
-  const sensors = config?.sensors || [];
-
-  const byRoomId = new Map();
-  for (const room of rooms) byRoomId.set(room.id, { room, devices: [] });
-
-  for (const dev of sensors) {
-    const bucket = byRoomId.get(dev.roomId);
-    if (!bucket) continue;
-    bucket.devices.push({
-      ...dev,
-      status: statuses?.[dev.id] || null,
-    });
-  }
-
-  // Include unassigned devices under a synthetic room if needed
-  const unassigned = sensors
-    .filter((d) => !byRoomId.has(d.roomId))
-    .map((dev) => ({ ...dev, status: statuses?.[dev.id] || null }));
-
-  const result = Array.from(byRoomId.values())
-    .map(({ room, devices }) => ({ room, devices }))
-    .filter((r) => r.devices.length > 0);
-
-  if (unassigned.length) {
-    result.push({
-      room: { id: 'unassigned', name: 'Unassigned' },
-      devices: unassigned,
-    });
-  }
-
-  return result;
-};
+// Room/device joins are centralized in ../deviceSelectors.
 
 const isOutsideRoomName = (name) => {
   const n = String(name || '').toLowerCase();
@@ -449,27 +432,18 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
+  const badgeBase = `inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${uiScheme?.selectedText || 'text-neon-blue'} border-white/10 bg-white/5`;
+
   return (
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="text-base md:text-lg font-extrabold tracking-wide text-white truncate">
-            {roomName}
-          </h2>
-          {(metrics.motionActive || metrics.doorOpen) ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {metrics.motionActive ? (
-                <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${uiScheme?.selectedText || 'text-neon-blue'} border-white/10 bg-white/5`}>
-                  Motion
-                </span>
-              ) : null}
-              {metrics.doorOpen ? (
-                <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${uiScheme?.selectedText || 'text-neon-blue'} border-white/10 bg-white/5`}>
-                  Door
-                </span>
-              ) : null}
-            </div>
-          ) : null}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="min-w-0 text-base md:text-lg font-extrabold tracking-wide text-white truncate">
+          {roomName}
+        </h2>
+
+        <div className="shrink-0 flex items-center gap-2">
+          {metrics.motionActive ? <span className={badgeBase}>Motion</span> : null}
+          {metrics.doorOpen ? <span className={badgeBase}>Door</span> : null}
         </div>
       </div>
 
@@ -481,6 +455,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
             sub={metrics.temperature === null ? 'No sensor' : 'Average'}
             icon={Thermometer}
             accentClassName="border-white/10"
+            iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
           <MetricCard
@@ -489,6 +464,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
             sub={metrics.humidity === null ? 'No sensor' : 'Average'}
             icon={Droplets}
             accentClassName="border-white/10"
+            valueClassName={uiScheme?.selectedText || 'text-neon-blue'}
+            iconWrapClassName={uiScheme?.headerIcon || 'bg-neon-blue/10 border-neon-blue/30'}
             uiScheme={uiScheme}
           />
           <MetricCard
@@ -497,6 +474,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
             sub={metrics.illuminance === null ? 'No sensor' : 'Average'}
             icon={Sun}
             accentClassName="border-white/10"
+            valueClassName="text-neon-green"
+            iconWrapClassName="bg-neon-green/10 border-neon-green/30"
             uiScheme={uiScheme}
           />
         </div>
@@ -572,20 +551,20 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
   );
 };
 
-const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
+const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, uiScheme: uiSchemeProp }) => {
+  const ctx = useAppState();
+  const config = configProp ?? ctx?.config;
+  const statuses = statusesProp ?? ctx?.statuses;
+  const connected = connectedProp ?? ctx?.connected;
+  const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
+
   const resolvedUiScheme = useMemo(
     () => uiScheme || getUiScheme(config?.ui?.colorScheme),
     [uiScheme, config?.ui?.colorScheme],
   );
 
-  const allowedControlIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds)
-      ? config.ui.mainAllowedDeviceIds
-      : (Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : []);
-    return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.mainAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
-
-  const rooms = useMemo(() => buildRooms(config, statuses), [config, statuses]);
+  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
+  const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
   const { viewportRef, contentRef, scale } = useFitScale();
 
@@ -638,8 +617,7 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
         if (!res.ok) throw new Error(`modes ${res.status}`);
         const data = await res.json();
         if (!alive) return;
-        const active = data?.active || null;
-        setHubitatMode(active);
+        setHubitatMode(data?.active || null);
         setHubitatModeError(null);
       } catch (e) {
         if (!alive) return;
@@ -712,16 +690,54 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
             <MetricCard
               title="Outside"
               value={outsideDisplay.currentTemp !== null ? formatTemp(outsideDisplay.currentTemp) : formatTemp(outsideSensors.temperature)}
-              sub={
-                asText(outsideDisplay.condition)
-                  ? `${outsideDisplay.condition}${outsideDisplay.currentHumidity !== null ? ` • ${formatPercent(outsideDisplay.currentHumidity)}` : ''}`
-                  : (
-                    outsideSensors.humidity === null
-                      ? (weatherError ? `Weather offline (${weatherError})` : 'Weather loading…')
-                      : `Outside sensors • Humidity ${formatPercent(outsideSensors.humidity)}`
-                  )
-              }
-              icon={Thermometer}
+              sub={(
+                <div className="space-y-1">
+                  <div className="text-white/55">
+                    {asText(outsideDisplay.condition)
+                      ? (
+                        `${outsideDisplay.condition}${outsideDisplay.currentHumidity !== null ? ` • ${formatPercent(outsideDisplay.currentHumidity)}` : ''}`
+                      )
+                      : (
+                        outsideSensors.humidity === null
+                          ? (weatherError ? `Weather offline (${weatherError})` : 'Weather loading…')
+                          : `Outside sensors • Humidity ${formatPercent(outsideSensors.humidity)}`
+                      )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-white/45">
+                    {(outsideDisplay.todayHigh !== null || outsideDisplay.todayLow !== null) ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Cloud className="w-3.5 h-3.5" />
+                        H {formatTemp(outsideDisplay.todayHigh)} • L {formatTemp(outsideDisplay.todayLow)}
+                        {outsideDisplay.precipProb !== null ? ` • ${Math.round(Number(outsideDisplay.precipProb))}%` : ''}
+                      </span>
+                    ) : null}
+
+                    {outsideDisplay.windSpeed !== null ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Wind className="w-3.5 h-3.5" />
+                        {formatSpeed(outsideDisplay.windSpeed)}{toCompass(outsideDisplay.windDir) ? ` ${toCompass(outsideDisplay.windDir)}` : ''}
+                      </span>
+                    ) : null}
+
+                    {outsideDisplay.precipNow !== null ? (
+                      <span className="inline-flex items-center gap-1">
+                        <CloudRain className="w-3.5 h-3.5" />
+                        {formatInches(outsideDisplay.precipNow)}
+                      </span>
+                    ) : null}
+
+                    {outsideDisplay.apparentTemp !== null ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Thermometer className="w-3.5 h-3.5" />
+                        Feels {formatTemp(outsideDisplay.apparentTemp)}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+              subClassName="mt-2 text-xs text-white/45"
+              icon={Cloud}
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
             />
@@ -735,6 +751,7 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
               }
               icon={Thermometer}
               accentClassName="border-white/10"
+              iconWrapClassName="bg-white/5"
               uiScheme={resolvedUiScheme}
             />
             <MetricCard
@@ -760,41 +777,6 @@ const EnvironmentPanel = ({ config, statuses, connected, uiScheme }) => {
                   : 'border-danger/30'
               }
               valueClassName={connected ? 'text-neon-green' : 'text-neon-red'}
-              uiScheme={resolvedUiScheme}
-            />
-          </div>
-
-          <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-            <MetricCard
-              title="Feels Like"
-              value={outsideDisplay.apparentTemp !== null ? formatTemp(outsideDisplay.apparentTemp) : '—'}
-              sub={asText(outsideDisplay.condition) || 'Outside'}
-              icon={Thermometer}
-              accentClassName="border-white/10"
-              uiScheme={resolvedUiScheme}
-            />
-            <MetricCard
-              title="Wind"
-              value={outsideDisplay.windSpeed !== null ? formatSpeed(outsideDisplay.windSpeed) : '—'}
-              sub={toCompass(outsideDisplay.windDir) || '—'}
-              icon={Wind}
-              accentClassName="border-white/10"
-              uiScheme={resolvedUiScheme}
-            />
-            <MetricCard
-              title="Rain"
-              value={outsideDisplay.precipNow !== null ? formatInches(outsideDisplay.precipNow) : '—'}
-              sub="Now"
-              icon={CloudRain}
-              accentClassName="border-white/10"
-              uiScheme={resolvedUiScheme}
-            />
-            <MetricCard
-              title="Outside RH"
-              value={outsideDisplay.currentHumidity !== null ? formatPercent(outsideDisplay.currentHumidity) : '—'}
-              sub="Relative humidity"
-              icon={Droplets}
-              accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
             />
           </div>

@@ -1,0 +1,122 @@
+const asText = (value) => {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s.length ? s : null;
+};
+
+export function getDeviceStatus(statuses, deviceId) {
+  const id = asText(deviceId);
+  if (!id) return null;
+  return statuses?.[id] || null;
+}
+
+export function getAllowedDeviceIds(config, scope = 'union') {
+  const ui = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+
+  const main = Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : null;
+  const ctrl = Array.isArray(ui.ctrlAllowedDeviceIds) ? ui.ctrlAllowedDeviceIds : null;
+  const legacy = Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : [];
+
+  const raw =
+    scope === 'main' ? (main ?? legacy) :
+    scope === 'ctrl' ? (ctrl ?? legacy) :
+    // union / default
+    (Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : (Array.isArray(main) ? main : (Array.isArray(ctrl) ? ctrl : legacy)));
+
+  return raw.map((v) => String(v));
+}
+
+export function getAllowedDeviceIdSet(config, scope = 'union') {
+  return new Set(getAllowedDeviceIds(config, scope).map((v) => String(v)));
+}
+
+export function buildRoomsWithStatuses(config, statuses) {
+  const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
+  const devices = Array.isArray(config?.sensors) ? config.sensors : [];
+
+  const byRoomId = new Map();
+  for (const r of rooms) {
+    const id = asText(r?.id);
+    if (!id) continue;
+    byRoomId.set(id, { room: r, devices: [] });
+  }
+
+  const unassigned = [];
+
+  for (const dev of devices) {
+    const id = asText(dev?.id);
+    if (!id) continue;
+
+    const entry = {
+      ...dev,
+      status: getDeviceStatus(statuses, id),
+    };
+
+    const roomId = asText(dev?.roomId);
+    const bucket = roomId ? byRoomId.get(roomId) : null;
+    if (bucket) bucket.devices.push(entry);
+    else unassigned.push(entry);
+  }
+
+  const result = Array.from(byRoomId.values())
+    .map(({ room, devices: roomDevices }) => ({ room, devices: roomDevices }))
+    .filter((r) => r.devices.length > 0);
+
+  if (unassigned.length) {
+    result.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
+  }
+
+  return result;
+}
+
+export function buildRoomsWithActivity(config, statuses) {
+  const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
+  const devices = Array.isArray(config?.sensors) ? config.sensors : [];
+
+  const byRoomId = new Map();
+  for (const r of rooms) {
+    const id = asText(r?.id);
+    if (!id) continue;
+    byRoomId.set(id, { room: r, devices: [] });
+  }
+
+  const unassigned = [];
+
+  for (const d of devices) {
+    const id = asText(d?.id);
+    if (!id) continue;
+
+    const st = getDeviceStatus(statuses, id);
+    const attrs = st?.attributes && typeof st.attributes === 'object' ? st.attributes : {};
+
+    const motion = asText(attrs.motion);
+    const contact = asText(attrs.contact);
+
+    const hasActivity = (motion === 'active' || motion === 'inactive') || (contact === 'open' || contact === 'closed');
+    if (!hasActivity) continue;
+
+    const entry = {
+      id,
+      label: String(d?.label || st?.label || id),
+      motion,
+      contact,
+      lastUpdated: asText(st?.lastUpdated),
+      roomId: asText(d?.roomId) || '',
+    };
+
+    const bucket = byRoomId.get(entry.roomId);
+    if (bucket) bucket.devices.push(entry);
+    else unassigned.push(entry);
+  }
+
+  const result = Array.from(byRoomId.values())
+    .map(({ room, devices: roomDevices }) => ({ room, devices: roomDevices }))
+    .filter((r) => r.devices.length > 0)
+    .sort((a, b) => String(a.room?.name || '').localeCompare(String(b.room?.name || '')));
+
+  if (unassigned.length) {
+    result.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
+  }
+
+  return result;
+}

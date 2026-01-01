@@ -3,6 +3,8 @@ import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
+import { useAppState } from '../appState';
+import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -157,32 +159,25 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel, u
   );
 };
 
-const InteractionPanel = ({ config, statuses, connected, uiScheme }) => {
+const InteractionPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, uiScheme: uiSchemeProp }) => {
   const { viewportRef, contentRef, scale } = useFitScale();
 
+  const ctx = useAppState();
+  const config = configProp ?? ctx?.config;
+  const statuses = statusesProp ?? ctx?.statuses;
+  const connected = connectedProp ?? ctx?.connected;
+  const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
   const resolvedUiScheme = useMemo(
     () => uiScheme || getUiScheme(config?.ui?.colorScheme),
     [uiScheme, config?.ui?.colorScheme],
   );
 
   const allowedControlIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds)
-      ? config.ui.ctrlAllowedDeviceIds
-      : (Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : []);
-    return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.ctrlAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
+    return getAllowedDeviceIdSet(config, 'ctrl');
+  }, [config]);
 
   const rooms = useMemo(() => {
-    const byRoomId = new Map();
-    for (const r of config?.rooms || []) byRoomId.set(r.id, { room: r, devices: [] });
-
-    for (const dev of config?.sensors || []) {
-      const bucket = byRoomId.get(dev.roomId);
-      if (!bucket) continue;
-      bucket.devices.push({ ...dev, status: statuses?.[dev.id] || null });
-    }
-
-    return Array.from(byRoomId.values()).filter((r) => r.devices.length > 0);
+    return buildRoomsWithStatuses(config, statuses);
   }, [config, statuses]);
 
   const [busy, setBusy] = useState(() => new Set());
