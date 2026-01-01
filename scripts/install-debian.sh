@@ -17,6 +17,7 @@ APP_USER="${APP_USER:-jvshome}"
 APP_GROUP="${APP_GROUP:-jvshome}"
 APP_DIR="${APP_DIR:-/opt/jvshomecontrol}"
 REPO_URL="${REPO_URL:-https://github.com/jeamajoal/JVSHomeControl.git}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
 CONFIG_FILE_REL="${CONFIG_FILE_REL:-server/data/config.json}"
 CERT_DIR_REL="${CERT_DIR_REL:-server/data/certs}"
 
@@ -34,10 +35,129 @@ require_root() {
   fi
 }
 
+confirm() {
+  local prompt="$1"
+
+  # Explicitly require confirmation unless the caller opts in.
+  if [[ "${JVS_ASSUME_YES:-}" == "1" ]]; then
+    return 0
+  fi
+
+  # If we're not attached to a TTY, we cannot ask; default to NO.
+  if [[ ! -t 0 ]]; then
+    return 1
+  fi
+
+  local reply
+  read -r -p "${prompt} [y/N] " reply
+  case "${reply}" in
+    y|Y|yes|YES) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 install_prereqs() {
   log "Installing base packages (git/curl/ca-certificates)…"
   apt-get update
   apt-get install -y ca-certificates curl git
+
+  if ! command -v git >/dev/null 2>&1; then
+    die "git is required but was not found after install. Install git and re-run."
+  fi
+}
+
+list_remote_branches() {
+  git ls-remote --heads "${REPO_URL}" 2>/dev/null \
+    | awk '{print $2}' \
+    | sed 's#^refs/heads/##' \
+    | sort -u
+}
+
+remote_branch_exists() {
+  local branch="$1"
+  [[ -n "${branch}" ]] || return 1
+
+  local hit
+  hit="$(git ls-remote --heads "${REPO_URL}" "refs/heads/${branch}" 2>/dev/null || true)"
+  [[ -n "${hit}" ]]
+}
+
+choose_repo_branch() {
+  # If caller set a branch explicitly (env/args), trust it but validate.
+  if [[ -n "${REPO_BRANCH:-}" ]] && [[ "${REPO_BRANCH}" != "main" ]]; then
+    if ! remote_branch_exists "${REPO_BRANCH}"; then
+      die "Branch '${REPO_BRANCH}' not found on remote: ${REPO_URL}"
+    fi
+    return 0
+  fi
+
+  # Non-interactive session: keep default.
+  if [[ "${JVS_ASSUME_YES:-}" == "1" ]] || [[ ! -t 0 ]]; then
+    return 0
+  fi
+
+  local input
+  while true; do
+    read -r -p "Git branch to install [${REPO_BRANCH}] (? to list): " input
+    input="${input:-${REPO_BRANCH}}"
+
+    case "${input}" in
+      "?"|"list"|"ls")
+        log "Fetching remote branch list…"
+        local branches
+        branches="$(list_remote_branches || true)"
+        if [[ -z "${branches}" ]]; then
+          warn "Could not retrieve branches from remote."
+        else
+          echo "Available branches:" >&2
+          echo "${branches}" | sed 's/^/  - /' >&2
+        fi
+        continue
+        ;;
+    esac
+
+    if remote_branch_exists "${input}"; then
+      REPO_BRANCH="${input}"
+      return 0
+    fi
+
+    warn "Branch '${input}' not found on remote. Enter '?' to list branches."
+    if ! confirm "Use '${REPO_BRANCH}' instead?"; then
+      continue
+    fi
+    return 0
+  done
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -b|--branch)
+        shift
+        [[ $# -gt 0 ]] || die "Missing value for --branch"
+        REPO_BRANCH="$1"
+        ;;
+      --list-branches)
+        log "Remote branches:" >&2
+        list_remote_branches || true
+        exit 0
+        ;;
+      -h|--help)
+        cat >&2 <<EOF
+Usage: install-debian.sh [--branch <name>] [--list-branches]
+
+Environment:
+  REPO_BRANCH   Branch to install (default: main)
+
+Examples:
+  sudo bash scripts/install-debian.sh --branch develop
+  sudo REPO_BRANCH=dev bash scripts/install-debian.sh
+EOF
+        exit 0
+        ;;
+    esac
+    shift
+  done
 }
 
 ensure_user() {
@@ -87,10 +207,10 @@ ensure_repo() {
 
   if [[ -d "${APP_DIR}/.git" ]]; then
     log "Updating existing repo in ${APP_DIR}…"
-    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin main && git checkout -f main && git reset --hard origin/main && git clean -fd"
+    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"
   else
     log "Cloning repo into ${APP_DIR}…"
-    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git clone '${REPO_URL}' ."
+    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git clone --branch '${REPO_BRANCH}' --single-branch '${REPO_URL}' ."
   fi
 
   if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
@@ -109,9 +229,12 @@ ensure_repo() {
 }
 
 main() {
+  parse_args "$@"
   require_root
   install_prereqs
   ensure_user
+  choose_repo_branch
+  log "Installing branch: ${REPO_BRANCH}"
   ensure_repo
 
   local runner

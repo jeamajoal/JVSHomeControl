@@ -74,6 +74,10 @@ install_prereqs() {
   apt-get update
   apt-get install -y ca-certificates curl git
 
+  if ! command -v git >/dev/null 2>&1; then
+    die "git is required but was not found after install. Install git and re-run."
+  fi
+
   if command -v node >/dev/null 2>&1; then
     local v major
     v="$(node -v | sed 's/^v//' || true)"

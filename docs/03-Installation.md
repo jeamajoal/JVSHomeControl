@@ -74,6 +74,19 @@ The Debian installer is split into two files:
 - `scripts/install-debian.sh` (bootstrap): updates/clones the repo, then runs the repo version installer.
 - `scripts/install-debian-run.sh` (runner): the actual install logic executed from the updated checkout.
 
+#### Installing a non-main branch
+
+By default, the Debian installer uses the `main` branch. To install a different branch:
+
+- Env var: `REPO_BRANCH=your-branch`
+- Or pass `--branch your-branch`
+
+Example:
+
+```bash
+sudo REPO_BRANCH=develop bash scripts/install-debian.sh
+```
+
 Note: The Debian install script runs the HTTPS setup helper during install/update and guides you through the prompts.
 In normal interactive use, there is no need to run the certificate helper separately.
 
