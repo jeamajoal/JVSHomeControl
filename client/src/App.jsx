@@ -6,6 +6,7 @@ import ConfigPanel from './components/ConfigPanel';
 import WeatherPanel from './components/WeatherPanel';
 import ActivityPanel from './components/ActivityPanel';
 import AboutPanel from './components/AboutPanel';
+import EventsPanel from './components/EventsPanel';
 import { Activity, Maximize, Minimize } from 'lucide-react';
 
 import { getUiScheme } from './uiScheme';
@@ -23,7 +24,7 @@ function App() {
   const [autoFullscreenArmed, setAutoFullscreenArmed] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [loadError, setLoadError] = useState(null);
-  const [page, setPage] = useState(0); // 0=Home, 1=Climate, 2=Weather, 3=Activity, 4=Controls, 5=Settings, 6=Info
+  const [page, setPage] = useState(0); // 0=Home, 1=Climate, 2=Weather, 3=Activity, 4=Controls, 5=Settings, 6=Info, 7=Events (hidden)
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const uiScheme = getUiScheme(colorSchemeId);
@@ -36,7 +37,23 @@ function App() {
     }
   }, [uiScheme.rgb]);
 
-  const pageLabel = page === 0 ? 'Home' : page === 1 ? 'Climate' : page === 2 ? 'Weather' : page === 3 ? 'Activity' : page === 4 ? 'Controls' : page === 5 ? 'Settings' : 'Info';
+  const pageLabel = page === 0
+    ? 'Home'
+    : page === 1
+      ? 'Climate'
+      : page === 2
+        ? 'Weather'
+        : page === 3
+          ? 'Activity'
+          : page === 4
+            ? 'Controls'
+            : page === 5
+              ? 'Settings'
+              : page === 7
+                ? 'Events'
+                : 'Info';
+
+  const menuPage = page === 7 ? 5 : page;
 
   const refreshNow = useCallback(async () => {
     try {
@@ -167,7 +184,7 @@ function App() {
             <div className="flex items-center gap-3">
               <div className={`h-3 w-3 rounded-full ${uiScheme.swatch} opacity-80`} />
               <select
-                value={page}
+                value={menuPage}
                 onChange={(e) => setPage(Number(e.target.value))}
                 className={`min-w-[180px] rounded-xl border border-white/10 bg-black/10 px-4 py-2.5 text-sm font-bold uppercase tracking-[0.18em] text-white/85 hover:bg-white/5 ${uiScheme.focusRing}`}
               >
@@ -210,7 +227,7 @@ function App() {
         <div className="flex items-center gap-2">
           <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">Menu</label>
           <select
-            value={page}
+            value={menuPage}
             onChange={(e) => {
               ensureFullscreen();
               setPage(Number(e.target.value));
@@ -268,10 +285,19 @@ function App() {
               <InteractionPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 5 ? (
-              <ConfigPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
+              <ConfigPanel
+                config={config}
+                statuses={sensors}
+                connected={connected}
+                uiScheme={uiScheme}
+                onOpenEvents={() => setPage(7)}
+              />
             ) : null}
             {page === 6 ? (
               <AboutPanel uiScheme={uiScheme} />
+            ) : null}
+            {page === 7 ? (
+              <EventsPanel onBack={() => setPage(5)} />
             ) : null}
           </AppStateProvider>
         )}
