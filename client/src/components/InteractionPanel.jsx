@@ -11,6 +11,12 @@ const asNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const asText = (value) => {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s.length ? s : null;
+};
+
 const useFitScale = () => {
   const viewportRef = useRef(null);
   const contentRef = useRef(null);
@@ -249,10 +255,11 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       label: d.label,
                       attrs,
                       commands,
+                      state: d.status?.state,
                     };
                   })
                   .filter((d) => allowedControlIds.has(String(d.id)))
-                  .filter((d) => d.commands.length || typeof d.attrs.switch === 'string');
+                  .filter((d) => d.commands.length || typeof d.attrs.switch === 'string' || typeof d.state === 'string');
 
                 if (!controllables.length) return null;
 
@@ -267,7 +274,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
 
                     <div className="mt-4 grid grid-cols-1 gap-3">
                       {controllables.map((d) => {
-                        const sw = d.attrs.switch;
+                        const sw = asText(d.attrs.switch) || asText(d.state);
                         const level = d.attrs.level;
                         const isSwitch = typeof sw === 'string' && (sw === 'on' || sw === 'off');
                         const hasLevel = d.commands.includes('setLevel') || asNumber(level) !== null;
