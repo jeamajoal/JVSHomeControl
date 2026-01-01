@@ -154,8 +154,24 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
 
   const [mode, setMode] = useState('temperature');
   const [editMode, setEditMode] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+
+  const zoomOut = () => setMapZoom((z) => clamp(Math.round((z - 0.1) * 10) / 10, 0.5, 2.5));
+  const zoomIn = () => setMapZoom((z) => clamp(Math.round((z + 0.1) * 10) / 10, 0.5, 2.5));
+  const zoomReset = () => setMapZoom(1);
+
+  const effectiveMapZoom = clamp(mapZoom, 0.5, 2.5);
+  const mapZoomPct = Math.round(effectiveMapZoom * 100);
+
+  const supportsZoom = useMemo(() => {
+    try {
+      return typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('zoom: 1');
+    } catch {
+      return false;
+    }
+  }, []);
 
   const rooms = config?.rooms || [];
   const sensors = config?.sensors || [];
@@ -582,11 +598,47 @@ const HeatmapPanel = ({ config, statuses, uiScheme }) => {
                   Drag rooms and sensor dots. Resize rooms using the bottom-right corner.
                 </div>
               ) : null}
+
+              <div className="mt-4">
+                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/45 font-semibold">
+                  Zoom
+                </div>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={zoomOut}
+                    className="rounded-xl border border-white/10 bg-white/5 text-white/60 hover:bg-white/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors"
+                    aria-label="Zoom out"
+                  >
+                    -
+                  </button>
+                  <button
+                    type="button"
+                    onClick={zoomReset}
+                    className="rounded-xl border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors"
+                    aria-label="Reset zoom"
+                    title="Reset zoom"
+                  >
+                    {mapZoomPct}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={zoomIn}
+                    className="rounded-xl border border-white/10 bg-white/5 text-white/60 hover:bg-white/10 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors"
+                    aria-label="Zoom in"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
             </aside>
 
             <div className="flex-1 min-w-0">
-              <div className="glass-panel border border-white/10 overflow-x-auto overflow-y-hidden md:overflow-hidden touch-pan-x">
-                <div className="relative w-full min-w-[960px] md:min-w-0 h-[76vh] md:h-[82vh] bg-black/30 p-2 md:p-4">
+              <div className="glass-panel border border-white/10 overflow-auto md:overflow-hidden touch-pan-x touch-pan-y">
+                <div
+                  className="relative w-full min-w-[960px] md:min-w-0 h-[76vh] md:h-[82vh] bg-black/30 p-2 md:p-4"
+                  style={supportsZoom ? { zoom: effectiveMapZoom } : { transform: `scale(${effectiveMapZoom})`, transformOrigin: 'top left' }}
+                >
                   <ReactGridLayout
                     className="layout jvs-heatmap-grid"
                     cols={GRID_COLS}

@@ -214,7 +214,7 @@ function App() {
               ensureFullscreen();
               setPage(Number(e.target.value));
             }}
-            className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold text-white/85"
+            className="flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 [-webkit-tap-highlight-color:transparent]"
           >
             <option value={0}>Home</option>
             <option value={1}>Climate</option>
