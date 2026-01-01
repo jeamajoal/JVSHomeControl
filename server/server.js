@@ -679,6 +679,20 @@ rebuildRuntimeConfigFromPersisted();
 
 // --- HUBITAT MAPPER ---
 
+// These capabilities determine whether a device is considered "relevant" and will be imported
+// into config.sensors during syncHubitatDataInner().
+const IMPORT_RELEVANT_CAPS = Object.freeze([
+    'ContactSensor',
+    'MotionSensor',
+    'SmokeDetector',
+    'CarbonMonoxideDetector',
+    'TemperatureMeasurement',
+    'RelativeHumidityMeasurement',
+    'IlluminanceMeasurement',
+    'Switch',
+    'SwitchLevel',
+]);
+
 function mapDeviceType(capabilities, typeName) {
     if (capabilities.includes("SmokeDetector")) return "smoke";
     if (capabilities.includes("CarbonMonoxideDetector")) return "co";
@@ -689,6 +703,107 @@ function mapDeviceType(capabilities, typeName) {
     if (capabilities.includes("RelativeHumidityMeasurement")) return "humidity";
     if (capabilities.includes("TemperatureMeasurement")) return "temperature";
     return "unknown";
+}
+
+function analyzeHubitatDeviceForImport(dev) {
+    const caps = Array.isArray(dev?.capabilities) ? dev.capabilities.map((c) => String(c)) : [];
+    const capSet = new Set(caps);
+    const relevantCapsPresent = IMPORT_RELEVANT_CAPS.filter((c) => capSet.has(c));
+    const isRelevant = relevantCapsPresent.length > 0;
+
+    // A broader, "what is it" categorization (used only for analysis output)
+    const kind = (() => {
+        if (capSet.has('Thermostat')) return 'thermostat';
+        if (capSet.has('Lock')) return 'lock';
+        if (capSet.has('GarageDoorControl')) return 'garage';
+        if (capSet.has('WindowShade')) return 'shade';
+        if (capSet.has('FanControl')) return 'fan';
+        if (capSet.has('Valve')) return 'valve';
+        if (capSet.has('WaterSensor')) return 'water';
+        if (capSet.has('PresenceSensor')) return 'presence';
+        if (capSet.has('AccelerationSensor')) return 'acceleration';
+        if (capSet.has('Button') || capSet.has('PushableButton') || capSet.has('HoldableButton') || capSet.has('DoubleTapableButton')) return 'button';
+        if (capSet.has('PowerMeter') || capSet.has('EnergyMeter')) return 'power';
+        if (capSet.has('ContactSensor')) return 'contact';
+        if (capSet.has('MotionSensor')) return 'motion';
+        if (capSet.has('SmokeDetector') || capSet.has('CarbonMonoxideDetector')) return 'safety';
+        if (capSet.has('Switch') || capSet.has('SwitchLevel')) return 'switch';
+        if (capSet.has('TemperatureMeasurement') || capSet.has('RelativeHumidityMeasurement') || capSet.has('IlluminanceMeasurement')) return 'environment';
+        return 'unknown';
+    })();
+
+    const reasons = [];
+    if (!isRelevant) reasons.push('no_relevant_capabilities');
+    if (!Array.isArray(dev?.capabilities) || dev.capabilities.length === 0) reasons.push('missing_capabilities');
+
+    // Mirror the sync pipeline mapping for the devices that WOULD be imported.
+    let mappedType = null;
+    let mappedState = null;
+    if (isRelevant) {
+        try {
+            mappedType = mapDeviceType(caps, dev?.type);
+        } catch {
+            mappedType = 'unknown';
+        }
+        try {
+            mappedState = mapState(dev, mappedType);
+        } catch {
+            mappedState = null;
+        }
+    }
+
+    return {
+        isRelevant,
+        relevantCapsPresent,
+        kind,
+        mappedType,
+        mappedState,
+        reasons,
+    };
+}
+
+function summarizeAdvancedDeviceAnalysis(analyzedDevices) {
+    const out = {
+        total: 0,
+        imported: 0,
+        ignored: 0,
+        byKind: {},
+        ignoredCapabilitiesTop: [],
+    };
+
+    const ignoredCapsCounts = new Map();
+    const bump = (obj, key) => {
+        const k = String(key || 'unknown');
+        obj[k] = (obj[k] || 0) + 1;
+    };
+
+    const devices = Array.isArray(analyzedDevices) ? analyzedDevices : [];
+    out.total = devices.length;
+
+    for (const d of devices) {
+        const analysis = d?.analysis;
+        const isRelevant = Boolean(analysis?.isRelevant);
+        if (isRelevant) out.imported += 1;
+        else out.ignored += 1;
+
+        bump(out.byKind, analysis?.kind);
+
+        if (!isRelevant) {
+            const caps = Array.isArray(d?.capabilities) ? d.capabilities.map((c) => String(c)) : [];
+            for (const c of caps) {
+                if (IMPORT_RELEVANT_CAPS.includes(c)) continue;
+                ignoredCapsCounts.set(c, (ignoredCapsCounts.get(c) || 0) + 1);
+            }
+        }
+    }
+
+    const ignoredTop = Array.from(ignoredCapsCounts.entries())
+        .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+        .slice(0, 30)
+        .map(([capability, count]) => ({ capability, count }));
+    out.ignoredCapabilitiesTop = ignoredTop;
+
+    return out;
 }
 
 function mapState(device, appType) {
@@ -985,18 +1100,7 @@ async function syncHubitatDataInner() {
         const roomSensorCounts = {};
 
         devices.forEach(dev => {
-            const relevantCaps = [
-                "ContactSensor",
-                "MotionSensor",
-                "SmokeDetector",
-                "CarbonMonoxideDetector",
-                "TemperatureMeasurement",
-                "RelativeHumidityMeasurement",
-                "IlluminanceMeasurement",
-                "Switch",
-                "SwitchLevel",
-            ];
-            const isRelevant = dev.capabilities?.some(c => relevantCaps.includes(c));
+            const isRelevant = dev.capabilities?.some(c => IMPORT_RELEVANT_CAPS.includes(c));
             if (!isRelevant) return;
 
             // ROOMS (persisted by id; mapped by Hubitat's room display name)
@@ -1910,6 +2014,28 @@ app.get('/api/hubitat/devices/all', async (req, res) => {
         res.json({ fetchedAt: lastHubitatFetchAt, count: devices.length, devices });
     } catch (err) {
         res.status(502).json({ error: err?.message || String(err) });
+    }
+});
+
+// Advanced: return all devices + an "import relevance" analysis + summary.
+// This is meant to help decide which currently-ignored device types should be supported next.
+app.get('/api/hubitat/devices/all/advanced', async (req, res) => {
+    try {
+        const devices = await fetchHubitatAllDevices();
+        const analyzed = devices.map((d) => ({
+            ...d,
+            analysis: analyzeHubitatDeviceForImport(d),
+        }));
+
+        const summary = summarizeAdvancedDeviceAnalysis(analyzed);
+        return res.json({
+            fetchedAt: lastHubitatFetchAt,
+            count: devices.length,
+            summary,
+            devices: analyzed,
+        });
+    } catch (err) {
+        return res.status(502).json({ error: err?.message || String(err) });
     }
 });
 
