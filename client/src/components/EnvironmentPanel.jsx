@@ -200,7 +200,7 @@ const MetricCard = ({
           <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
             {title}
           </div>
-          <div className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight text-white ${valueClassName || ''}`}>
+          <div className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight text-white truncate ${valueClassName || ''}`}>
             {value}
           </div>
           {sub ? (
@@ -209,10 +209,10 @@ const MetricCard = ({
         </div>
 
         <div
-          className={`shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+          className={`shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
         >
           {React.createElement(IconComponent, {
-            className: `w-6 h-6 md:w-7 md:h-7 ${uiScheme?.metricIcon || 'text-neon-blue'}`,
+            className: `w-5 h-5 md:w-6 md:h-6 ${uiScheme?.metricIcon || 'text-neon-blue'}`,
           })}
         </div>
       </div>
@@ -249,11 +249,11 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
           </div>
         </div>
 
-        <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
+        <div className="shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
           {busy ? (
-            <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
+            <Loader2 className={`w-5 h-5 md:w-6 md:h-6 animate-spin ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
           ) : (
-            <Power className={`w-6 h-6 md:w-7 md:h-7 ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/60'}`} />
+            <Power className={`w-5 h-5 md:w-6 md:h-6 ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/60'}`} />
           )}
         </div>
       </div>
