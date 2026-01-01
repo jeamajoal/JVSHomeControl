@@ -452,7 +452,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
           <MetricCard
             title="Temperature"
             value={formatTemp(metrics.temperature)}
-            sub={metrics.temperature === null ? 'No sensor' : 'Average'}
+            sub={metrics.temperature === null ? 'No sensor' : null}
             icon={Thermometer}
             accentClassName="border-white/10"
             iconWrapClassName="bg-white/5"
@@ -461,7 +461,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
           <MetricCard
             title="Humidity"
             value={metrics.humidity === null ? '—' : formatPercent(metrics.humidity)}
-            sub={metrics.humidity === null ? 'No sensor' : 'Average'}
+            sub={metrics.humidity === null ? 'No sensor' : null}
             icon={Droplets}
             accentClassName="border-white/10"
             valueClassName={uiScheme?.selectedText || 'text-neon-blue'}
@@ -471,7 +471,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme }
           <MetricCard
             title="Illuminance"
             value={metrics.illuminance === null ? '—' : formatLux(metrics.illuminance)}
-            sub={metrics.illuminance === null ? 'No sensor' : 'Average'}
+            sub={metrics.illuminance === null ? 'No sensor' : null}
             icon={Sun}
             accentClassName="border-white/10"
             valueClassName="text-neon-green"
