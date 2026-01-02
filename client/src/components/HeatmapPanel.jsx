@@ -356,7 +356,8 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
     if (mode === 'temperature') {
       const { cold, comfy, warm } = climateTolerances.temperatureF;
       const band = v < cold ? 'cold' : v < comfy ? 'comfy' : v < warm ? 'warm' : 'hot';
-      const colorId = climateToleranceColors.temperatureF[band] || (band === 'cold' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'warm' ? 'warning' : 'neon-red');
+      const fallback = band === 'cold' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'warm' ? 'warning' : 'neon-red';
+      const colorId = normalizeToleranceColorId(climateToleranceColors?.temperatureF?.[band], fallback);
       const style = getToleranceColorStyle(colorId);
       return {
         colorClass: style.bgTemp,
@@ -367,7 +368,8 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
     if (mode === 'humidity') {
       const { dry, comfy, humid } = climateTolerances.humidityPct;
       const band = v < dry ? 'dry' : v < comfy ? 'comfy' : v < humid ? 'humid' : 'veryHumid';
-      const colorId = climateToleranceColors.humidityPct[band] || (band === 'dry' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'humid' ? 'warning' : 'neon-red');
+      const fallback = band === 'dry' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'humid' ? 'warning' : 'neon-red';
+      const colorId = normalizeToleranceColorId(climateToleranceColors?.humidityPct?.[band], fallback);
       const style = getToleranceColorStyle(colorId);
       return {
         colorClass: style.bgHum,
@@ -378,7 +380,8 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
     // illuminance
     const { dark, dim, bright } = climateTolerances.illuminanceLux;
     const band = v < dark ? 'dark' : v < dim ? 'dim' : v < bright ? 'bright' : 'veryBright';
-    const colorId = climateToleranceColors.illuminanceLux[band] || (band === 'dark' ? 'neon-blue' : band === 'dim' ? 'neon-green' : band === 'bright' ? 'warning' : 'neon-green');
+    const fallback = band === 'dark' ? 'neon-blue' : band === 'dim' ? 'neon-green' : band === 'bright' ? 'warning' : 'neon-green';
+    const colorId = normalizeToleranceColorId(climateToleranceColors?.illuminanceLux?.[band], fallback);
     const style = getToleranceColorStyle(colorId);
     if (band === 'veryBright') {
       return {
