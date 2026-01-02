@@ -193,6 +193,10 @@ const MetricCard = ({
   className,
   uiScheme,
 }) => {
+  const effectiveValueClassName = (valueClassName && String(valueClassName).trim().length)
+    ? valueClassName
+    : 'text-white';
+
   return (
     <div className={`glass-panel p-4 md:p-5 border ${accentClassName} ${className || ''}`.trim()}>
       <div className="flex items-center justify-between gap-4">
@@ -200,7 +204,7 @@ const MetricCard = ({
           <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
             {title}
           </div>
-          <div className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight text-white truncate ${valueClassName || ''}`}>
+          <div className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}>
             {value}
           </div>
           {sub ? (
