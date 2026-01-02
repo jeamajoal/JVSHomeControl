@@ -537,7 +537,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                 ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
                 : 'text-white'
             }
-            iconWrapClassName={uiScheme?.headerIcon || 'bg-neon-blue/10 border-neon-blue/30'}
+            iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
           <MetricCard
@@ -551,7 +551,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                 ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
                 : 'text-white'
             }
-            iconWrapClassName="bg-neon-green/10 border-neon-green/30"
+            iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
         </div>
