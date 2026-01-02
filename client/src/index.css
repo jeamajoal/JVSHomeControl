@@ -32,15 +32,22 @@
 
 /* Utility pages (Settings / Events): slightly brighter and more structured. */
 .utility-page {
-  @apply p-3 md:p-4;
+  @apply p-3 md:p-4 text-sm md:text-base;
 }
 
 .utility-panel {
-  @apply rounded-2xl border border-white/15 bg-white/5 backdrop-blur-xl shadow-2xl;
+  @apply rounded-2xl border border-white/20 bg-white/10 backdrop-blur-xl shadow-2xl;
 }
 
 .utility-group {
-  @apply rounded-2xl border border-white/15 bg-black/10;
+  @apply rounded-2xl border-2 border-white/20 bg-black/20;
+}
+
+/* Make form controls easier to read/tap on tablets. */
+.utility-page input,
+.utility-page select,
+.utility-page textarea {
+  font-size: 16px;
 }
 
 /* Hide number input spinners (kiosk-friendly typing). */
@@ -65,8 +72,8 @@ select.menu-select option {
 
 /* Custom Scrollbar for Webkit */
 ::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 ::-webkit-scrollbar-track {

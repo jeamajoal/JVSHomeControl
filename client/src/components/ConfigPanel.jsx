@@ -1034,7 +1034,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Adjust the thresholds used for Climate colors (Temperature/Humidity/Illuminance).
             </div>
 
-            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-3">
+            <div className="mt-4 utility-group p-4">
               <label className="flex items-center justify-between gap-4 select-none">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
@@ -1064,7 +1064,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 />
               </label>
 
-              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="mt-3 utility-group p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
@@ -1127,7 +1127,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : null}
             </div>
 
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+            <div className="mt-3 utility-group p-4">
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                 Home Sensor Indicator Colors
               </div>
@@ -1174,7 +1174,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : null}
             </div>
 
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+            <div className="mt-3 utility-group p-4">
               <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                 Weather (Open-Meteo)
               </div>
@@ -1267,7 +1267,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             ) : null}
 
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="utility-group p-4">
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Temperature (°F)</div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {[{ k: 'cold', label: 'Cold <' }, { k: 'comfy', label: 'Comfy <' }, { k: 'warm', label: 'Warm <' }].map(({ k, label }) => (
@@ -1320,7 +1320,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="utility-group p-4">
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Humidity (%)</div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {[{ k: 'dry', label: 'Dry <' }, { k: 'comfy', label: 'Comfy <' }, { k: 'humid', label: 'Humid <' }].map(({ k, label }) => (
@@ -1373,7 +1373,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="utility-group p-4">
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Illuminance (lux)</div>
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   {[{ k: 'dark', label: 'Dark <' }, { k: 'dim', label: 'Dim <' }, { k: 'bright', label: 'Bright <' }].map(({ k, label }) => (
