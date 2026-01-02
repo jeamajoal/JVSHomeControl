@@ -30,6 +30,18 @@
   @apply bg-surface/30 backdrop-blur-xl border border-white/5 rounded-2xl shadow-2xl;
 }
 
+/* Hide number input spinners (kiosk-friendly typing). */
+input[type="number"].no-spinner {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+input[type="number"].no-spinner::-webkit-outer-spin-button,
+input[type="number"].no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* Custom Scrollbar for Webkit */
 ::-webkit-scrollbar {
   width: 6px;

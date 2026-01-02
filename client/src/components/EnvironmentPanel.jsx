@@ -376,39 +376,65 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
   };
 };
 
-const getToleranceTextClass = (metric, value, climateTolerances) => {
+const textClassForColorId = (colorId) => {
+  switch (String(colorId || '').trim()) {
+    case 'neon-blue': return 'text-neon-blue';
+    case 'neon-green': return 'text-neon-green';
+    case 'warning': return 'text-warning';
+    case 'neon-red': return 'text-neon-red';
+    default: return '';
+  }
+};
+
+const getToleranceTextClass = (metric, value, climateTolerances, climateToleranceColors) => {
   const v = asNumber(value);
   if (v === null) return '';
 
   if (!climateTolerances || typeof climateTolerances !== 'object') return '';
 
+  const colors = (climateToleranceColors && typeof climateToleranceColors === 'object')
+    ? climateToleranceColors
+    : {};
+
   if (metric === 'temperature') {
     const { cold, comfy, warm } = climateTolerances.temperatureF || {};
-    if (Number.isFinite(cold) && v < cold) return 'text-neon-blue';
-    if (Number.isFinite(comfy) && v < comfy) return 'text-neon-green';
-    if (Number.isFinite(warm) && v < warm) return 'text-warning';
-    return 'text-neon-red';
+    const group = (colors.temperatureF && typeof colors.temperatureF === 'object') ? colors.temperatureF : {};
+    const band = (Number.isFinite(cold) && v < cold) ? 'cold'
+      : (Number.isFinite(comfy) && v < comfy) ? 'comfy'
+      : (Number.isFinite(warm) && v < warm) ? 'warm'
+      : 'hot';
+
+    const fallback = band === 'cold' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'warm' ? 'warning' : 'neon-red';
+    return textClassForColorId(group[band] || fallback);
   }
 
   if (metric === 'humidity') {
     const { dry, comfy, humid } = climateTolerances.humidityPct || {};
-    if (Number.isFinite(dry) && v < dry) return 'text-neon-blue';
-    if (Number.isFinite(comfy) && v < comfy) return 'text-neon-green';
-    if (Number.isFinite(humid) && v < humid) return 'text-warning';
-    return 'text-neon-red';
+    const group = (colors.humidityPct && typeof colors.humidityPct === 'object') ? colors.humidityPct : {};
+    const band = (Number.isFinite(dry) && v < dry) ? 'dry'
+      : (Number.isFinite(comfy) && v < comfy) ? 'comfy'
+      : (Number.isFinite(humid) && v < humid) ? 'humid'
+      : 'veryHumid';
+
+    const fallback = band === 'dry' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'humid' ? 'warning' : 'neon-red';
+    return textClassForColorId(group[band] || fallback);
   }
 
   // illuminance
   const { dark, dim, bright } = climateTolerances.illuminanceLux || {};
-  if (Number.isFinite(dark) && v < dark) return 'text-neon-blue';
-  if (Number.isFinite(dim) && v < dim) return 'text-neon-green';
-  if (Number.isFinite(bright) && v < bright) return 'text-warning';
-  return 'text-neon-green';
+  const group = (colors.illuminanceLux && typeof colors.illuminanceLux === 'object') ? colors.illuminanceLux : {};
+  const band = (Number.isFinite(dark) && v < dark) ? 'dark'
+    : (Number.isFinite(dim) && v < dim) ? 'dim'
+    : (Number.isFinite(bright) && v < bright) ? 'bright'
+    : 'veryBright';
+
+  const fallback = band === 'dark' ? 'neon-blue' : band === 'dim' ? 'neon-green' : band === 'bright' ? 'warning' : 'neon-green';
+  return textClassForColorId(group[band] || fallback);
 };
 
-const getColorizedValueClass = (metric, value, climateTolerances, enabled) => {
+const getColorizedValueClass = (metric, value, climateTolerances, climateToleranceColors, enabled) => {
   if (!enabled) return '';
-  const cls = getToleranceTextClass(metric, value, climateTolerances);
+  const cls = getToleranceTextClass(metric, value, climateTolerances, climateToleranceColors);
   return cls ? `${cls} neon-text` : '';
 };
 
@@ -424,7 +450,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, colorizeHomeValues }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
@@ -495,7 +521,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             sub={metrics.temperature === null ? 'No sensor' : null}
             icon={Thermometer}
             accentClassName="border-white/10"
-            valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, colorizeHomeValues)}
+            valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
@@ -507,7 +533,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             accentClassName="border-white/10"
             valueClassName={
               colorizeHomeValues
-                ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, true)
+                ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
                 : (uiScheme?.selectedText || 'text-neon-blue')
             }
             iconWrapClassName={uiScheme?.headerIcon || 'bg-neon-blue/10 border-neon-blue/30'}
@@ -521,7 +547,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             accentClassName="border-white/10"
             valueClassName={
               colorizeHomeValues
-                ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, true)
+                ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
                 : 'text-neon-green'
             }
             iconWrapClassName="bg-neon-green/10 border-neon-green/30"
@@ -641,6 +667,43 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
       },
     };
   }, [config?.ui?.climateTolerances]);
+
+  const climateToleranceColors = useMemo(() => {
+    const raw = (config?.ui?.climateToleranceColors && typeof config.ui.climateToleranceColors === 'object')
+      ? config.ui.climateToleranceColors
+      : {};
+
+    const t = (raw.temperatureF && typeof raw.temperatureF === 'object') ? raw.temperatureF : {};
+    const h = (raw.humidityPct && typeof raw.humidityPct === 'object') ? raw.humidityPct : {};
+    const l = (raw.illuminanceLux && typeof raw.illuminanceLux === 'object') ? raw.illuminanceLux : {};
+
+    const allowed = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
+    const pick = (v, fallback) => {
+      const s = String(v || '').trim();
+      return allowed.has(s) ? s : fallback;
+    };
+
+    return {
+      temperatureF: {
+        cold: pick(t.cold, 'neon-blue'),
+        comfy: pick(t.comfy, 'neon-green'),
+        warm: pick(t.warm, 'warning'),
+        hot: pick(t.hot, 'neon-red'),
+      },
+      humidityPct: {
+        dry: pick(h.dry, 'neon-blue'),
+        comfy: pick(h.comfy, 'neon-green'),
+        humid: pick(h.humid, 'warning'),
+        veryHumid: pick(h.veryHumid, 'neon-red'),
+      },
+      illuminanceLux: {
+        dark: pick(l.dark, 'neon-blue'),
+        dim: pick(l.dim, 'neon-green'),
+        bright: pick(l.bright, 'warning'),
+        veryBright: pick(l.veryBright, 'neon-green'),
+      },
+    };
+  }, [config?.ui?.climateToleranceColors]);
 
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
@@ -822,7 +885,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               subClassName="mt-2 text-xs text-white/45"
               icon={Cloud}
               accentClassName="border-white/10"
-              valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, colorizeHomeValues)}
+              valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
               uiScheme={resolvedUiScheme}
             />
             <MetricCard
@@ -835,7 +898,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               }
               icon={Thermometer}
               accentClassName="border-white/10"
-              valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, colorizeHomeValues)}
+              valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
               iconWrapClassName="bg-white/5"
               uiScheme={resolvedUiScheme}
             />
@@ -877,6 +940,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   allowedControlIds={allowedControlIds}
                   uiScheme={resolvedUiScheme}
                   climateTolerances={climateTolerances}
+                  climateToleranceColors={climateToleranceColors}
                   colorizeHomeValues={colorizeHomeValues}
                 />
               ))

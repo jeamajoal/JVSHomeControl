@@ -535,6 +535,34 @@ function normalizePersistedConfig(raw) {
         illuminanceLux: { dark: 50, dim: 250, bright: 600 },
     };
 
+    const DEFAULT_TOLERANCE_COLORS = {
+        temperatureF: { cold: 'neon-blue', comfy: 'neon-green', warm: 'warning', hot: 'neon-red' },
+        humidityPct: { dry: 'neon-blue', comfy: 'neon-green', humid: 'warning', veryHumid: 'neon-red' },
+        illuminanceLux: { dark: 'neon-blue', dim: 'neon-green', bright: 'warning', veryBright: 'neon-green' },
+    };
+
+    const ALLOWED_TOLERANCE_COLOR_IDS = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
+
+    const colorsRaw = (uiRaw.climateToleranceColors && typeof uiRaw.climateToleranceColors === 'object')
+        ? uiRaw.climateToleranceColors
+        : {};
+
+    const pickColorGroup = (rawObj, keys, fallback) => {
+        const outObj = { ...fallback };
+        if (!rawObj || typeof rawObj !== 'object') return outObj;
+        for (const k of keys) {
+            const v = String(rawObj[k] ?? '').trim();
+            if (ALLOWED_TOLERANCE_COLOR_IDS.has(v)) outObj[k] = v;
+        }
+        return outObj;
+    };
+
+    const climateToleranceColors = {
+        temperatureF: pickColorGroup(colorsRaw.temperatureF, ['cold', 'comfy', 'warm', 'hot'], DEFAULT_TOLERANCE_COLORS.temperatureF),
+        humidityPct: pickColorGroup(colorsRaw.humidityPct, ['dry', 'comfy', 'humid', 'veryHumid'], DEFAULT_TOLERANCE_COLORS.humidityPct),
+        illuminanceLux: pickColorGroup(colorsRaw.illuminanceLux, ['dark', 'dim', 'bright', 'veryBright'], DEFAULT_TOLERANCE_COLORS.illuminanceLux),
+    };
+
     const normalizeTriplet = (rawObj, keys, fallback) => {
         const outObj = { ...fallback };
         if (!rawObj || typeof rawObj !== 'object') return outObj;
@@ -566,6 +594,8 @@ function normalizePersistedConfig(raw) {
         },
         // Back-compat: always include climate tolerances so clients can rely on them.
         climateTolerances,
+        // Back-compat: always include tolerance colors (used by Heatmap + optional Home value coloring).
+        climateToleranceColors,
     };
 
     return out;
@@ -592,13 +622,18 @@ function loadPersistedConfig() {
             const hadAlertSounds = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.alertSounds && typeof raw.ui.alertSounds === 'object');
             const hadClimateTolerances = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.climateTolerances && typeof raw.ui.climateTolerances === 'object');
             const hadColorizeHomeValues = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'colorizeHomeValues'));
+            const hadClimateToleranceColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'climateToleranceColors'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadClimateToleranceColors) {
                 lastPersistedSerialized = stableStringify(raw);
                 const label = !hadAlertSounds
                     ? 'migrate-ui-alert-sounds'
-                    : (!hadClimateTolerances ? 'migrate-ui-climate-tolerances' : 'migrate-ui-colorize-home-values');
+                    : (!hadClimateTolerances
+                        ? 'migrate-ui-climate-tolerances'
+                        : (!hadColorizeHomeValues
+                            ? 'migrate-ui-colorize-home-values'
+                            : 'migrate-ui-climate-tolerance-colors'));
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
@@ -679,6 +714,7 @@ function rebuildRuntimeConfigFromPersisted() {
             colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
             alertSounds: persistedConfig?.ui?.alertSounds,
             climateTolerances: persistedConfig?.ui?.climateTolerances,
+            climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
         },
     };
 }
@@ -1246,6 +1282,7 @@ async function syncHubitatDataInner() {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         sensorStatuses = newStatuses;
@@ -1510,6 +1547,7 @@ app.post('/api/rooms', (req, res) => {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         emitConfigUpdateSafe();
@@ -1559,6 +1597,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         emitConfigUpdateSafe();
@@ -1598,6 +1637,7 @@ app.post('/api/labels', (req, res) => {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         emitConfigUpdateSafe();
@@ -1635,6 +1675,7 @@ app.put('/api/labels/:id', (req, res) => {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         emitConfigUpdateSafe();
@@ -1670,6 +1711,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         emitConfigUpdateSafe();
@@ -1905,6 +1947,70 @@ app.put('/api/ui/climate-tolerances', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             climateTolerances: persistedConfig?.ui?.climateTolerances,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update UI tolerance colors from the kiosk.
+// Expected payload: { climateToleranceColors: { temperatureF: { cold, comfy, warm, hot }, humidityPct: { dry, comfy, humid, veryHumid }, illuminanceLux: { dark, dim, bright, veryBright } } }
+app.put('/api/ui/climate-tolerance-colors', (req, res) => {
+    const incoming = req.body?.climateToleranceColors;
+    if (!incoming || typeof incoming !== 'object') {
+        return res.status(400).json({ error: 'Missing climateToleranceColors' });
+    }
+
+    const ALLOWED = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
+
+    const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.climateToleranceColors && typeof persistedConfig.ui.climateToleranceColors === 'object')
+        ? persistedConfig.ui.climateToleranceColors
+        : {};
+
+    const pickGroup = (groupKey, keys) => {
+        const base = (prev[groupKey] && typeof prev[groupKey] === 'object') ? prev[groupKey] : {};
+        const inc = (incoming[groupKey] && typeof incoming[groupKey] === 'object') ? incoming[groupKey] : {};
+        const out = { ...base };
+        for (const k of keys) {
+            if (inc[k] === undefined) continue;
+            const v = String(inc[k] ?? '').trim();
+            if (!ALLOWED.has(v)) {
+                return { error: 'Invalid color id', field: `${groupKey}.${k}`, value: v, allowed: Array.from(ALLOWED) };
+            }
+            out[k] = v;
+        }
+        return { value: out };
+    };
+
+    const t = pickGroup('temperatureF', ['cold', 'comfy', 'warm', 'hot']);
+    if (t.error) return res.status(400).json(t);
+    const h = pickGroup('humidityPct', ['dry', 'comfy', 'humid', 'veryHumid']);
+    if (h.error) return res.status(400).json(h);
+    const l = pickGroup('illuminanceLux', ['dark', 'dim', 'bright', 'veryBright']);
+    if (l.error) return res.status(400).json(l);
+
+    const next = {
+        temperatureF: t.value,
+        humidityPct: h.value,
+        illuminanceLux: l.value,
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            climateToleranceColors: next,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-climate-tolerance-colors');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
         },
     };
     io.emit('config_update', config);
@@ -2400,6 +2506,7 @@ app.post('/api/layout', (req, res) => {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         io.emit('config_update', config);
@@ -2440,6 +2547,7 @@ app.delete('/api/layout', (req, res) => {
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
+                climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
             },
         };
         io.emit('config_update', config);

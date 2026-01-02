@@ -66,6 +66,19 @@ async function saveClimateTolerances(climateTolerances) {
   return res.json().catch(() => ({}));
 }
 
+async function saveClimateToleranceColors(climateToleranceColors) {
+  const res = await fetch(`${API_HOST}/api/ui/climate-tolerance-colors`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ climateToleranceColors: climateToleranceColors || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Climate tolerance colors save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveColorizeHomeValues(colorizeHomeValues) {
   const res = await fetch(`${API_HOST}/api/ui/colorize-home-values`, {
     method: 'PUT',
@@ -120,6 +133,18 @@ const COLOR_SCHEME_CHOICES = [
   { id: 'neon-green', label: 'Neon Green', vibe: 'Wild' },
   { id: 'neon-red', label: 'Neon Red', vibe: 'Wild' },
 ];
+
+const TOLERANCE_COLOR_CHOICES = [
+  { id: 'neon-blue', label: 'Neon Blue', swatch: 'bg-neon-blue' },
+  { id: 'neon-green', label: 'Neon Green', swatch: 'bg-neon-green' },
+  { id: 'warning', label: 'Amber', swatch: 'bg-warning' },
+  { id: 'neon-red', label: 'Neon Red', swatch: 'bg-neon-red' },
+];
+
+const toleranceSwatchClass = (id) => {
+  const hit = TOLERANCE_COLOR_CHOICES.find((c) => c.id === id);
+  return hit?.swatch || 'bg-white/20';
+};
 
 async function addManualRoom(name) {
   const res = await fetch(`${API_HOST}/api/rooms`, {
@@ -234,6 +259,43 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     };
   }, [config?.ui?.climateTolerances]);
 
+  const climateToleranceColors = useMemo(() => {
+    const raw = (config?.ui?.climateToleranceColors && typeof config.ui.climateToleranceColors === 'object')
+      ? config.ui.climateToleranceColors
+      : {};
+
+    const t = (raw.temperatureF && typeof raw.temperatureF === 'object') ? raw.temperatureF : {};
+    const h = (raw.humidityPct && typeof raw.humidityPct === 'object') ? raw.humidityPct : {};
+    const l = (raw.illuminanceLux && typeof raw.illuminanceLux === 'object') ? raw.illuminanceLux : {};
+
+    const allowed = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
+    const pick = (v, fallback) => {
+      const s = String(v || '').trim();
+      return allowed.has(s) ? s : fallback;
+    };
+
+    return {
+      temperatureF: {
+        cold: pick(t.cold, 'neon-blue'),
+        comfy: pick(t.comfy, 'neon-green'),
+        warm: pick(t.warm, 'warning'),
+        hot: pick(t.hot, 'neon-red'),
+      },
+      humidityPct: {
+        dry: pick(h.dry, 'neon-blue'),
+        comfy: pick(h.comfy, 'neon-green'),
+        humid: pick(h.humid, 'warning'),
+        veryHumid: pick(h.veryHumid, 'neon-red'),
+      },
+      illuminanceLux: {
+        dark: pick(l.dark, 'neon-blue'),
+        dim: pick(l.dim, 'neon-green'),
+        bright: pick(l.bright, 'warning'),
+        veryBright: pick(l.veryBright, 'neon-green'),
+      },
+    };
+  }, [config?.ui?.climateToleranceColors]);
+
   const [climateDraft, setClimateDraft] = useState(() => ({
     temperatureF: { cold: 68, comfy: 72, warm: 74 },
     humidityPct: { dry: 35, comfy: 55, humid: 65 },
@@ -241,6 +303,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }));
   const [climateDirty, setClimateDirty] = useState(false);
   const [climateError, setClimateError] = useState(null);
+  const [climateColorsDraft, setClimateColorsDraft] = useState(() => ({
+    temperatureF: { cold: 'neon-blue', comfy: 'neon-green', warm: 'warning', hot: 'neon-red' },
+    humidityPct: { dry: 'neon-blue', comfy: 'neon-green', humid: 'warning', veryHumid: 'neon-red' },
+    illuminanceLux: { dark: 'neon-blue', dim: 'neon-green', bright: 'warning', veryBright: 'neon-green' },
+  }));
+  const [climateColorsDirty, setClimateColorsDirty] = useState(false);
+  const [climateColorsError, setClimateColorsError] = useState(null);
   const [homeValueColorError, setHomeValueColorError] = useState(null);
 
   const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
@@ -249,6 +318,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (climateDirty) return;
     setClimateDraft(climateTolerances);
   }, [climateDirty, climateTolerances]);
+
+  useEffect(() => {
+    if (climateColorsDirty) return;
+    setClimateColorsDraft(climateToleranceColors);
+  }, [climateColorsDirty, climateToleranceColors]);
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
@@ -623,6 +697,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {climateError}</div>
             ) : null}
 
+            {climateColorsError ? (
+              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {climateColorsError}</div>
+            ) : null}
+
             <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Temperature (°F)</div>
@@ -642,8 +720,36 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             temperatureF: { ...prev.temperatureF, [k]: v },
                           }));
                         }}
-                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                        className="no-spinner mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
                       />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[{ k: 'cold', label: 'Cold' }, { k: 'comfy', label: 'Comfy' }, { k: 'warm', label: 'Warm' }, { k: 'hot', label: 'Hot' }].map(({ k, label }) => (
+                    <label key={k} className="block">
+                      <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                        <span>{label} Color</span>
+                        <span className={`inline-block h-2 w-2 rounded-full ${toleranceSwatchClass(climateColorsDraft.temperatureF[k])}`} />
+                      </div>
+                      <select
+                        value={climateColorsDraft.temperatureF[k]}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const next = String(e.target.value);
+                          setClimateColorsDirty(true);
+                          setClimateColorsDraft((prev) => ({
+                            ...prev,
+                            temperatureF: { ...prev.temperatureF, [k]: next },
+                          }));
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      >
+                        {TOLERANCE_COLOR_CHOICES.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
                     </label>
                   ))}
                 </div>
@@ -667,8 +773,36 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             humidityPct: { ...prev.humidityPct, [k]: v },
                           }));
                         }}
-                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                        className="no-spinner mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
                       />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[{ k: 'dry', label: 'Dry' }, { k: 'comfy', label: 'Comfy' }, { k: 'humid', label: 'Humid' }, { k: 'veryHumid', label: 'Very Humid' }].map(({ k, label }) => (
+                    <label key={k} className="block">
+                      <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                        <span>{label} Color</span>
+                        <span className={`inline-block h-2 w-2 rounded-full ${toleranceSwatchClass(climateColorsDraft.humidityPct[k])}`} />
+                      </div>
+                      <select
+                        value={climateColorsDraft.humidityPct[k]}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const next = String(e.target.value);
+                          setClimateColorsDirty(true);
+                          setClimateColorsDraft((prev) => ({
+                            ...prev,
+                            humidityPct: { ...prev.humidityPct, [k]: next },
+                          }));
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      >
+                        {TOLERANCE_COLOR_CHOICES.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
                     </label>
                   ))}
                 </div>
@@ -692,8 +826,36 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             illuminanceLux: { ...prev.illuminanceLux, [k]: v },
                           }));
                         }}
-                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                        className="no-spinner mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
                       />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[{ k: 'dark', label: 'Dark' }, { k: 'dim', label: 'Dim' }, { k: 'bright', label: 'Bright' }, { k: 'veryBright', label: 'Very Bright' }].map(({ k, label }) => (
+                    <label key={k} className="block">
+                      <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                        <span>{label} Color</span>
+                        <span className={`inline-block h-2 w-2 rounded-full ${toleranceSwatchClass(climateColorsDraft.illuminanceLux[k])}`} />
+                      </div>
+                      <select
+                        value={climateColorsDraft.illuminanceLux[k]}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const next = String(e.target.value);
+                          setClimateColorsDirty(true);
+                          setClimateColorsDraft((prev) => ({
+                            ...prev,
+                            illuminanceLux: { ...prev.illuminanceLux, [k]: next },
+                          }));
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      >
+                        {TOLERANCE_COLOR_CHOICES.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
                     </label>
                   ))}
                 </div>
@@ -703,37 +865,53 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             <div className="mt-4 flex items-center gap-3">
               <button
                 type="button"
-                disabled={!connected || busy || !climateDirty}
+                disabled={!connected || busy || (!climateDirty && !climateColorsDirty)}
                 onClick={async () => {
                   const inc3 = (a, b, c) => Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && a < b && b < c;
                   const t = climateDraft.temperatureF;
                   const h = climateDraft.humidityPct;
                   const l = climateDraft.illuminanceLux;
 
-                  if (!inc3(t.cold, t.comfy, t.warm)) {
-                    setClimateError('Temperature thresholds must be increasing (cold < comfy < warm).');
-                    return;
-                  }
-                  if (!inc3(h.dry, h.comfy, h.humid)) {
-                    setClimateError('Humidity thresholds must be increasing (dry < comfy < humid).');
-                    return;
-                  }
-                  if (!inc3(l.dark, l.dim, l.bright)) {
-                    setClimateError('Illuminance thresholds must be increasing (dark < dim < bright).');
-                    return;
+                  if (climateDirty) {
+                    if (!inc3(t.cold, t.comfy, t.warm)) {
+                      setClimateError('Temperature thresholds must be increasing (cold < comfy < warm).');
+                      return;
+                    }
+                    if (!inc3(h.dry, h.comfy, h.humid)) {
+                      setClimateError('Humidity thresholds must be increasing (dry < comfy < humid).');
+                      return;
+                    }
+                    if (!inc3(l.dark, l.dim, l.bright)) {
+                      setClimateError('Illuminance thresholds must be increasing (dark < dim < bright).');
+                      return;
+                    }
                   }
 
                   setClimateError(null);
+                  setClimateColorsError(null);
                   setBusy(true);
                   try {
-                    await saveClimateTolerances({
-                      temperatureF: { cold: t.cold, comfy: t.comfy, warm: t.warm },
-                      humidityPct: { dry: h.dry, comfy: h.comfy, humid: h.humid },
-                      illuminanceLux: { dark: l.dark, dim: l.dim, bright: l.bright },
-                    });
-                    setClimateDirty(false);
+                    if (climateDirty) {
+                      await saveClimateTolerances({
+                        temperatureF: { cold: t.cold, comfy: t.comfy, warm: t.warm },
+                        humidityPct: { dry: h.dry, comfy: h.comfy, humid: h.humid },
+                        illuminanceLux: { dark: l.dark, dim: l.dim, bright: l.bright },
+                      });
+                      setClimateDirty(false);
+                    }
+
+                    if (climateColorsDirty) {
+                      await saveClimateToleranceColors({
+                        temperatureF: { ...climateColorsDraft.temperatureF },
+                        humidityPct: { ...climateColorsDraft.humidityPct },
+                        illuminanceLux: { ...climateColorsDraft.illuminanceLux },
+                      });
+                      setClimateColorsDirty(false);
+                    }
                   } catch (e) {
-                    setClimateError(e?.message || String(e));
+                    const msg = e?.message || String(e);
+                    if (climateDirty) setClimateError(msg);
+                    else setClimateColorsError(msg);
                   } finally {
                     setBusy(false);
                   }
@@ -743,7 +921,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 Save
               </button>
 
-              {climateDirty ? (
+              {(climateDirty || climateColorsDirty) ? (
                 <div className="text-xs text-white/45">Unsaved changes</div>
               ) : (
                 <div className="text-xs text-white/45">Saved</div>
