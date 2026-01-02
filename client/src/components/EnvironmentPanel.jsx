@@ -535,7 +535,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueClassName={
               colorizeHomeValues
                 ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
-                : (uiScheme?.selectedText || 'text-neon-blue')
+                : 'text-white'
             }
             iconWrapClassName={uiScheme?.headerIcon || 'bg-neon-blue/10 border-neon-blue/30'}
             uiScheme={uiScheme}
@@ -549,7 +549,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueClassName={
               colorizeHomeValues
                 ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
-                : 'text-neon-green'
+                : 'text-white'
             }
             iconWrapClassName="bg-neon-green/10 border-neon-green/30"
             uiScheme={uiScheme}
