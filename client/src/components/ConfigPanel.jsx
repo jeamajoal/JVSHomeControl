@@ -83,11 +83,17 @@ async function saveClimateToleranceColors(climateToleranceColors) {
   return res.json().catch(() => ({}));
 }
 
-async function saveColorizeHomeValues(colorizeHomeValues) {
+async function saveColorizeHomeValues(payload) {
+  const next = payload && typeof payload === 'object' ? payload : {};
   const res = await fetch(`${API_HOST}/api/ui/colorize-home-values`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ colorizeHomeValues: !!colorizeHomeValues }),
+    body: JSON.stringify({
+      colorizeHomeValues: !!next.colorizeHomeValues,
+      ...(next.colorizeHomeValuesOpacityPct === undefined
+        ? {}
+        : { colorizeHomeValuesOpacityPct: next.colorizeHomeValuesOpacityPct }),
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -357,11 +363,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [climateColorsError, setClimateColorsError] = useState(null);
   const [homeValueColorError, setHomeValueColorError] = useState(null);
 
+  const homeValueOpacityFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.colorizeHomeValuesOpacityPct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [config?.ui?.colorizeHomeValuesOpacityPct]);
+
+  const [homeValueOpacityDraft, setHomeValueOpacityDraft] = useState(() => 100);
+  const [homeValueOpacityDirty, setHomeValueOpacityDirty] = useState(false);
+
   const [sensorColorsDraft, setSensorColorsDraft] = useState(() => ({ motion: 'warning', door: 'neon-red' }));
   const [sensorColorsDirty, setSensorColorsDirty] = useState(false);
   const [sensorColorsError, setSensorColorsError] = useState(null);
 
   const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
+
+  useEffect(() => {
+    if (homeValueOpacityDirty) return;
+    setHomeValueOpacityDraft(homeValueOpacityFromConfig);
+  }, [homeValueOpacityDirty, homeValueOpacityFromConfig]);
 
   useEffect(() => {
     if (climateDirty) return;
@@ -749,7 +769,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                     setHomeValueColorError(null);
                     setBusy(true);
                     try {
-                      await saveColorizeHomeValues(next);
+                      await saveColorizeHomeValues({
+                        colorizeHomeValues: next,
+                        colorizeHomeValuesOpacityPct: homeValueOpacityDraft,
+                      });
                     } catch (err) {
                       setHomeValueColorError(err?.message || String(err));
                     } finally {
@@ -758,6 +781,84 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   }}
                 />
               </label>
+
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                      Color opacity
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Lower = more translucent (less intense color).
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={1}
+                      value={homeValueOpacityDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        const n = Number(raw);
+                        const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                        setHomeValueOpacityDirty(true);
+                        setHomeValueOpacityDraft(next);
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={homeValueOpacityDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                    setHomeValueOpacityDirty(true);
+                    setHomeValueOpacityDraft(next);
+                  }}
+                  className="mt-3 w-full"
+                />
+
+                <div className="mt-3 flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={!connected || busy || !homeValueOpacityDirty}
+                    onClick={async () => {
+                      setHomeValueColorError(null);
+                      setBusy(true);
+                      try {
+                        await saveColorizeHomeValues({
+                          colorizeHomeValues,
+                          colorizeHomeValuesOpacityPct: homeValueOpacityDraft,
+                        });
+                        setHomeValueOpacityDirty(false);
+                      } catch (err) {
+                        setHomeValueColorError(err?.message || String(err));
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${scheme.actionButton} ${(!connected || busy || !homeValueOpacityDirty) ? 'opacity-40' : ''}`}
+                  >
+                    Save Opacity
+                  </button>
+                  {!connected ? (
+                    <div className="text-xs text-white/45">Server offline: editing disabled.</div>
+                  ) : null}
+                </div>
+              </div>
+
               {homeValueColorError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeValueColorError}</div>
               ) : null}

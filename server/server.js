@@ -516,6 +516,15 @@ function normalizePersistedConfig(raw) {
 
     const colorizeHomeValues = uiRaw.colorizeHomeValues === true;
 
+    const clampInt = (n, min, max, fallback) => {
+        const num = (typeof n === 'number') ? n : Number(n);
+        if (!Number.isFinite(num)) return fallback;
+        const rounded = Math.round(num);
+        return Math.max(min, Math.min(max, rounded));
+    };
+
+    const colorizeHomeValuesOpacityPct = clampInt(uiRaw.colorizeHomeValuesOpacityPct, 0, 100, 100);
+
     const soundsRaw = (uiRaw.alertSounds && typeof uiRaw.alertSounds === 'object') ? uiRaw.alertSounds : {};
     const climateRaw = (uiRaw.climateTolerances && typeof uiRaw.climateTolerances === 'object') ? uiRaw.climateTolerances : {};
     const asFile = (v) => {
@@ -633,6 +642,7 @@ function normalizePersistedConfig(raw) {
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         colorScheme,
         colorizeHomeValues,
+        colorizeHomeValuesOpacityPct,
         // Back-compat: always include alertSounds, even if unset.
         alertSounds: {
             motion: asFile(soundsRaw.motion),
@@ -671,21 +681,19 @@ function loadPersistedConfig() {
             const hadAlertSounds = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.alertSounds && typeof raw.ui.alertSounds === 'object');
             const hadClimateTolerances = Boolean(raw?.ui && typeof raw.ui === 'object' && raw.ui.climateTolerances && typeof raw.ui.climateTolerances === 'object');
             const hadColorizeHomeValues = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'colorizeHomeValues'));
+            const hadColorizeHomeValuesOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'colorizeHomeValuesOpacityPct'));
             const hadClimateToleranceColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'climateToleranceColors'));
             const hadSensorIndicatorColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'sensorIndicatorColors'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadClimateToleranceColors || !hadSensorIndicatorColors) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors) {
                 lastPersistedSerialized = stableStringify(raw);
-                const label = !hadAlertSounds
-                    ? 'migrate-ui-alert-sounds'
-                    : (!hadClimateTolerances
-                        ? 'migrate-ui-climate-tolerances'
-                        : (!hadColorizeHomeValues
-                            ? 'migrate-ui-colorize-home-values'
-                            : (!hadClimateToleranceColors
-                                ? 'migrate-ui-climate-tolerance-colors'
-                                : 'migrate-ui-sensor-indicator-colors')));
+                let label = 'migrate-ui-sensor-indicator-colors';
+                if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
+                else if (!hadClimateTolerances) label = 'migrate-ui-climate-tolerances';
+                else if (!hadColorizeHomeValues) label = 'migrate-ui-colorize-home-values';
+                else if (!hadColorizeHomeValuesOpacityPct) label = 'migrate-ui-colorize-home-opacity';
+                else if (!hadClimateToleranceColors) label = 'migrate-ui-climate-tolerance-colors';
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
@@ -764,6 +772,7 @@ function rebuildRuntimeConfigFromPersisted() {
             allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
             colorScheme: persistedConfig?.ui?.colorScheme,
             colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+            colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
             alertSounds: persistedConfig?.ui?.alertSounds,
             climateTolerances: persistedConfig?.ui?.climateTolerances,
             climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -1333,6 +1342,7 @@ async function syncHubitatDataInner() {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -1599,6 +1609,7 @@ app.post('/api/rooms', (req, res) => {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -1651,6 +1662,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -1692,6 +1704,7 @@ app.post('/api/labels', (req, res) => {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -1731,6 +1744,7 @@ app.put('/api/labels/:id', (req, res) => {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -1768,6 +1782,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -1895,11 +1910,22 @@ app.put('/api/ui/color-scheme', (req, res) => {
 });
 
 // Update UI toggle for coloring Home values from the kiosk.
-// Expected payload: { colorizeHomeValues: boolean }
+// Expected payload: { colorizeHomeValues: boolean, colorizeHomeValuesOpacityPct?: number(0-100) }
 app.put('/api/ui/colorize-home-values', (req, res) => {
     const incoming = req.body?.colorizeHomeValues;
     if (typeof incoming !== 'boolean') {
         return res.status(400).json({ error: 'Missing colorizeHomeValues (boolean)' });
+    }
+
+    const opacityRaw = req.body?.colorizeHomeValuesOpacityPct;
+    const hasOpacity = opacityRaw !== undefined;
+    const opacityNum = (typeof opacityRaw === 'number') ? opacityRaw : Number(opacityRaw);
+    const opacityPct = hasOpacity && Number.isFinite(opacityNum)
+        ? Math.max(0, Math.min(100, Math.round(opacityNum)))
+        : null;
+
+    if (hasOpacity && opacityPct === null) {
+        return res.status(400).json({ error: 'Invalid colorizeHomeValuesOpacityPct (0-100)' });
     }
 
     persistedConfig = normalizePersistedConfig({
@@ -1907,6 +1933,7 @@ app.put('/api/ui/colorize-home-values', (req, res) => {
         ui: {
             ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
             colorizeHomeValues: incoming,
+            ...(opacityPct === null ? {} : { colorizeHomeValuesOpacityPct: opacityPct }),
         },
     });
 
@@ -1917,6 +1944,7 @@ app.put('/api/ui/colorize-home-values', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+            colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
         },
     };
     io.emit('config_update', config);
@@ -2673,6 +2701,7 @@ app.post('/api/layout', (req, res) => {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,
@@ -2715,6 +2744,7 @@ app.delete('/api/layout', (req, res) => {
                 allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
                 colorScheme: persistedConfig?.ui?.colorScheme,
                 colorizeHomeValues: persistedConfig?.ui?.colorizeHomeValues,
+                colorizeHomeValuesOpacityPct: persistedConfig?.ui?.colorizeHomeValuesOpacityPct,
                 alertSounds: persistedConfig?.ui?.alertSounds,
                 climateTolerances: persistedConfig?.ui?.climateTolerances,
                 climateToleranceColors: persistedConfig?.ui?.climateToleranceColors,

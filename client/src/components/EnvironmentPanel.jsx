@@ -192,6 +192,7 @@ const MetricCard = ({
   icon: IconComponent,
   accentClassName,
   valueClassName,
+  valueStyle,
   subClassName,
   iconWrapClassName,
   className,
@@ -208,7 +209,10 @@ const MetricCard = ({
           <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
             {title}
           </div>
-          <div className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}>
+          <div
+            style={valueStyle}
+            className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}
+          >
             {value}
           </div>
           {sub ? (
@@ -226,6 +230,14 @@ const MetricCard = ({
       </div>
     </div>
   );
+};
+
+const getColorizeOpacityStyle = (enabled, opacityPct) => {
+  if (!enabled) return undefined;
+  const raw = Number(opacityPct);
+  if (!Number.isFinite(raw)) return undefined;
+  const clamped = Math.max(0, Math.min(100, raw));
+  return { opacity: clamped / 100 };
 };
 
 const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
@@ -450,7 +462,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, sensorIndicatorColors }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
@@ -537,6 +549,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             icon={Thermometer}
             accentClassName="border-white/10"
             valueClassName={getColorizedValueClass('temperature', metrics.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
+            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
@@ -551,6 +564,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                 ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
                 : 'text-white'
             }
+            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
@@ -565,6 +579,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                 ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
                 : 'text-white'
             }
+            valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
           />
@@ -654,6 +669,11 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   );
 
   const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
+  const colorizeHomeValuesOpacityPct = useMemo(() => {
+    const raw = Number(config?.ui?.colorizeHomeValuesOpacityPct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [config?.ui?.colorizeHomeValuesOpacityPct]);
 
   const climateTolerances = useMemo(() => {
     const raw = (config?.ui?.climateTolerances && typeof config.ui.climateTolerances === 'object')
@@ -907,6 +927,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               icon={Cloud}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
+              valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               uiScheme={resolvedUiScheme}
             />
             <MetricCard
@@ -921,6 +942,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               icon={Thermometer}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
+              valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               iconWrapClassName="bg-white/5"
               uiScheme={resolvedUiScheme}
             />
@@ -961,6 +983,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   climateTolerances={climateTolerances}
                   climateToleranceColors={climateToleranceColors}
                   colorizeHomeValues={colorizeHomeValues}
+                  colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
                 />
               ))
