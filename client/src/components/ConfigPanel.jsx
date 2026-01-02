@@ -34,27 +34,6 @@ async function saveColorScheme(colorScheme) {
 }
 
 async function fetchSoundFiles() {
-  async function fetchOpenMeteoConfig() {
-    const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`);
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(text || `Open-Meteo config fetch failed (${res.status})`);
-    }
-    return res.json().catch(() => ({}));
-  }
-
-  async function saveOpenMeteoConfig(openMeteo) {
-    const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ openMeteo: openMeteo || {} }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(text || `Open-Meteo config save failed (${res.status})`);
-    }
-    return res.json().catch(() => ({}));
-  }
   const res = await fetch(`${API_HOST}/api/sounds`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -63,6 +42,28 @@ async function fetchSoundFiles() {
   const data = await res.json().catch(() => ({}));
   const files = Array.isArray(data?.files) ? data.files : [];
   return files.map((v) => String(v)).filter(Boolean);
+}
+
+async function fetchOpenMeteoConfig() {
+  const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Open-Meteo config fetch failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveOpenMeteoConfig(openMeteo) {
+  const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ openMeteo: openMeteo || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Open-Meteo config save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
 }
 
 async function saveAlertSounds(alertSounds) {
