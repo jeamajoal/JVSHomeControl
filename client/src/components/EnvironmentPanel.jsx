@@ -492,7 +492,15 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     metrics.humidity !== null ||
     metrics.illuminance !== null ||
     devices.some((d) => d.status?.attributes?.motion) ||
-    devices.some((d) => typeof d.status?.attributes?.contact === 'string' || typeof d.status?.attributes?.door === 'string');
+    devices.some((d) => typeof d.status?.attributes?.contact === 'string' || typeof d.status?.attributes?.door === 'string') ||
+    devices.some((d) => {
+      const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
+      return caps.includes('ContactSensor')
+        || caps.includes('MotionSensor')
+        || caps.includes('TemperatureMeasurement')
+        || caps.includes('RelativeHumidityMeasurement')
+        || caps.includes('IlluminanceMeasurement');
+    });
 
   const headerGlow = (metrics.motionActive || metrics.doorOpen)
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
