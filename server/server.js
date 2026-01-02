@@ -2542,6 +2542,95 @@ app.get('/api/weather', async (req, res) => {
     }
 });
 
+// Read the effective Open-Meteo settings (after env overrides).
+app.get('/api/weather/open-meteo-config', (req, res) => {
+    const open = settings?.weather?.openMeteo || {};
+    const env = {
+        lat: Boolean(String(process.env.OPEN_METEO_LAT || '').trim()),
+        lon: Boolean(String(process.env.OPEN_METEO_LON || '').trim()),
+        timezone: Boolean(String(process.env.OPEN_METEO_TZ || '').trim()),
+        temperatureUnit: Boolean(String(process.env.OPEN_METEO_TEMPERATURE_UNIT || '').trim()),
+        windSpeedUnit: Boolean(String(process.env.OPEN_METEO_WIND_SPEED_UNIT || '').trim()),
+        precipitationUnit: Boolean(String(process.env.OPEN_METEO_PRECIPITATION_UNIT || '').trim()),
+    };
+
+    return res.json({
+        ok: true,
+        openMeteo: {
+            lat: String(open.lat ?? ''),
+            lon: String(open.lon ?? ''),
+            timezone: String(open.timezone ?? 'auto'),
+            temperatureUnit: String(open.temperatureUnit ?? 'fahrenheit'),
+            windSpeedUnit: String(open.windSpeedUnit ?? 'mph'),
+            precipitationUnit: String(open.precipitationUnit ?? 'inch'),
+        },
+        overriddenByEnv: env,
+    });
+});
+
+// Update Open-Meteo location in server/data/config.json.
+// Note: OPEN_METEO_* env vars still override these values.
+app.put('/api/weather/open-meteo-config', (req, res) => {
+    const raw = req.body && typeof req.body === 'object' ? req.body : {};
+    const incoming = raw.openMeteo && typeof raw.openMeteo === 'object' ? raw.openMeteo : raw;
+
+    const latRaw = String(incoming.lat ?? '').trim();
+    const lonRaw = String(incoming.lon ?? '').trim();
+    const tzRaw = String(incoming.timezone ?? '').trim();
+
+    if (!latRaw || !lonRaw) {
+        return res.status(400).json({ error: 'Missing lat/lon' });
+    }
+
+    const latParsed = parseDmsOrDecimal(latRaw);
+    const lonParsed = parseDmsOrDecimal(lonRaw);
+    if (!Number.isFinite(latParsed) || !Number.isFinite(lonParsed)) {
+        return res.status(400).json({ error: 'Invalid lat/lon (must be decimal or DMS like 35°29\'44.9"N)' });
+    }
+
+    const nextTimezone = tzRaw || 'auto';
+
+    const prevOpen = (persistedConfig?.weather && persistedConfig.weather.openMeteo && typeof persistedConfig.weather.openMeteo === 'object')
+        ? persistedConfig.weather.openMeteo
+        : {};
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        weather: {
+            ...((persistedConfig && persistedConfig.weather) ? persistedConfig.weather : {}),
+            openMeteo: {
+                ...prevOpen,
+                lat: latRaw,
+                lon: lonRaw,
+                timezone: nextTimezone,
+            },
+        },
+    });
+
+    // Apply immediately for subsequent fetches.
+    settings.weather = persistedConfig.weather;
+    applyWeatherEnvOverrides();
+
+    // Location changed: clear cache so the next /api/weather reflects it.
+    lastWeather = null;
+    lastWeatherFetchAt = null;
+    lastWeatherError = null;
+
+    persistConfigToDiskIfChanged('api-open-meteo-config');
+
+    const env = {
+        lat: Boolean(String(process.env.OPEN_METEO_LAT || '').trim()),
+        lon: Boolean(String(process.env.OPEN_METEO_LON || '').trim()),
+        timezone: Boolean(String(process.env.OPEN_METEO_TZ || '').trim()),
+    };
+
+    return res.json({
+        ok: true,
+        openMeteo: persistedConfig.weather.openMeteo,
+        overriddenByEnv: env,
+    });
+});
+
 app.get('/api/weather/health', (req, res) => {
     const { lat, lon } = getOpenMeteoCoords();
     res.json({

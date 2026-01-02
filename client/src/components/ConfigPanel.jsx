@@ -34,6 +34,27 @@ async function saveColorScheme(colorScheme) {
 }
 
 async function fetchSoundFiles() {
+  async function fetchOpenMeteoConfig() {
+    const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `Open-Meteo config fetch failed (${res.status})`);
+    }
+    return res.json().catch(() => ({}));
+  }
+
+  async function saveOpenMeteoConfig(openMeteo) {
+    const res = await fetch(`${API_HOST}/api/weather/open-meteo-config`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ openMeteo: openMeteo || {} }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `Open-Meteo config save failed (${res.status})`);
+    }
+    return res.json().catch(() => ({}));
+  }
   const res = await fetch(`${API_HOST}/api/sounds`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -264,6 +285,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
   const [soundFiles, setSoundFiles] = useState([]);
   const [soundFilesError, setSoundFilesError] = useState(null);
+  const [openMeteoDraft, setOpenMeteoDraft] = useState(() => ({ lat: '', lon: '', timezone: 'auto' }));
+  const [openMeteoDirty, setOpenMeteoDirty] = useState(false);
+  const [openMeteoError, setOpenMeteoError] = useState(null);
+  const [openMeteoEnvOverrides, setOpenMeteoEnvOverrides] = useState(() => ({ lat: false, lon: false, timezone: false }));
 
   const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
   const scheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
@@ -503,6 +528,35 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    let mounted = true;
+    fetchOpenMeteoConfig()
+      .then((data) => {
+        if (!mounted) return;
+        const open = (data?.openMeteo && typeof data.openMeteo === 'object') ? data.openMeteo : {};
+        const overrides = (data?.overriddenByEnv && typeof data.overriddenByEnv === 'object') ? data.overriddenByEnv : {};
+        setOpenMeteoEnvOverrides({
+          lat: overrides.lat === true,
+          lon: overrides.lon === true,
+          timezone: overrides.timezone === true,
+        });
+        if (!openMeteoDirty) {
+          setOpenMeteoDraft({
+            lat: String(open.lat ?? ''),
+            lon: String(open.lon ?? ''),
+            timezone: String(open.timezone ?? 'auto') || 'auto',
+          });
+        }
+      })
+      .catch((e) => {
+        if (!mounted) return;
+        setOpenMeteoError(e?.message || String(e));
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [openMeteoDirty]);
 
   const setAllowed = async (deviceId, list, nextAllowed) => {
     setError(null);
@@ -927,6 +981,113 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
               {sensorColorsError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {sensorColorsError}</div>
+              ) : null}
+            </div>
+
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Weather (Open-Meteo)
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Set the location used for the weather card. Accepts decimal or DMS (e.g. 35°29'44.9"N).
+              </div>
+
+              {(openMeteoEnvOverrides.lat || openMeteoEnvOverrides.lon || openMeteoEnvOverrides.timezone) ? (
+                <div className="mt-2 text-xs text-warning">
+                  Note: OPEN_METEO_* environment variables are set and will override these fields.
+                </div>
+              ) : null}
+
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Latitude</div>
+                  <input
+                    type="text"
+                    value={openMeteoDraft.lat}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      setOpenMeteoDirty(true);
+                      setOpenMeteoDraft((prev) => ({ ...prev, lat: String(e.target.value) }));
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder={'35.4958 or 35°29\'44.9"N'}
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Longitude</div>
+                  <input
+                    type="text"
+                    value={openMeteoDraft.lon}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      setOpenMeteoDirty(true);
+                      setOpenMeteoDraft((prev) => ({ ...prev, lon: String(e.target.value) }));
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder={'-86.0816 or 86°04\'53.8"W'}
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Timezone</div>
+                  <input
+                    type="text"
+                    value={openMeteoDraft.timezone}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      setOpenMeteoDirty(true);
+                      setOpenMeteoDraft((prev) => ({ ...prev, timezone: String(e.target.value) }));
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder="auto or America/Chicago"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${openMeteoDraft.lat || ''},${openMeteoDraft.lon || ''}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs underline text-white/70 hover:text-white"
+                >
+                  Open Google Maps to pick coordinates
+                </a>
+
+                <button
+                  type="button"
+                  disabled={!connected || busy || !openMeteoDirty}
+                  onClick={async () => {
+                    setOpenMeteoError(null);
+                    setBusy(true);
+                    try {
+                      const res = await saveOpenMeteoConfig({
+                        lat: String(openMeteoDraft.lat || '').trim(),
+                        lon: String(openMeteoDraft.lon || '').trim(),
+                        timezone: String(openMeteoDraft.timezone || '').trim() || 'auto',
+                      });
+                      const overrides = (res?.overriddenByEnv && typeof res.overriddenByEnv === 'object') ? res.overriddenByEnv : {};
+                      setOpenMeteoEnvOverrides({
+                        lat: overrides.lat === true,
+                        lon: overrides.lon === true,
+                        timezone: overrides.timezone === true,
+                      });
+                      setOpenMeteoDirty(false);
+                    } catch (e) {
+                      setOpenMeteoError(e?.message || String(e));
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${scheme.actionButton} ${(!connected || busy || !openMeteoDirty) ? 'opacity-40' : ''}`}
+                >
+                  Save Weather Location
+                </button>
+              </div>
+
+              {openMeteoError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">{openMeteoError}</div>
               ) : null}
             </div>
 
