@@ -554,6 +554,7 @@ function normalizePersistedConfig(raw) {
         'teal',
         'emerald',
         'lime',
+        'amber',
         'yellow',
         'orange',
         'rose',
@@ -564,6 +565,7 @@ function normalizePersistedConfig(raw) {
         'indigo',
         'blue',
         'slate',
+        'stone',
     ]);
 
     const colorsRaw = (uiRaw.climateToleranceColors && typeof uiRaw.climateToleranceColors === 'object')
@@ -1998,6 +2000,7 @@ app.put('/api/ui/climate-tolerance-colors', (req, res) => {
         'teal',
         'emerald',
         'lime',
+        'amber',
         'yellow',
         'orange',
         'rose',
@@ -2008,6 +2011,7 @@ app.put('/api/ui/climate-tolerance-colors', (req, res) => {
         'indigo',
         'blue',
         'slate',
+        'stone',
     ]);
 
     const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.climateToleranceColors && typeof persistedConfig.ui.climateToleranceColors === 'object')
