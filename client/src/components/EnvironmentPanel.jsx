@@ -345,16 +345,22 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
       motionActiveCount += 1;
     }
 
-    if (typeof attrs.contact === 'string') {
-      const v = String(attrs.contact).toLowerCase();
-      if (v === 'open' || v === 'closed') {
+    const maybeCountDoorState = (raw) => {
+      if (typeof raw !== 'string') return;
+      const v = String(raw).toLowerCase();
+      // Hubitat ContactSensor: contact=open|closed
+      // Hubitat GarageDoorControl: door=open|closed|opening|closing|unknown
+      if (v === 'open' || v === 'closed' || v === 'opening' || v === 'closing') {
         doorCount += 1;
-        if (v === 'open') {
+        if (v === 'open' || v === 'opening' || v === 'closing') {
           doorOpen = true;
           doorOpenCount += 1;
         }
       }
-    }
+    };
+
+    maybeCountDoorState(attrs.contact);
+    maybeCountDoorState(attrs.door);
 
     if (typeof attrs.switch === 'string' && allowedControlIds?.has(String(dev.id))) {
       switches.push({
@@ -486,7 +492,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     metrics.humidity !== null ||
     metrics.illuminance !== null ||
     devices.some((d) => d.status?.attributes?.motion) ||
-    devices.some((d) => typeof d.status?.attributes?.contact === 'string');
+    devices.some((d) => typeof d.status?.attributes?.contact === 'string' || typeof d.status?.attributes?.door === 'string');
 
   const headerGlow = (metrics.motionActive || metrics.doorOpen)
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
