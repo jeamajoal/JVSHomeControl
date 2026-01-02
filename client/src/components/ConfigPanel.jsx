@@ -2,6 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
+import {
+  TOLERANCE_COLOR_CHOICES,
+  normalizeToleranceColorId,
+} from '../toleranceColors';
 
 async function saveAllowlists(payload) {
   const res = await fetch(`${API_HOST}/api/ui/allowed-device-ids`, {
@@ -134,13 +138,6 @@ const COLOR_SCHEME_CHOICES = [
   { id: 'neon-red', label: 'Neon Red', vibe: 'Wild' },
 ];
 
-const TOLERANCE_COLOR_CHOICES = [
-  { id: 'neon-blue', label: 'Neon Blue', swatch: 'bg-neon-blue' },
-  { id: 'neon-green', label: 'Neon Green', swatch: 'bg-neon-green' },
-  { id: 'warning', label: 'Amber', swatch: 'bg-warning' },
-  { id: 'neon-red', label: 'Neon Red', swatch: 'bg-neon-red' },
-];
-
 const toleranceSwatchClass = (id) => {
   const hit = TOLERANCE_COLOR_CHOICES.find((c) => c.id === id);
   return hit?.swatch || 'bg-white/20';
@@ -268,38 +265,32 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     const h = (raw.humidityPct && typeof raw.humidityPct === 'object') ? raw.humidityPct : {};
     const l = (raw.illuminanceLux && typeof raw.illuminanceLux === 'object') ? raw.illuminanceLux : {};
 
-    const allowed = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
-    const pick = (v, fallback) => {
-      const s = String(v || '').trim();
-      return allowed.has(s) ? s : fallback;
-    };
-
     return {
       temperatureF: {
-        cold: pick(t.cold, 'neon-blue'),
-        comfy: pick(t.comfy, 'neon-green'),
-        warm: pick(t.warm, 'warning'),
-        hot: pick(t.hot, 'neon-red'),
+        cold: normalizeToleranceColorId(t.cold, 'neon-blue'),
+        comfy: normalizeToleranceColorId(t.comfy, 'neon-green'),
+        warm: normalizeToleranceColorId(t.warm, 'warning'),
+        hot: normalizeToleranceColorId(t.hot, 'neon-red'),
       },
       humidityPct: {
-        dry: pick(h.dry, 'neon-blue'),
-        comfy: pick(h.comfy, 'neon-green'),
-        humid: pick(h.humid, 'warning'),
-        veryHumid: pick(h.veryHumid, 'neon-red'),
+        dry: normalizeToleranceColorId(h.dry, 'neon-blue'),
+        comfy: normalizeToleranceColorId(h.comfy, 'neon-green'),
+        humid: normalizeToleranceColorId(h.humid, 'warning'),
+        veryHumid: normalizeToleranceColorId(h.veryHumid, 'neon-red'),
       },
       illuminanceLux: {
-        dark: pick(l.dark, 'neon-blue'),
-        dim: pick(l.dim, 'neon-green'),
-        bright: pick(l.bright, 'warning'),
-        veryBright: pick(l.veryBright, 'neon-green'),
+        dark: normalizeToleranceColorId(l.dark, 'neon-blue'),
+        dim: normalizeToleranceColorId(l.dim, 'neon-green'),
+        bright: normalizeToleranceColorId(l.bright, 'warning'),
+        veryBright: normalizeToleranceColorId(l.veryBright, 'neon-green'),
       },
     };
   }, [config?.ui?.climateToleranceColors]);
 
   const [climateDraft, setClimateDraft] = useState(() => ({
-    temperatureF: { cold: 68, comfy: 72, warm: 74 },
-    humidityPct: { dry: 35, comfy: 55, humid: 65 },
-    illuminanceLux: { dark: 50, dim: 250, bright: 600 },
+    temperatureF: { cold: '68', comfy: '72', warm: '74' },
+    humidityPct: { dry: '35', comfy: '55', humid: '65' },
+    illuminanceLux: { dark: '50', dim: '250', bright: '600' },
   }));
   const [climateDirty, setClimateDirty] = useState(false);
   const [climateError, setClimateError] = useState(null);
@@ -316,7 +307,23 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
   useEffect(() => {
     if (climateDirty) return;
-    setClimateDraft(climateTolerances);
+    setClimateDraft({
+      temperatureF: {
+        cold: String(climateTolerances.temperatureF.cold ?? ''),
+        comfy: String(climateTolerances.temperatureF.comfy ?? ''),
+        warm: String(climateTolerances.temperatureF.warm ?? ''),
+      },
+      humidityPct: {
+        dry: String(climateTolerances.humidityPct.dry ?? ''),
+        comfy: String(climateTolerances.humidityPct.comfy ?? ''),
+        humid: String(climateTolerances.humidityPct.humid ?? ''),
+      },
+      illuminanceLux: {
+        dark: String(climateTolerances.illuminanceLux.dark ?? ''),
+        dim: String(climateTolerances.illuminanceLux.dim ?? ''),
+        bright: String(climateTolerances.illuminanceLux.bright ?? ''),
+      },
+    });
   }, [climateDirty, climateTolerances]);
 
   useEffect(() => {
@@ -713,7 +720,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         value={climateDraft.temperatureF[k]}
                         disabled={!connected || busy}
                         onChange={(e) => {
-                          const v = Number(e.target.value);
+                          const v = e.target.value;
                           setClimateDirty(true);
                           setClimateDraft((prev) => ({
                             ...prev,
@@ -766,7 +773,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         value={climateDraft.humidityPct[k]}
                         disabled={!connected || busy}
                         onChange={(e) => {
-                          const v = Number(e.target.value);
+                          const v = e.target.value;
                           setClimateDirty(true);
                           setClimateDraft((prev) => ({
                             ...prev,
@@ -819,7 +826,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         value={climateDraft.illuminanceLux[k]}
                         disabled={!connected || busy}
                         onChange={(e) => {
-                          const v = Number(e.target.value);
+                          const v = e.target.value;
                           setClimateDirty(true);
                           setClimateDraft((prev) => ({
                             ...prev,
@@ -867,12 +874,38 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 type="button"
                 disabled={!connected || busy || (!climateDirty && !climateColorsDirty)}
                 onClick={async () => {
+                  const toFinite = (v) => {
+                    const s = String(v ?? '').trim();
+                    if (!s.length) return null;
+                    const n = Number(s);
+                    return Number.isFinite(n) ? n : null;
+                  };
                   const inc3 = (a, b, c) => Number.isFinite(a) && Number.isFinite(b) && Number.isFinite(c) && a < b && b < c;
-                  const t = climateDraft.temperatureF;
-                  const h = climateDraft.humidityPct;
-                  const l = climateDraft.illuminanceLux;
+                  const tRaw = climateDraft.temperatureF;
+                  const hRaw = climateDraft.humidityPct;
+                  const lRaw = climateDraft.illuminanceLux;
+
+                  const t = {
+                    cold: toFinite(tRaw.cold),
+                    comfy: toFinite(tRaw.comfy),
+                    warm: toFinite(tRaw.warm),
+                  };
+                  const h = {
+                    dry: toFinite(hRaw.dry),
+                    comfy: toFinite(hRaw.comfy),
+                    humid: toFinite(hRaw.humid),
+                  };
+                  const l = {
+                    dark: toFinite(lRaw.dark),
+                    dim: toFinite(lRaw.dim),
+                    bright: toFinite(lRaw.bright),
+                  };
 
                   if (climateDirty) {
+                    if (t.cold === null || t.comfy === null || t.warm === null || h.dry === null || h.comfy === null || h.humid === null || l.dark === null || l.dim === null || l.bright === null) {
+                      setClimateError('All tolerance thresholds must be valid numbers.');
+                      return;
+                    }
                     if (!inc3(t.cold, t.comfy, t.warm)) {
                       setClimateError('Temperature thresholds must be increasing (cold < comfy < warm).');
                       return;

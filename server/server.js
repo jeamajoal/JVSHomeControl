@@ -541,7 +541,30 @@ function normalizePersistedConfig(raw) {
         illuminanceLux: { dark: 'neon-blue', dim: 'neon-green', bright: 'warning', veryBright: 'neon-green' },
     };
 
-    const ALLOWED_TOLERANCE_COLOR_IDS = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
+    const ALLOWED_TOLERANCE_COLOR_IDS = new Set([
+        'neon-blue',
+        'neon-green',
+        'warning',
+        'neon-red',
+        'primary',
+        'success',
+        'danger',
+        'sky',
+        'cyan',
+        'teal',
+        'emerald',
+        'lime',
+        'yellow',
+        'orange',
+        'rose',
+        'pink',
+        'fuchsia',
+        'purple',
+        'violet',
+        'indigo',
+        'blue',
+        'slate',
+    ]);
 
     const colorsRaw = (uiRaw.climateToleranceColors && typeof uiRaw.climateToleranceColors === 'object')
         ? uiRaw.climateToleranceColors
@@ -1962,7 +1985,30 @@ app.put('/api/ui/climate-tolerance-colors', (req, res) => {
         return res.status(400).json({ error: 'Missing climateToleranceColors' });
     }
 
-    const ALLOWED = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
+    const ALLOWED = new Set([
+        'neon-blue',
+        'neon-green',
+        'warning',
+        'neon-red',
+        'primary',
+        'success',
+        'danger',
+        'sky',
+        'cyan',
+        'teal',
+        'emerald',
+        'lime',
+        'yellow',
+        'orange',
+        'rose',
+        'pink',
+        'fuchsia',
+        'purple',
+        'violet',
+        'indigo',
+        'blue',
+        'slate',
+    ]);
 
     const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.climateToleranceColors && typeof persistedConfig.ui.climateToleranceColors === 'object')
         ? persistedConfig.ui.climateToleranceColors

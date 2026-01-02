@@ -17,6 +17,10 @@ import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
+import {
+  normalizeToleranceColorId,
+  getToleranceTextClass as getToleranceTextClassForColorId,
+} from '../toleranceColors';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -376,16 +380,6 @@ const computeRoomMetrics = (devices, allowedControlIds) => {
   };
 };
 
-const textClassForColorId = (colorId) => {
-  switch (String(colorId || '').trim()) {
-    case 'neon-blue': return 'text-neon-blue';
-    case 'neon-green': return 'text-neon-green';
-    case 'warning': return 'text-warning';
-    case 'neon-red': return 'text-neon-red';
-    default: return '';
-  }
-};
-
 const getToleranceTextClass = (metric, value, climateTolerances, climateToleranceColors) => {
   const v = asNumber(value);
   if (v === null) return '';
@@ -405,7 +399,7 @@ const getToleranceTextClass = (metric, value, climateTolerances, climateToleranc
       : 'hot';
 
     const fallback = band === 'cold' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'warm' ? 'warning' : 'neon-red';
-    return textClassForColorId(group[band] || fallback);
+    return getToleranceTextClassForColorId(normalizeToleranceColorId(group[band], fallback));
   }
 
   if (metric === 'humidity') {
@@ -417,7 +411,7 @@ const getToleranceTextClass = (metric, value, climateTolerances, climateToleranc
       : 'veryHumid';
 
     const fallback = band === 'dry' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'humid' ? 'warning' : 'neon-red';
-    return textClassForColorId(group[band] || fallback);
+    return getToleranceTextClassForColorId(normalizeToleranceColorId(group[band], fallback));
   }
 
   // illuminance
@@ -429,7 +423,7 @@ const getToleranceTextClass = (metric, value, climateTolerances, climateToleranc
     : 'veryBright';
 
   const fallback = band === 'dark' ? 'neon-blue' : band === 'dim' ? 'neon-green' : band === 'bright' ? 'warning' : 'neon-green';
-  return textClassForColorId(group[band] || fallback);
+  return getToleranceTextClassForColorId(normalizeToleranceColorId(group[band], fallback));
 };
 
 const getColorizedValueClass = (metric, value, climateTolerances, climateToleranceColors, enabled) => {
@@ -677,30 +671,24 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     const h = (raw.humidityPct && typeof raw.humidityPct === 'object') ? raw.humidityPct : {};
     const l = (raw.illuminanceLux && typeof raw.illuminanceLux === 'object') ? raw.illuminanceLux : {};
 
-    const allowed = new Set(['neon-blue', 'neon-green', 'warning', 'neon-red']);
-    const pick = (v, fallback) => {
-      const s = String(v || '').trim();
-      return allowed.has(s) ? s : fallback;
-    };
-
     return {
       temperatureF: {
-        cold: pick(t.cold, 'neon-blue'),
-        comfy: pick(t.comfy, 'neon-green'),
-        warm: pick(t.warm, 'warning'),
-        hot: pick(t.hot, 'neon-red'),
+        cold: normalizeToleranceColorId(t.cold, 'neon-blue'),
+        comfy: normalizeToleranceColorId(t.comfy, 'neon-green'),
+        warm: normalizeToleranceColorId(t.warm, 'warning'),
+        hot: normalizeToleranceColorId(t.hot, 'neon-red'),
       },
       humidityPct: {
-        dry: pick(h.dry, 'neon-blue'),
-        comfy: pick(h.comfy, 'neon-green'),
-        humid: pick(h.humid, 'warning'),
-        veryHumid: pick(h.veryHumid, 'neon-red'),
+        dry: normalizeToleranceColorId(h.dry, 'neon-blue'),
+        comfy: normalizeToleranceColorId(h.comfy, 'neon-green'),
+        humid: normalizeToleranceColorId(h.humid, 'warning'),
+        veryHumid: normalizeToleranceColorId(h.veryHumid, 'neon-red'),
       },
       illuminanceLux: {
-        dark: pick(l.dark, 'neon-blue'),
-        dim: pick(l.dim, 'neon-green'),
-        bright: pick(l.bright, 'warning'),
-        veryBright: pick(l.veryBright, 'neon-green'),
+        dark: normalizeToleranceColorId(l.dark, 'neon-blue'),
+        dim: normalizeToleranceColorId(l.dim, 'neon-green'),
+        bright: normalizeToleranceColorId(l.bright, 'warning'),
+        veryBright: normalizeToleranceColorId(l.veryBright, 'neon-green'),
       },
     };
   }, [config?.ui?.climateToleranceColors]);

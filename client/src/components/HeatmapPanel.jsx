@@ -6,6 +6,10 @@ import Draggable from 'react-draggable';
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
+import {
+  normalizeToleranceColorId,
+  getToleranceColorStyle,
+} from '../toleranceColors';
 
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -16,19 +20,7 @@ const GRID_ROW_HEIGHT = 36;
 
 const ReactGridLayout = WidthProvider(GridLayout);
 
-const pickToleranceColorId = (value, fallback) => {
-  const s = String(value || '').trim();
-  return (s === 'neon-blue' || s === 'neon-green' || s === 'warning' || s === 'neon-red') ? s : fallback;
-};
-
-const TEXT_UNUSED_BUT_TAILWIND_SAFE = [
-  // Keep these literals so Tailwind includes the variants used by mapping.
-  'bg-neon-blue/25', 'bg-neon-green/25', 'bg-neon-red/25', 'bg-warning/15',
-  'bg-neon-blue/20', 'bg-neon-green/20', 'bg-neon-red/20', 'bg-warning/12',
-  'bg-neon-blue/30', 'bg-neon-green/30', 'bg-neon-red/30', 'bg-warning/18',
-  'ring-neon-blue/30', 'ring-neon-green/30', 'ring-neon-red/30', 'ring-warning/30',
-  'ring-neon-blue/40', 'ring-neon-green/40', 'ring-neon-red/40', 'ring-warning/40',
-];
+// NOTE: Tailwind class strings are referenced in ../toleranceColors.js.
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -236,22 +228,22 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
 
     return {
       temperatureF: {
-        cold: pickToleranceColorId(t.cold, 'neon-blue'),
-        comfy: pickToleranceColorId(t.comfy, 'neon-green'),
-        warm: pickToleranceColorId(t.warm, 'warning'),
-        hot: pickToleranceColorId(t.hot, 'neon-red'),
+        cold: normalizeToleranceColorId(t.cold, 'neon-blue'),
+        comfy: normalizeToleranceColorId(t.comfy, 'neon-green'),
+        warm: normalizeToleranceColorId(t.warm, 'warning'),
+        hot: normalizeToleranceColorId(t.hot, 'neon-red'),
       },
       humidityPct: {
-        dry: pickToleranceColorId(h.dry, 'neon-blue'),
-        comfy: pickToleranceColorId(h.comfy, 'neon-green'),
-        humid: pickToleranceColorId(h.humid, 'warning'),
-        veryHumid: pickToleranceColorId(h.veryHumid, 'neon-red'),
+        dry: normalizeToleranceColorId(h.dry, 'neon-blue'),
+        comfy: normalizeToleranceColorId(h.comfy, 'neon-green'),
+        humid: normalizeToleranceColorId(h.humid, 'warning'),
+        veryHumid: normalizeToleranceColorId(h.veryHumid, 'neon-red'),
       },
       illuminanceLux: {
-        dark: pickToleranceColorId(l.dark, 'neon-blue'),
-        dim: pickToleranceColorId(l.dim, 'neon-green'),
-        bright: pickToleranceColorId(l.bright, 'warning'),
-        veryBright: pickToleranceColorId(l.veryBright, 'neon-green'),
+        dark: normalizeToleranceColorId(l.dark, 'neon-blue'),
+        dim: normalizeToleranceColorId(l.dim, 'neon-green'),
+        bright: normalizeToleranceColorId(l.bright, 'warning'),
+        veryBright: normalizeToleranceColorId(l.veryBright, 'neon-green'),
       },
     };
   }, [config?.ui?.climateToleranceColors]);
@@ -361,44 +353,14 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
     const v = asNumber(value);
     if (v === null) return { colorClass: 'bg-white/10', ringClass: 'ring-white/10' };
 
-    const BG_TEMP = {
-      'neon-blue': 'bg-neon-blue/25',
-      'neon-green': 'bg-neon-green/25',
-      warning: 'bg-warning/15',
-      'neon-red': 'bg-neon-red/25',
-    };
-    const BG_HUM = {
-      'neon-blue': 'bg-neon-blue/20',
-      'neon-green': 'bg-neon-green/20',
-      warning: 'bg-warning/12',
-      'neon-red': 'bg-neon-red/20',
-    };
-    const BG_LUX_STRONG = {
-      'neon-blue': 'bg-neon-blue/30',
-      'neon-green': 'bg-neon-green/30',
-      warning: 'bg-warning/18',
-      'neon-red': 'bg-neon-red/30',
-    };
-    const RING_30 = {
-      'neon-blue': 'ring-neon-blue/30',
-      'neon-green': 'ring-neon-green/30',
-      warning: 'ring-warning/30',
-      'neon-red': 'ring-neon-red/30',
-    };
-    const RING_40 = {
-      'neon-blue': 'ring-neon-blue/40',
-      'neon-green': 'ring-neon-green/40',
-      warning: 'ring-warning/40',
-      'neon-red': 'ring-neon-red/40',
-    };
-
     if (mode === 'temperature') {
       const { cold, comfy, warm } = climateTolerances.temperatureF;
       const band = v < cold ? 'cold' : v < comfy ? 'comfy' : v < warm ? 'warm' : 'hot';
       const colorId = climateToleranceColors.temperatureF[band] || (band === 'cold' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'warm' ? 'warning' : 'neon-red');
+      const style = getToleranceColorStyle(colorId);
       return {
-        colorClass: BG_TEMP[colorId] || BG_TEMP['neon-green'],
-        ringClass: RING_30[colorId] || RING_30['neon-green'],
+        colorClass: style.bgTemp,
+        ringClass: style.ring30,
       };
     }
 
@@ -406,9 +368,10 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
       const { dry, comfy, humid } = climateTolerances.humidityPct;
       const band = v < dry ? 'dry' : v < comfy ? 'comfy' : v < humid ? 'humid' : 'veryHumid';
       const colorId = climateToleranceColors.humidityPct[band] || (band === 'dry' ? 'neon-blue' : band === 'comfy' ? 'neon-green' : band === 'humid' ? 'warning' : 'neon-red');
+      const style = getToleranceColorStyle(colorId);
       return {
-        colorClass: BG_HUM[colorId] || BG_HUM['neon-green'],
-        ringClass: RING_30[colorId] || RING_30['neon-green'],
+        colorClass: style.bgHum,
+        ringClass: style.ring30,
       };
     }
 
@@ -416,15 +379,16 @@ const HeatmapPanel = ({ config: configProp, statuses: statusesProp, uiScheme: ui
     const { dark, dim, bright } = climateTolerances.illuminanceLux;
     const band = v < dark ? 'dark' : v < dim ? 'dim' : v < bright ? 'bright' : 'veryBright';
     const colorId = climateToleranceColors.illuminanceLux[band] || (band === 'dark' ? 'neon-blue' : band === 'dim' ? 'neon-green' : band === 'bright' ? 'warning' : 'neon-green');
+    const style = getToleranceColorStyle(colorId);
     if (band === 'veryBright') {
       return {
-        colorClass: BG_LUX_STRONG[colorId] || BG_LUX_STRONG['neon-green'],
-        ringClass: RING_40[colorId] || RING_40['neon-green'],
+        colorClass: style.bgLuxStrong,
+        ringClass: style.ring40,
       };
     }
     return {
-      colorClass: BG_HUM[colorId] || BG_HUM['neon-green'],
-      ringClass: RING_30[colorId] || RING_30['neon-green'],
+      colorClass: style.bgHum,
+      ringClass: style.ring30,
     };
   };
 
