@@ -141,6 +141,7 @@ const useRoomsFitScale = (cardScalePct = 100) => {
 
   const [roomsScale, setRoomsScale] = useState(1);
   const [scaledRoomsHeightPx, setScaledRoomsHeightPx] = useState(null);
+  const [scaledRoomsWidthPx, setScaledRoomsWidthPx] = useState(null);
 
   useEffect(() => {
     const viewportEl = viewportRef.current;
@@ -162,26 +163,38 @@ const useRoomsFitScale = (cardScalePct = 100) => {
       if (!isMdUp) {
         setRoomsScale(1);
         setScaledRoomsHeightPx(null);
+        setScaledRoomsWidthPx(null);
         return;
       }
 
       const SAFE_GUTTER_PX = 8;
+      const viewportW = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
       const viewportH = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
       const metricH = Math.max(metricEl.getBoundingClientRect().height || 0, 0);
       // Match the existing spacing between the metric row and rooms grid (mt-4).
       const BETWEEN_PX = 16;
       const availableRoomsH = Math.max(viewportH - metricH - BETWEEN_PX, 1);
 
+      const roomsW = Math.max(roomsEl.scrollWidth, roomsEl.clientWidth, 1);
       const roomsH = Math.max(roomsEl.scrollHeight, roomsEl.clientHeight, 1);
+
+      // User controls the baseline size; we only shrink further if needed to fit.
       const desired = userFactor;
+      const desiredW = roomsW * desired;
       const desiredH = roomsH * desired;
 
-      // Fit vertically if needed; allow modest scale-up if there is space.
-      const fit = Math.min(availableRoomsH / desiredH, 1.15);
+      // Fit both directions; never auto-scale up (keeps cardScalePct predictable).
+      const fit = Math.min(
+        viewportW / desiredW,
+        availableRoomsH / desiredH,
+        1,
+      );
+
       const nextScale = Math.max(0.5, Math.min(2, desired * fit));
 
       setRoomsScale((prev) => (Math.abs(prev - nextScale) < 0.01 ? prev : nextScale));
       setScaledRoomsHeightPx(Math.ceil(roomsH * nextScale));
+      setScaledRoomsWidthPx(Math.ceil(roomsW * nextScale));
     };
 
     compute();
@@ -197,7 +210,7 @@ const useRoomsFitScale = (cardScalePct = 100) => {
     };
   }, [cardScalePct]);
 
-  return { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx };
+  return { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx, scaledRoomsWidthPx };
 };
 
 const MetricCard = ({
@@ -793,7 +806,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
-  const { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx } = useRoomsFitScale(cardScalePct);
+  const { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx, scaledRoomsWidthPx } = useRoomsFitScale(cardScalePct);
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);
@@ -1023,7 +1036,12 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
           <div
             className="mt-4"
-            style={scaledRoomsHeightPx ? { height: `${scaledRoomsHeightPx}px` } : undefined}
+            style={(scaledRoomsHeightPx || scaledRoomsWidthPx)
+              ? {
+                ...(scaledRoomsHeightPx ? { height: `${scaledRoomsHeightPx}px` } : null),
+                ...(scaledRoomsWidthPx ? { width: `${scaledRoomsWidthPx}px` } : null),
+              }
+              : undefined}
           >
             <div
               ref={roomsRef}
