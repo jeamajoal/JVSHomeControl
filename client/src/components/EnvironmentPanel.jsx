@@ -874,9 +874,9 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
       {homeBackground.enabled && homeBackground.url ? (
         <div
-          className="absolute inset-0 z-0 pointer-events-none"
+          className="fixed inset-0 z-0 pointer-events-none"
           style={{
-            backgroundImage: `url('${homeBackground.url.replace(/'/g, "\\'")}')`,
+            backgroundImage: `url(${JSON.stringify(String(homeBackground.url))})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
             opacity: homeBackground.opacityPct / 100,

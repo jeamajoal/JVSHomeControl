@@ -207,7 +207,16 @@ app.use('/sounds', express.static(SOUNDS_DIR));
 
 // Serve custom Home background images from the server-managed backgrounds directory.
 // Files placed in server/data/backgrounds will be reachable at /backgrounds/<file>.
-app.use('/backgrounds', express.static(BACKGROUNDS_DIR));
+app.use('/backgrounds', express.static(BACKGROUNDS_DIR, {
+    dotfiles: 'ignore',
+    fallthrough: false,
+    maxAge: '7d',
+    setHeaders(res) {
+        // Helps prevent MIME sniffing surprises if someone drops a weird file here.
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('Cache-Control', 'public, max-age=604800');
+    },
+}));
 
 // State
 let persistedConfig = { weather: settings.weather, rooms: [], sensors: [] }; // Stored in server/data/config.json
@@ -1590,10 +1599,17 @@ app.get('/api/backgrounds', (req, res) => {
     try {
         ensureDataDirs();
         const exts = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
+        const safeNameRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}(\.[a-zA-Z0-9]{1,8})$/;
         const files = fs.readdirSync(BACKGROUNDS_DIR, { withFileTypes: true })
             .filter((d) => d.isFile())
             .map((d) => d.name)
-            .filter((name) => exts.has(path.extname(name).toLowerCase()))
+            .filter((name) => {
+                if (!name || typeof name !== 'string') return false;
+                if (name !== path.basename(name)) return false;
+                if (!safeNameRe.test(name)) return false;
+                if (name.includes('..') || name.includes('/') || name.includes('\\')) return false;
+                return exts.has(path.extname(name).toLowerCase());
+            })
             .sort((a, b) => a.localeCompare(b));
 
         res.json({ ok: true, files });
@@ -2033,6 +2049,50 @@ app.put('/api/ui/home-background', (req, res) => {
         ? null
         : String(rawUrl).trim();
 
+    // Restrict to either:
+    // - Server-managed backgrounds: /backgrounds/<file>
+    // - Remote http(s) URLs
+    // This avoids scheme injection (javascript:, data:, file:) and reduces the attack surface.
+    let normalizedUrl = url;
+    if (normalizedUrl) {
+        if (normalizedUrl.startsWith('/backgrounds/')) {
+            const rawFile = normalizedUrl.slice('/backgrounds/'.length);
+            let decodedFile = rawFile;
+            try {
+                decodedFile = decodeURIComponent(rawFile);
+            } catch {
+                return res.status(400).json({ error: 'Invalid homeBackground.url encoding' });
+            }
+
+            const safeFileRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(jpg|jpeg|png|webp|gif)$/i;
+            if (!safeFileRe.test(decodedFile) || decodedFile !== path.basename(decodedFile) || decodedFile.includes('..') || decodedFile.includes('/') || decodedFile.includes('\\')) {
+                return res.status(400).json({ error: 'Invalid homeBackground.url (unsafe background filename)' });
+            }
+
+            // Canonicalize to a safely-encoded URL segment.
+            normalizedUrl = `/backgrounds/${encodeURIComponent(decodedFile)}`;
+        } else {
+            let parsed;
+            try {
+                parsed = new URL(normalizedUrl);
+            } catch {
+                return res.status(400).json({ error: 'Invalid homeBackground.url (expected http(s) or /backgrounds/<file>)' });
+            }
+
+            if (!(parsed.protocol === 'http:' || parsed.protocol === 'https:')) {
+                return res.status(400).json({ error: 'Invalid homeBackground.url (only http/https allowed)' });
+            }
+
+            if (parsed.username || parsed.password) {
+                return res.status(400).json({ error: 'Invalid homeBackground.url (credentials not allowed)' });
+            }
+
+            if (normalizedUrl.length > 2048) {
+                return res.status(400).json({ error: 'Invalid homeBackground.url (too long)' });
+            }
+        }
+    }
+
     if (enabled && !url) {
         return res.status(400).json({ error: 'homeBackground.url is required when enabled=true' });
     }
@@ -2057,7 +2117,7 @@ app.put('/api/ui/home-background', (req, res) => {
 
     const next = {
         enabled,
-        url: url || null,
+        url: normalizedUrl || null,
         opacityPct: opacityPct === null
             ? (Number.isFinite(Number(prev.opacityPct)) ? Math.max(0, Math.min(100, Math.round(Number(prev.opacityPct)))) : 35)
             : opacityPct,
