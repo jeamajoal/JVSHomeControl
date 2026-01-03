@@ -57,6 +57,17 @@ function App() {
       const blurPx = clamp(baseBlurPx * clamp01(scale), 0, baseBlurPx);
       document.documentElement.style.setProperty('--jvs-glass-panel-blur-px', `${blurPx}px`);
       document.documentElement.style.setProperty('--jvs-utility-panel-blur-px', `${blurPx}px`);
+
+      // Menu/header surfaces should also fade out so Home background can be full-screen.
+      const baseMenuBlurPx = 12;
+      const menuBlurPx = clamp(baseMenuBlurPx * clamp01(scale), 0, baseMenuBlurPx);
+      document.documentElement.style.setProperty('--jvs-header-bg-opacity', String(clamp01(0.20 * scale)));
+      document.documentElement.style.setProperty('--jvs-menu-surface-bg-opacity', String(clamp01(0.20 * scale)));
+      document.documentElement.style.setProperty('--jvs-menu-row-bg-opacity', String(clamp01(0.10 * scale)));
+      document.documentElement.style.setProperty('--jvs-menu-select-bg-opacity', String(clamp01(0.10 * scale)));
+      document.documentElement.style.setProperty('--jvs-menu-select-strong-bg-opacity', String(clamp01(0.30 * scale)));
+      document.documentElement.style.setProperty('--jvs-header-blur-px', `${menuBlurPx}px`);
+      document.documentElement.style.setProperty('--jvs-menu-blur-px', `${menuBlurPx}px`);
     } catch {
       // ignore
     }
@@ -188,7 +199,7 @@ function App() {
   return (
     <div className="h-[100dvh] w-screen flex flex-col overflow-hidden bg-background">
       {/* Header */}
-      <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 backdrop-blur-md z-20 bg-black/20">
+      <header className="relative flex-none flex items-center justify-between p-3 border-b border-white/5 z-20 jvs-header-bar">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${uiScheme.headerGlow} ${uiScheme.headerIcon}`}>
             <Activity size={20} />
@@ -205,13 +216,13 @@ function App() {
 
         {/* Desktop menu (compact) */}
         <div className="hidden md:block absolute left-1/2 -translate-x-1/2">
-          <div className="rounded-2xl border border-white/10 bg-black/20 px-3 py-2">
+          <div className="rounded-2xl border border-white/10 px-3 py-2 jvs-menu-surface">
             <div className="flex items-center gap-3">
               <div className={`h-3 w-3 rounded-full ${uiScheme.swatch} opacity-80`} />
               <select
                 value={menuPage}
                 onChange={(e) => setPage(Number(e.target.value))}
-                className={`menu-select min-w-[180px] rounded-xl border border-white/10 bg-black/10 px-4 py-2.5 text-sm font-bold uppercase tracking-[0.18em] text-white/85 hover:bg-white/5 ${uiScheme.focusRing}`}
+                className={`menu-select min-w-[180px] rounded-xl border border-white/10 px-4 py-2.5 text-sm font-bold uppercase tracking-[0.18em] text-white/85 hover:bg-white/5 jvs-menu-select ${uiScheme.focusRing}`}
               >
                 <option value={0}>Home</option>
                 <option value={1}>Climate</option>
@@ -248,7 +259,7 @@ function App() {
       </header>
 
       {/* Mobile dropdown nav */}
-      <div className="md:hidden flex-none px-3 pb-3 border-b border-white/5 bg-black/10">
+      <div className="md:hidden flex-none px-3 pb-3 border-b border-white/5 jvs-menu-row">
         <div className="flex items-center gap-2">
           <label className="text-[10px] font-bold uppercase tracking-widest text-white/40">Menu</label>
           <select
@@ -257,7 +268,7 @@ function App() {
               ensureFullscreen();
               setPage(Number(e.target.value));
             }}
-            className="menu-select flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 [-webkit-tap-highlight-color:transparent]"
+            className="menu-select flex-1 rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 [-webkit-tap-highlight-color:transparent] jvs-menu-select-strong"
           >
             <option value={0}>Home</option>
             <option value={1}>Climate</option>

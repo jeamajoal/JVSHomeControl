@@ -39,6 +39,38 @@
   background-color: rgb(var(--accent-rgb) / var(--jvs-accent-card-bg-opacity, 0.10));
 }
 
+/* Menu/Header surfaces should respect the same transparency setting so the Home background can be truly full-screen. */
+.jvs-header-bar {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-header-bg-opacity, 0.20);
+  -webkit-backdrop-filter: blur(var(--jvs-header-blur-px, 12px));
+  backdrop-filter: blur(var(--jvs-header-blur-px, 12px));
+}
+
+.jvs-menu-surface {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-surface-bg-opacity, 0.20);
+  -webkit-backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+  backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+}
+
+.jvs-menu-row {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-row-bg-opacity, 0.10);
+  -webkit-backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+  backdrop-filter: blur(var(--jvs-menu-blur-px, 12px));
+}
+
+.jvs-menu-select {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-select-bg-opacity, 0.10);
+}
+
+.jvs-menu-select-strong {
+  @apply bg-black;
+  --tw-bg-opacity: var(--jvs-menu-select-strong-bg-opacity, 0.30);
+}
+
 /* Utility pages (Settings / Events): slightly brighter and more structured. */
 .utility-page {
   @apply p-3 md:p-4 text-sm md:text-base;
