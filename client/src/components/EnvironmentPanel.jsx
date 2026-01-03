@@ -134,7 +134,7 @@ const useClock = (intervalMs = 1000) => {
   return now;
 };
 
-const useFitScale = () => {
+const useFitScale = (cardScalePct = 100) => {
   const viewportRef = useRef(null);
   const contentRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -144,29 +144,35 @@ const useFitScale = () => {
     const contentEl = contentRef.current;
     if (!viewportEl || !contentEl) return;
 
+    const pctNum = Number(cardScalePct);
+    const userFactor = Number.isFinite(pctNum)
+      ? Math.max(0.5, Math.min(2, pctNum / 100))
+      : 1;
+
     const compute = () => {
       const isMdUp = typeof window !== 'undefined'
         ? window.matchMedia('(min-width: 768px)').matches
         : true;
 
-      if (!isMdUp) {
-        setScale(1);
-        return;
-      }
+      const baseScale = (() => {
+        if (!isMdUp) return 1;
 
-      // Safety gutter to avoid sub-pixel rounding causing right-edge peeking
-      // on some fullscreen setups (e.g., Firefox/Linux).
-      const SAFE_GUTTER_PX = 8;
-      const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
-      const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
-      const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
-      const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
+        // Safety gutter to avoid sub-pixel rounding causing right-edge peeking
+        // on some fullscreen setups (e.g., Firefox/Linux).
+        const SAFE_GUTTER_PX = 8;
+        const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
+        const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
+        const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
+        const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
 
-      // Prefer readability over always fitting.
-      // Allow modest scale-up when there is extra space, but never shrink;
-      // if content grows (more sensors/rooms), we scroll instead.
-      const raw = Math.min(vw / cw, vh / ch) * 0.99;
-      const next = Math.min(Math.max(raw, 1), 1.15);
+        // Prefer readability over always fitting.
+        // Allow modest scale-up when there is extra space, but never shrink;
+        // if content grows (more sensors/rooms), we scroll instead.
+        const raw = Math.min(vw / cw, vh / ch) * 0.99;
+        return Math.min(Math.max(raw, 1), 1.15);
+      })();
+
+      const next = Math.max(0.5, Math.min(2, baseScale * userFactor));
       setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
     };
 
@@ -180,7 +186,7 @@ const useFitScale = () => {
       window.removeEventListener('resize', compute);
       ro.disconnect();
     };
-  }, []);
+  }, [cardScalePct]);
 
   return { viewportRef, contentRef, scale };
 };
@@ -763,10 +769,16 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return { enabled: true, url, opacityPct };
   }, [config?.ui?.homeBackground]);
 
+  const cardScalePct = useMemo(() => {
+    const raw = Number(config?.ui?.cardScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.cardScalePct]);
+
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
-  const { viewportRef, contentRef, scale } = useFitScale();
+  const { viewportRef, contentRef, scale } = useFitScale(cardScalePct);
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);

@@ -653,6 +653,11 @@ function normalizePersistedConfig(raw) {
     // 100 = default styling, 0 = fully transparent, 200 = twice as opaque (clamped per-card).
     const cardOpacityScalePct = clampInt(uiRaw.cardOpacityScalePct, 0, 200, 100);
 
+    // Card scale percent.
+    // 100 = default sizing, 50 = half-size, 200 = double-size.
+    // Currently used by the Home panel to scale cards/controls for different screens.
+    const cardScalePct = clampInt(uiRaw.cardScalePct, 50, 200, 100);
+
     const normalizeTriplet = (rawObj, keys, fallback) => {
         const outObj = { ...fallback };
         if (!rawObj || typeof rawObj !== 'object') return outObj;
@@ -693,6 +698,8 @@ function normalizePersistedConfig(raw) {
         homeBackground,
         // Opacity scale for UI cards/panels (affects panel backgrounds only).
         cardOpacityScalePct,
+        // Scale percent for UI cards/controls (used by Home fit-scale).
+        cardScalePct,
     };
 
     return out;
@@ -724,9 +731,10 @@ function loadPersistedConfig() {
             const hadSensorIndicatorColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'sensorIndicatorColors'));
             const hadHomeBackground = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeBackground'));
             const hadCardOpacityScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardOpacityScalePct'));
+            const hadCardScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardScalePct'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadCardScalePct) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -736,6 +744,7 @@ function loadPersistedConfig() {
                 else if (!hadClimateToleranceColors) label = 'migrate-ui-climate-tolerance-colors';
                 else if (!hadHomeBackground) label = 'migrate-ui-home-background';
                 else if (!hadCardOpacityScalePct) label = 'migrate-ui-card-opacity-scale';
+                else if (!hadCardScalePct) label = 'migrate-ui-card-scale';
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
@@ -821,6 +830,7 @@ function rebuildRuntimeConfigFromPersisted() {
             sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
             homeBackground: persistedConfig?.ui?.homeBackground,
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+            cardScalePct: persistedConfig?.ui?.cardScalePct,
         },
     };
 }
@@ -1393,6 +1403,7 @@ async function syncHubitatDataInner() {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         sensorStatuses = newStatuses;
@@ -1685,6 +1696,7 @@ app.post('/api/rooms', (req, res) => {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1740,6 +1752,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1784,6 +1797,7 @@ app.post('/api/labels', (req, res) => {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1826,6 +1840,7 @@ app.put('/api/labels/:id', (req, res) => {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -1866,6 +1881,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         emitConfigUpdateSafe();
@@ -2171,6 +2187,40 @@ app.put('/api/ui/card-opacity-scale', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+            cardScalePct: persistedConfig?.ui?.cardScalePct,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update UI card scale percent from the kiosk.
+// Expected payload: { cardScalePct: number(50-200) }
+app.put('/api/ui/card-scale', (req, res) => {
+    const raw = req.body?.cardScalePct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing cardScalePct (50-200)' });
+    }
+
+    const cardScalePct = Math.max(50, Math.min(200, Math.round(num)));
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            cardScalePct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-card-scale');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            cardScalePct: persistedConfig?.ui?.cardScalePct,
         },
     };
     io.emit('config_update', config);
@@ -3023,6 +3073,7 @@ app.post('/api/layout', (req, res) => {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         io.emit('config_update', config);
@@ -3068,6 +3119,7 @@ app.delete('/api/layout', (req, res) => {
                 sensorIndicatorColors: persistedConfig?.ui?.sensorIndicatorColors,
                 homeBackground: persistedConfig?.ui?.homeBackground,
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
+                cardScalePct: persistedConfig?.ui?.cardScalePct,
             },
         };
         io.emit('config_update', config);
