@@ -45,6 +45,16 @@ const UI_COLOR_SCHEMES = Object.freeze([
     'neon-red',
 ]);
 
+function normalizePanelName(raw) {
+    const s = String(raw ?? '').trim();
+    if (!s) return null;
+    // Allow user-friendly names, but keep them safe/stable as object keys.
+    // Permit letters/numbers/space/_/- and limit length.
+    if (s.length > 48) return null;
+    if (!/^[a-zA-Z0-9 _-]+$/.test(s)) return null;
+    return s;
+}
+
 // If the UI is built (`client/dist`), serve it from the backend so a single service
 // provides both the API and the dashboard.
 const CLIENT_DIST_DIR = path.join(__dirname, '..', 'client', 'dist');
@@ -662,6 +672,50 @@ function normalizePersistedConfig(raw) {
     // Default matches current layout (3 columns).
     const homeRoomColumnsXl = clampInt(uiRaw.homeRoomColumnsXl, 1, 6, 3);
 
+    const rawPanelProfiles = (uiRaw.panelProfiles && typeof uiRaw.panelProfiles === 'object') ? uiRaw.panelProfiles : {};
+    const panelProfiles = {};
+    for (const [rawName, rawProfile] of Object.entries(rawPanelProfiles)) {
+        const name = normalizePanelName(rawName);
+        if (!name) continue;
+        const p = (rawProfile && typeof rawProfile === 'object') ? rawProfile : {};
+
+        const pSchemeRaw = String(p.colorScheme || '').trim();
+        const pColorScheme = UI_COLOR_SCHEMES.includes(pSchemeRaw) ? pSchemeRaw : null;
+        const pCardOpacityScalePct = Object.prototype.hasOwnProperty.call(p, 'cardOpacityScalePct')
+            ? clampInt(p.cardOpacityScalePct, 0, 200, cardOpacityScalePct)
+            : null;
+        const pCardScalePct = Object.prototype.hasOwnProperty.call(p, 'cardScalePct')
+            ? clampInt(p.cardScalePct, 50, 200, cardScalePct)
+            : null;
+        const pHomeRoomColumnsXl = Object.prototype.hasOwnProperty.call(p, 'homeRoomColumnsXl')
+            ? clampInt(p.homeRoomColumnsXl, 1, 6, homeRoomColumnsXl)
+            : null;
+
+        const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
+        const pHomeBackground = pHomeBgRaw
+            ? {
+                enabled: pHomeBgRaw.enabled === true,
+                url: asFile(pHomeBgRaw.url),
+                opacityPct: clampInt(pHomeBgRaw.opacityPct, 0, 100, homeBackground.opacityPct),
+            }
+            : null;
+        if (pHomeBackground && pHomeBackground.enabled && !pHomeBackground.url) {
+            pHomeBackground.enabled = false;
+        }
+
+        const outProfile = {
+            ...(pColorScheme ? { colorScheme: pColorScheme } : {}),
+            ...(pHomeBackground ? { homeBackground: pHomeBackground } : {}),
+            ...(pCardOpacityScalePct !== null ? { cardOpacityScalePct: pCardOpacityScalePct } : {}),
+            ...(pCardScalePct !== null ? { cardScalePct: pCardScalePct } : {}),
+            ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
+        };
+
+        if (Object.keys(outProfile).length) {
+            panelProfiles[name] = outProfile;
+        }
+    }
+
     const normalizeTriplet = (rawObj, keys, fallback) => {
         const outObj = { ...fallback };
         if (!rawObj || typeof rawObj !== 'object') return outObj;
@@ -706,9 +760,42 @@ function normalizePersistedConfig(raw) {
         cardScalePct,
         // Home room columns at XL breakpoint.
         homeRoomColumnsXl,
+        // Optional per-panel overrides stored server-side.
+        panelProfiles,
     };
 
     return out;
+}
+
+function ensurePanelProfileExists(panelName) {
+    const name = normalizePanelName(panelName);
+    if (!name) return null;
+
+    const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+    if (profiles[name] && typeof profiles[name] === 'object') return name;
+
+    const nextProfiles = {
+        ...profiles,
+        [name]: {
+            // Seed new profiles from current global defaults.
+            colorScheme: ui.colorScheme,
+            homeBackground: ui.homeBackground,
+            cardOpacityScalePct: ui.cardOpacityScalePct,
+            cardScalePct: ui.cardScalePct,
+            homeRoomColumnsXl: ui.homeRoomColumnsXl,
+        },
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...persistedConfig,
+        ui: {
+            ...ui,
+            panelProfiles: nextProfiles,
+        },
+    });
+
+    return name;
 }
 
 function applyWeatherEnvOverrides() {
@@ -840,6 +927,7 @@ function rebuildRuntimeConfigFromPersisted() {
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             cardScalePct: persistedConfig?.ui?.cardScalePct,
             homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
 }
@@ -1414,6 +1502,7 @@ async function syncHubitatDataInner() {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         sensorStatuses = newStatuses;
@@ -1708,6 +1797,7 @@ app.post('/api/rooms', (req, res) => {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         emitConfigUpdateSafe();
@@ -1765,6 +1855,7 @@ app.delete('/api/rooms/:id', (req, res) => {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         emitConfigUpdateSafe();
@@ -1811,6 +1902,7 @@ app.post('/api/labels', (req, res) => {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         emitConfigUpdateSafe();
@@ -1855,6 +1947,7 @@ app.put('/api/labels/:id', (req, res) => {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         emitConfigUpdateSafe();
@@ -1897,6 +1990,7 @@ app.delete('/api/labels/:id', (req, res) => {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         emitConfigUpdateSafe();
@@ -1972,6 +2066,7 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
             ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
             mainAllowlistSource: nextAllowlists.main.source,
             mainAllowlistLocked: nextAllowlists.main.locked,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
     io.emit('config_update', config);
@@ -1981,6 +2076,59 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
         ui: {
             ...(config?.ui || {}),
         },
+    });
+});
+
+// List server-side panel profiles.
+app.get('/api/ui/panels', (req, res) => {
+    const profiles = (persistedConfig?.ui?.panelProfiles && typeof persistedConfig.ui.panelProfiles === 'object')
+        ? persistedConfig.ui.panelProfiles
+        : {};
+    return res.json({
+        ok: true,
+        panels: Object.keys(profiles).sort((a, b) => a.localeCompare(b)),
+    });
+});
+
+// Create a new server-side panel profile.
+// Expected payload: { name: string }
+app.post('/api/ui/panels', (req, res) => {
+    const name = normalizePanelName(req.body?.name);
+    if (!name) {
+        return res.status(400).json({ error: 'Invalid name (letters/numbers/space/_/-; max 48 chars)' });
+    }
+
+    const existing = (persistedConfig?.ui?.panelProfiles && typeof persistedConfig.ui.panelProfiles === 'object')
+        ? persistedConfig.ui.panelProfiles
+        : {};
+    if (existing[name]) {
+        return res.status(409).json({ error: 'Panel already exists' });
+    }
+
+    const ensured = ensurePanelProfileExists(name);
+    if (!ensured) {
+        return res.status(400).json({ error: 'Invalid panel name' });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-panels-create');
+
+    // Ensure clients receive updated profiles list.
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    const profiles = (persistedConfig?.ui?.panelProfiles && typeof persistedConfig.ui.panelProfiles === 'object')
+        ? persistedConfig.ui.panelProfiles
+        : {};
+    return res.json({
+        ok: true,
+        name: ensured,
+        panels: Object.keys(profiles).sort((a, b) => a.localeCompare(b)),
     });
 });
 
@@ -1995,6 +2143,39 @@ app.put('/api/ui/color-scheme', (req, res) => {
             error: 'Invalid colorScheme',
             allowed: UI_COLOR_SCHEMES,
         });
+    }
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        colorScheme: raw,
+                    },
+                },
+            },
+        });
+        persistConfigToDiskIfChanged('api-ui-color-scheme-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
     }
 
     persistedConfig = normalizePersistedConfig({
@@ -2012,6 +2193,7 @@ app.put('/api/ui/color-scheme', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             colorScheme: persistedConfig?.ui?.colorScheme,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
     io.emit('config_update', config);
@@ -2142,6 +2324,8 @@ app.put('/api/ui/home-background', (req, res) => {
         return res.status(400).json({ error: 'Invalid homeBackground.opacityPct (0-100)' });
     }
 
+    const panelName = normalizePanelName(req.body?.panelName);
+
     const prev = (persistedConfig?.ui && typeof persistedConfig.ui === 'object' && persistedConfig.ui.homeBackground && typeof persistedConfig.ui.homeBackground === 'object')
         ? persistedConfig.ui.homeBackground
         : {};
@@ -2153,6 +2337,40 @@ app.put('/api/ui/home-background', (req, res) => {
             ? (Number.isFinite(Number(prev.opacityPct)) ? Math.max(0, Math.min(100, Math.round(Number(prev.opacityPct)))) : 35)
             : opacityPct,
     };
+
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeBackground: next,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-background-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
 
     persistedConfig = normalizePersistedConfig({
         ...(persistedConfig || {}),
@@ -2169,6 +2387,7 @@ app.put('/api/ui/home-background', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             homeBackground: persistedConfig?.ui?.homeBackground,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
     io.emit('config_update', config);
@@ -2187,6 +2406,40 @@ app.put('/api/ui/card-opacity-scale', (req, res) => {
 
     const cardOpacityScalePct = Math.max(0, Math.min(200, Math.round(num)));
 
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        cardOpacityScalePct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-card-opacity-scale-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
     persistedConfig = normalizePersistedConfig({
         ...(persistedConfig || {}),
         ui: {
@@ -2204,6 +2457,7 @@ app.put('/api/ui/card-opacity-scale', (req, res) => {
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             cardScalePct: persistedConfig?.ui?.cardScalePct,
             homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
     io.emit('config_update', config);
@@ -2222,6 +2476,40 @@ app.put('/api/ui/card-scale', (req, res) => {
 
     const cardScalePct = Math.max(50, Math.min(200, Math.round(num)));
 
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        cardScalePct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-card-scale-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
     persistedConfig = normalizePersistedConfig({
         ...(persistedConfig || {}),
         ui: {
@@ -2237,6 +2525,7 @@ app.put('/api/ui/card-scale', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             cardScalePct: persistedConfig?.ui?.cardScalePct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
     io.emit('config_update', config);
@@ -2255,6 +2544,40 @@ app.put('/api/ui/home-room-columns-xl', (req, res) => {
 
     const homeRoomColumnsXl = Math.max(1, Math.min(6, Math.round(num)));
 
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeRoomColumnsXl,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-room-columns-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
     persistedConfig = normalizePersistedConfig({
         ...(persistedConfig || {}),
         ui: {
@@ -2270,6 +2593,7 @@ app.put('/api/ui/home-room-columns-xl', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
     io.emit('config_update', config);
@@ -3124,6 +3448,7 @@ app.post('/api/layout', (req, res) => {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         io.emit('config_update', config);
@@ -3171,6 +3496,7 @@ app.delete('/api/layout', (req, res) => {
                 cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
                 cardScalePct: persistedConfig?.ui?.cardScalePct,
                 homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
             },
         };
         io.emit('config_update', config);

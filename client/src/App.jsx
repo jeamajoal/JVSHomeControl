@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import EnvironmentPanel from './components/EnvironmentPanel';
 import HeatmapPanel from './components/HeatmapPanel';
 import InteractionPanel from './components/InteractionPanel';
@@ -26,7 +26,47 @@ function App() {
   const [loadError, setLoadError] = useState(null);
   const [page, setPage] = useState(0); // 0=Home, 1=Climate, 2=Weather, 3=Activity, 4=Controls, 5=Settings, 6=Info, 7=Events (hidden)
 
-  const colorSchemeId = String(config?.ui?.colorScheme || 'electric-blue');
+  const PANEL_NAME_STORAGE_KEY = 'jvs.panelName';
+  const [panelName, setPanelNameState] = useState(() => {
+    try {
+      return String(localStorage.getItem(PANEL_NAME_STORAGE_KEY) || '');
+    } catch {
+      return '';
+    }
+  });
+
+  const setPanelName = useCallback((next) => {
+    const v = String(next ?? '').trim();
+    setPanelNameState(v);
+    try {
+      if (v) localStorage.setItem(PANEL_NAME_STORAGE_KEY, v);
+      else localStorage.removeItem(PANEL_NAME_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const effectiveConfig = useMemo(() => {
+    const base = config && typeof config === 'object' ? config : { rooms: [], sensors: [] };
+    const ui = (base.ui && typeof base.ui === 'object') ? base.ui : {};
+    const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+    const profile = (panelName && profiles && typeof profiles === 'object' && profiles[panelName] && typeof profiles[panelName] === 'object')
+      ? profiles[panelName]
+      : null;
+
+    const nextUi = {
+      ...ui,
+      ...(profile || {}),
+      panelProfiles: ui.panelProfiles,
+    };
+
+    return {
+      ...base,
+      ui: nextUi,
+    };
+  }, [config, panelName]);
+
+  const colorSchemeId = String(effectiveConfig?.ui?.colorScheme || 'electric-blue');
   const uiScheme = getUiScheme(colorSchemeId);
 
   useEffect(() => {
@@ -71,7 +111,7 @@ function App() {
     } catch {
       // ignore
     }
-  }, [config?.ui?.cardOpacityScalePct]);
+  }, [effectiveConfig?.ui?.cardOpacityScalePct]);
 
   const pageLabel = page === 0
     ? 'Home'
@@ -286,8 +326,8 @@ function App() {
         {!dataLoaded ? (
           <div className="flex items-center justify-center h-full text-gray-500 animate-pulse">LOADING SYSTEM...</div>
         ) : (
-          <AppStateProvider value={{ config, statuses: sensors, connected, uiScheme, refreshNow }}>
-            {(Array.isArray(config?.rooms) && config.rooms.length === 0) ? (
+          <AppStateProvider value={{ config: effectiveConfig, statuses: sensors, connected, uiScheme, refreshNow, panelName, setPanelName }}>
+            {(Array.isArray(effectiveConfig?.rooms) && effectiveConfig.rooms.length === 0) ? (
               <div className="flex items-center justify-center h-full p-8">
                 <div className="glass-panel border border-white/10 p-6 max-w-xl w-full text-center">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-white/55 font-semibold">No Data</div>
@@ -306,23 +346,23 @@ function App() {
             ) : null}
 
             {page === 0 ? (
-              <EnvironmentPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
+              <EnvironmentPanel config={effectiveConfig} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 1 ? (
-              <HeatmapPanel config={config} statuses={sensors} uiScheme={uiScheme} />
+              <HeatmapPanel config={effectiveConfig} statuses={sensors} uiScheme={uiScheme} />
             ) : null}
             {page === 2 ? (
               <WeatherPanel uiScheme={uiScheme} />
             ) : null}
             {page === 3 ? (
-              <ActivityPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
+              <ActivityPanel config={effectiveConfig} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 4 ? (
-              <InteractionPanel config={config} statuses={sensors} connected={connected} uiScheme={uiScheme} />
+              <InteractionPanel config={effectiveConfig} statuses={sensors} connected={connected} uiScheme={uiScheme} />
             ) : null}
             {page === 5 ? (
               <ConfigPanel
-                config={config}
+                config={effectiveConfig}
                 statuses={sensors}
                 connected={connected}
                 uiScheme={uiScheme}

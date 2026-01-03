@@ -20,15 +20,31 @@ async function saveAllowlists(payload) {
   return res.json().catch(() => ({}));
 }
 
-async function saveColorScheme(colorScheme) {
+async function saveColorScheme(colorScheme, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/color-scheme`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ colorScheme }),
+    body: JSON.stringify({
+      colorScheme,
+      ...(panelName ? { panelName } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Color scheme save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function createPanelProfile(name) {
+  const res = await fetch(`${API_HOST}/api/ui/panels`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Panel create failed (${res.status})`);
   }
   return res.json().catch(() => ({}));
 }
@@ -135,11 +151,14 @@ async function saveColorizeHomeValues(payload) {
   return res.json().catch(() => ({}));
 }
 
-async function saveHomeBackground(homeBackground) {
+async function saveHomeBackground(homeBackground, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/home-background`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ homeBackground: homeBackground || {} }),
+    body: JSON.stringify({
+      homeBackground: homeBackground || {},
+      ...(panelName ? { panelName } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -148,11 +167,14 @@ async function saveHomeBackground(homeBackground) {
   return res.json().catch(() => ({}));
 }
 
-async function saveCardOpacityScalePct(cardOpacityScalePct) {
+async function saveCardOpacityScalePct(cardOpacityScalePct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/card-opacity-scale`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cardOpacityScalePct }),
+    body: JSON.stringify({
+      cardOpacityScalePct,
+      ...(panelName ? { panelName } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -161,11 +183,14 @@ async function saveCardOpacityScalePct(cardOpacityScalePct) {
   return res.json().catch(() => ({}));
 }
 
-async function saveCardScalePct(cardScalePct) {
+async function saveCardScalePct(cardScalePct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/card-scale`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cardScalePct }),
+    body: JSON.stringify({
+      cardScalePct,
+      ...(panelName ? { panelName } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -174,11 +199,14 @@ async function saveCardScalePct(cardScalePct) {
   return res.json().catch(() => ({}));
 }
 
-async function saveHomeRoomColumnsXl(homeRoomColumnsXl) {
+async function saveHomeRoomColumnsXl(homeRoomColumnsXl, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/home-room-columns-xl`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ homeRoomColumnsXl }),
+    body: JSON.stringify({
+      homeRoomColumnsXl,
+      ...(panelName ? { panelName } : {}),
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -372,6 +400,15 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const statuses = statusesProp ?? ctx?.statuses;
   const connected = connectedProp ?? ctx?.connected;
 
+  const selectedPanelName = String(ctx?.panelName ?? '').trim();
+  const panelNames = useMemo(() => {
+    const raw = (config?.ui?.panelProfiles && typeof config.ui.panelProfiles === 'object') ? config.ui.panelProfiles : {};
+    return Object.keys(raw).sort((a, b) => a.localeCompare(b));
+  }, [config?.ui?.panelProfiles]);
+  const [newPanelName, setNewPanelName] = useState('');
+  const [panelCreateError, setPanelCreateError] = useState(null);
+  const [panelCreateStatus, setPanelCreateStatus] = useState('idle'); // idle | creating
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -392,7 +429,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     { id: 'home', label: 'Home' },
     { id: 'sounds', label: 'Sounds' },
     { id: 'climate', label: 'Climate' },
-    { id: 'layout', label: 'Layout' },
     { id: 'events', label: 'Events' },
   ];
 
@@ -400,13 +436,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const scheme = UI_COLOR_SCHEMES[colorSchemeId] || UI_COLOR_SCHEMES['electric-blue'];
 
   const allowlistSave = useAsyncSave(saveAllowlists);
-  const colorSchemeSave = useAsyncSave(saveColorScheme);
+  const colorSchemeSave = useAsyncSave((colorScheme) => saveColorScheme(colorScheme, selectedPanelName || null));
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
-  const homeBackgroundSave = useAsyncSave(saveHomeBackground);
-  const cardOpacitySave = useAsyncSave(saveCardOpacityScalePct);
-  const cardScaleSave = useAsyncSave(saveCardScalePct);
-  const homeRoomColsSave = useAsyncSave(saveHomeRoomColumnsXl);
+  const homeBackgroundSave = useAsyncSave((homeBackground) => saveHomeBackground(homeBackground, selectedPanelName || null));
+  const cardOpacitySave = useAsyncSave((cardOpacityScalePct) => saveCardOpacityScalePct(cardOpacityScalePct, selectedPanelName || null));
+  const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
+  const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -1065,6 +1101,26 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     }
   };
 
+  const createPanel = async () => {
+    setPanelCreateError(null);
+    const name = String(newPanelName || '').trim();
+    if (!name) return;
+
+    setPanelCreateStatus('creating');
+    try {
+      const res = await createPanelProfile(name);
+      const created = String(res?.name ?? name).trim() || name;
+      if (ctx?.setPanelName) ctx.setPanelName(created);
+      setNewPanelName('');
+      return res;
+    } catch (e) {
+      setPanelCreateError(e?.message || String(e));
+      throw e;
+    } finally {
+      setPanelCreateStatus('idle');
+    }
+  };
+
   return (
     <div className="w-full h-full overflow-auto utility-page">
       <div className="w-full">
@@ -1087,6 +1143,59 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 </button>
               );
             })}
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+            <div className="md:col-span-4">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Panel Profile
+              </label>
+              <select
+                value={selectedPanelName}
+                onChange={(e) => {
+                  const next = String(e.target.value || '').trim();
+                  if (ctx?.setPanelName) ctx.setPanelName(next);
+                }}
+                className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
+              >
+                <option value="">Global defaults</option>
+                {panelNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              <div className="mt-1 text-[11px] text-white/45">
+                {selectedPanelName ? 'Panel-specific overrides enabled.' : 'Editing global defaults.'}
+              </div>
+            </div>
+
+            <div className="md:col-span-6">
+              <label className="block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                New Panel Name
+              </label>
+              <input
+                value={newPanelName}
+                onChange={(e) => setNewPanelName(e.target.value)}
+                placeholder="e.g. Kitchen Panel"
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-white/85 placeholder:text-white/30"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <button
+                type="button"
+                onClick={() => createPanel().catch(() => undefined)}
+                disabled={panelCreateStatus === 'creating' || !String(newPanelName || '').trim()}
+                className={`w-full rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${panelCreateStatus === 'creating' ? 'border-white/10 bg-black/20 text-white/40' : 'border-white/10 bg-white/5 text-white/80 hover:bg-white/10'}`}
+              >
+                {panelCreateStatus === 'creating' ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+
+            {panelCreateError ? (
+              <div className="md:col-span-12 text-[11px] text-neon-red break-words">
+                Panel create failed: {panelCreateError}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -1604,6 +1713,223 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               ) : null}
             </div>
 
+              <div className="mt-4 utility-group p-4">
+                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                  Sensor Badge Colors
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  Controls the color of the "Motion" and "Door" badges on Home.
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {[{ k: 'motion', label: 'Motion' }, { k: 'door', label: 'Door' }].map(({ k, label }) => (
+                    <label key={k} className="block">
+                      <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                        <span>{label} Color</span>
+                        <span className={`inline-block h-2 w-2 rounded-full ${toleranceSwatchClass(sensorColorsDraft[k])}`} />
+                      </div>
+                      <select
+                        value={sensorColorsDraft[k]}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const next = String(e.target.value);
+                          setSensorColorsDirty(true);
+                          setSensorColorsDraft((prev) => ({ ...prev, [k]: next }));
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      >
+                        {TOLERANCE_COLOR_CHOICES.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {sensorColorsDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(sensorColorsSave.status)}
+                  </div>
+                </div>
+
+                {sensorColorsError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {sensorColorsError}</div>
+                ) : null}
+              </div>
+
+              <div className="mt-6 border-t border-white/10 pt-5">
+                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                  Layout
+                </div>
+                <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+                  Rooms & Labels
+                </div>
+                <div className="mt-1 text-xs text-white/45">
+                  These controls affect Home and the Climate (heatmap) view.
+                </div>
+
+                <div className="mt-4 utility-group p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Manual Rooms</div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Add/remove rooms that aren’t discovered from Hubitat. Rooms can be placed/resized on the Climate page.
+                  </div>
+
+                  <div className="mt-4 flex gap-2">
+                    <input
+                      value={newRoomName}
+                      onChange={(e) => setNewRoomName(e.target.value)}
+                      placeholder="New room name"
+                      className={`flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
+                      disabled={!connected || busy}
+                    />
+                    <button
+                      type="button"
+                      disabled={!connected || busy || !newRoomName.trim()}
+                      onClick={async () => {
+                        setError(null);
+                        setBusy(true);
+                        try {
+                          await addManualRoom(newRoomName.trim());
+                          setNewRoomName('');
+                        } catch (e) {
+                          setError(e?.message || String(e));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !newRoomName.trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                    >
+                      Add
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {manualRooms.length ? (
+                      manualRooms.map((r) => (
+                        <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
+                                {r.name}
+                              </div>
+                              <div className="mt-1 text-xs text-white/45 truncate">ID: {r.id}</div>
+                            </div>
+
+                            <button
+                              type="button"
+                              disabled={!connected || busy}
+                              onClick={async () => {
+                                setError(null);
+                                setBusy(true);
+                                try {
+                                  await deleteManualRoom(r.id);
+                                } catch (e) {
+                                  setError(e?.message || String(e));
+                                } finally {
+                                  setBusy(false);
+                                }
+                              }}
+                              className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-white/45">No manual rooms.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 utility-group p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Freeform Text</div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Add labels here, then position/resize them on the Climate page in Edit mode.
+                  </div>
+
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      disabled={!connected || busy}
+                      onClick={async () => {
+                        setError(null);
+                        setBusy(true);
+                        try {
+                          await addLabel('Label');
+                        } catch (e) {
+                          setError(e?.message || String(e));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                    >
+                      Add Label
+                    </button>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3">
+                    {labels.length ? (
+                      labels.map((l) => (
+                        <div key={l.id} className="utility-group p-4">
+                          <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold">
+                            {l.id}
+                          </div>
+                          <textarea
+                            value={labelDrafts[l.id] ?? l.text}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              setLabelDrafts((prev) => ({ ...prev, [l.id]: next }));
+                              queueLabelAutosave(l.id, next);
+                            }}
+                            rows={2}
+                            className={`mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
+                            disabled={!connected || busy}
+                            placeholder="Label text"
+                          />
+
+                          <div className="mt-2 flex items-center justify-between gap-3">
+                            <div className="text-xs text-white/45">
+                              {statusText(labelSaveState[l.id]?.status) || 'Idle'}
+                            </div>
+                            {labelSaveState[l.id]?.error ? (
+                              <div className="text-xs text-neon-red break-words">{labelSaveState[l.id]?.error}</div>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              type="button"
+                              disabled={!connected || busy}
+                              onClick={async () => {
+                                setError(null);
+                                setBusy(true);
+                                try {
+                                  await deleteLabel(l.id);
+                                } catch (e) {
+                                  setError(e?.message || String(e));
+                                } finally {
+                                  setBusy(false);
+                                }
+                              }}
+                              className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-white/45">No labels yet.</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
             {!connected ? (
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
@@ -1782,53 +2108,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
               {homeValueColorError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeValueColorError}</div>
-              ) : null}
-            </div>
-
-            <div className="mt-3 utility-group p-4">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                Home Sensor Indicator Colors
-              </div>
-              <div className="mt-1 text-xs text-white/45">
-                Controls the color of the "Motion" and "Door" badges on Home.
-              </div>
-
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {[{ k: 'motion', label: 'Motion' }, { k: 'door', label: 'Door' }].map(({ k, label }) => (
-                  <label key={k} className="block">
-                    <div className="flex items-center justify-between gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
-                      <span>{label} Color</span>
-                      <span className={`inline-block h-2 w-2 rounded-full ${toleranceSwatchClass(sensorColorsDraft[k])}`} />
-                    </div>
-                    <select
-                      value={sensorColorsDraft[k]}
-                      disabled={!connected || busy}
-                      onChange={(e) => {
-                        const next = String(e.target.value);
-                        setSensorColorsDirty(true);
-                        setSensorColorsDraft((prev) => ({ ...prev, [k]: next }));
-                      }}
-                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                    >
-                      {TOLERANCE_COLOR_CHOICES.map((c) => (
-                        <option key={c.id} value={c.id}>{c.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <div className="text-xs text-white/45">
-                  {sensorColorsDirty ? 'Pending changes…' : 'Saved'}
-                </div>
-                <div className="text-xs text-white/45">
-                  {statusText(sensorColorsSave.status)}
-                </div>
-              </div>
-
-              {sensorColorsError ? (
-                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {sensorColorsError}</div>
               ) : null}
             </div>
 
@@ -2097,178 +2376,8 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             {!connected ? (
               <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
             ) : null}
+
           </div>
-        ) : null}
-
-        {activeTab === 'layout' ? (
-          <>
-            <div className="mt-4 utility-panel p-4 md:p-6">
-            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Rooms
-            </div>
-            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Manual Rooms
-            </div>
-            <div className="mt-1 text-xs text-white/45">
-              Add/remove rooms that aren’t discovered from Hubitat. They can be placed/resized on the Environment page.
-            </div>
-
-            <div className="mt-4 flex gap-2">
-              <input
-                value={newRoomName}
-                onChange={(e) => setNewRoomName(e.target.value)}
-                placeholder="New room name"
-                className={`flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
-                disabled={!connected || busy}
-              />
-              <button
-                type="button"
-                disabled={!connected || busy || !newRoomName.trim()}
-                onClick={async () => {
-                  setError(null);
-                  setBusy(true);
-                  try {
-                    await addManualRoom(newRoomName.trim());
-                    setNewRoomName('');
-                  } catch (e) {
-                    setError(e?.message || String(e));
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !newRoomName.trim()) ? 'opacity-50' : 'hover:bg-white/5'}`}
-              >
-                Add
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-              {manualRooms.length ? (
-                manualRooms.map((r) => (
-                  <div key={r.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
-                          {r.name}
-                        </div>
-                        <div className="mt-1 text-xs text-white/45 truncate">ID: {r.id}</div>
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={!connected || busy}
-                        onClick={async () => {
-                          setError(null);
-                          setBusy(true);
-                          try {
-                            await deleteManualRoom(r.id);
-                          } catch (e) {
-                            setError(e?.message || String(e));
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-white/45">No manual rooms.</div>
-              )}
-            </div>
-          </div>
-            <div className="mt-4 utility-panel p-4 md:p-6">
-              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-                Labels
-              </div>
-            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Freeform Text
-            </div>
-            <div className="mt-1 text-xs text-white/45">
-              Add labels here, then position/resize them on the Environment page in Edit mode.
-            </div>
-
-            <div className="mt-4">
-              <button
-                type="button"
-                disabled={!connected || busy}
-                onClick={async () => {
-                  setError(null);
-                  setBusy(true);
-                  try {
-                    await addLabel('Label');
-                  } catch (e) {
-                    setError(e?.message || String(e));
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-                className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
-              >
-                Add Label
-              </button>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-3">
-              {labels.length ? (
-                labels.map((l) => (
-                  <div key={l.id} className="utility-group p-4">
-                    <div className="text-[10px] uppercase tracking-[0.2em] text-white/45 font-semibold">
-                      {l.id}
-                    </div>
-                    <textarea
-                      value={labelDrafts[l.id] ?? l.text}
-                      onChange={(e) => {
-                        const next = e.target.value;
-                        setLabelDrafts((prev) => ({ ...prev, [l.id]: next }));
-                        queueLabelAutosave(l.id, next);
-                      }}
-                      rows={2}
-                      className={`mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90 placeholder:text-white/35 ${scheme.focusRing}`}
-                      disabled={!connected || busy}
-                      placeholder="Label text"
-                    />
-
-                    <div className="mt-2 flex items-center justify-between gap-3">
-                      <div className="text-xs text-white/45">
-                        {statusText(labelSaveState[l.id]?.status) || 'Idle'}
-                      </div>
-                      {labelSaveState[l.id]?.error ? (
-                        <div className="text-xs text-neon-red break-words">{labelSaveState[l.id]?.error}</div>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        disabled={!connected || busy}
-                        onClick={async () => {
-                          setError(null);
-                          setBusy(true);
-                          try {
-                            await deleteLabel(l.id);
-                          } catch (e) {
-                            setError(e?.message || String(e));
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors text-white/70 border-white/10 bg-black/20 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/10'}`}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-sm text-white/45">No labels yet.</div>
-              )}
-            </div>
-          </div>
-          </>
         ) : null}
 
         {activeTab === 'events' ? (
