@@ -593,7 +593,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {supportedActions.map((d) => (
-              <div key={d.id} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div key={d.id} className="glass-panel p-4 border border-white/10">
                 <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
                   {d.label}
                 </div>
