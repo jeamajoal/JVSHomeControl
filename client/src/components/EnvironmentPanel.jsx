@@ -134,15 +134,19 @@ const useClock = (intervalMs = 1000) => {
   return now;
 };
 
-const useFitScale = (cardScalePct = 100) => {
+const useRoomsFitScale = (cardScalePct = 100) => {
   const viewportRef = useRef(null);
-  const contentRef = useRef(null);
-  const [scale, setScale] = useState(1);
+  const metricRowRef = useRef(null);
+  const roomsRef = useRef(null);
+
+  const [roomsScale, setRoomsScale] = useState(1);
+  const [scaledRoomsHeightPx, setScaledRoomsHeightPx] = useState(null);
 
   useEffect(() => {
     const viewportEl = viewportRef.current;
-    const contentEl = contentRef.current;
-    if (!viewportEl || !contentEl) return;
+    const metricEl = metricRowRef.current;
+    const roomsEl = roomsRef.current;
+    if (!viewportEl || !metricEl || !roomsEl) return;
 
     const pctNum = Number(cardScalePct);
     const userFactor = Number.isFinite(pctNum)
@@ -154,32 +158,37 @@ const useFitScale = (cardScalePct = 100) => {
         ? window.matchMedia('(min-width: 768px)').matches
         : true;
 
-      const baseScale = (() => {
-        if (!isMdUp) return 1;
+      // On small screens, keep natural size and allow scroll.
+      if (!isMdUp) {
+        setRoomsScale(1);
+        setScaledRoomsHeightPx(null);
+        return;
+      }
 
-        // Safety gutter to avoid sub-pixel rounding causing right-edge peeking
-        // on some fullscreen setups (e.g., Firefox/Linux).
-        const SAFE_GUTTER_PX = 8;
-        const vw = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
-        const vh = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
-        const cw = Math.max(contentEl.scrollWidth, contentEl.clientWidth, 1);
-        const ch = Math.max(contentEl.scrollHeight, contentEl.clientHeight, 1);
+      const SAFE_GUTTER_PX = 8;
+      const viewportH = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
+      const metricH = Math.max(metricEl.getBoundingClientRect().height || 0, 0);
+      // Match the existing spacing between the metric row and rooms grid (mt-4).
+      const BETWEEN_PX = 16;
+      const availableRoomsH = Math.max(viewportH - metricH - BETWEEN_PX, 1);
 
-        // Prefer readability over always fitting.
-        // Allow modest scale-up when there is extra space, but never shrink;
-        // if content grows (more sensors/rooms), we scroll instead.
-        const raw = Math.min(vw / cw, vh / ch) * 0.99;
-        return Math.min(Math.max(raw, 1), 1.15);
-      })();
+      const roomsH = Math.max(roomsEl.scrollHeight, roomsEl.clientHeight, 1);
+      const desired = userFactor;
+      const desiredH = roomsH * desired;
 
-      const next = Math.max(0.5, Math.min(2, baseScale * userFactor));
-      setScale((prev) => (Math.abs(prev - next) < 0.01 ? prev : next));
+      // Fit vertically if needed; allow modest scale-up if there is space.
+      const fit = Math.min(availableRoomsH / desiredH, 1.15);
+      const nextScale = Math.max(0.5, Math.min(2, desired * fit));
+
+      setRoomsScale((prev) => (Math.abs(prev - nextScale) < 0.01 ? prev : nextScale));
+      setScaledRoomsHeightPx(Math.ceil(roomsH * nextScale));
     };
 
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(viewportEl);
-    ro.observe(contentEl);
+    ro.observe(metricEl);
+    ro.observe(roomsEl);
     window.addEventListener('resize', compute);
 
     return () => {
@@ -188,7 +197,7 @@ const useFitScale = (cardScalePct = 100) => {
     };
   }, [cardScalePct]);
 
-  return { viewportRef, contentRef, scale };
+  return { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx };
 };
 
 const MetricCard = ({
@@ -784,7 +793,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
-  const { viewportRef, contentRef, scale } = useFitScale(cardScalePct);
+  const { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx } = useRoomsFitScale(cardScalePct);
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);
@@ -904,15 +913,9 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
         />
       ) : null}
 
-      <div
-        className="relative z-10 w-full h-full"
-        style={{
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
-        }}
-      >
-        <div ref={contentRef} className="w-full">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+      <div className="relative z-10 w-full">
+        <div className="w-full">
+          <div ref={metricRowRef} className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             <MetricCard
               title="Time"
               value={formatTime(now)}
@@ -1019,9 +1022,18 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           </div>
 
           <div
-            className="mt-4 jvs-home-rooms-grid gap-4"
-            style={{ '--jvs-home-rooms-cols-xl': homeRoomColumnsXl }}
+            className="mt-4"
+            style={scaledRoomsHeightPx ? { height: `${scaledRoomsHeightPx}px` } : undefined}
           >
+            <div
+              ref={roomsRef}
+              className="jvs-home-rooms-grid gap-4"
+              style={{
+                '--jvs-home-rooms-cols-xl': homeRoomColumnsXl,
+                transform: `scale(${roomsScale})`,
+                transformOrigin: 'top left',
+              }}
+            >
             {rooms.length ? (
               rooms.map((r) => (
                 <RoomPanel
@@ -1044,6 +1056,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                 <div className="mt-2 text-xl font-extrabold text-white">Waiting for devices…</div>
               </div>
             )}
+            </div>
           </div>
         </div>
       </div>
