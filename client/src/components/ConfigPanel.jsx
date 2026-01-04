@@ -1645,15 +1645,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [labelSaveState, setLabelSaveState] = useState(() => ({}));
   const labelSaveTimersRef = useRef(new Map());
 
-  const ctrlAllowedIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds)
-      ? config.ui.ctrlAllowedDeviceIds
-      : (Array.isArray(config?.ui?.allowedDeviceIds) ? config.ui.allowedDeviceIds : []);
-    return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.ctrlAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
-
-  const ctrlLocked = Boolean(config?.ui?.ctrlAllowlistLocked);
-
   const homeVisibleDeviceIds = useMemo(() => {
     const ids = Array.isArray(config?.ui?.homeVisibleDeviceIds) ? config.ui.homeVisibleDeviceIds : [];
     const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
@@ -1708,7 +1699,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
         const existing = next[id];
         const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
         const cmds = effectiveDeviceCommandAllowlist?.[id];
-        const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
+        const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : [];
         const hm = effectiveDeviceHomeMetricAllowlist?.[id];
         const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
 
@@ -1747,7 +1738,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
         const hm = effectiveDeviceHomeMetricAllowlist?.[id];
         next[id] = {
           label,
-          commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : null,
+          commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : [],
           homeMetrics: Array.isArray(hm) ? hm.map((c) => String(c)) : null,
         };
       }
@@ -1921,17 +1912,16 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     const existingArr = deviceOverrideDrafts?.[id]?.commands;
     const baseSet = Array.isArray(existingArr)
       ? new Set(existingArr.map((c) => String(c)))
-      : new Set(availableAllowed);
+      : new Set();
 
     if (nextAllowed) baseSet.add(cmd);
     else baseSet.delete(cmd);
 
     const nextArr = UI_DEVICE_COMMANDS.filter((c) => availableAllowed.includes(c) && baseSet.has(c));
-    const isAll = nextArr.length === availableAllowed.length;
 
     setDeviceOverrideDrafts((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] || {}), commands: isAll ? null : nextArr },
+      [id]: { ...(prev[id] || {}), commands: nextArr },
     }));
 
     if (!connected) return;
@@ -1943,7 +1933,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     try {
       await saveDeviceOverrides({
         deviceId: id,
-        commands: isAll ? null : nextArr,
+        commands: nextArr,
         ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
       });
       setDeviceOverrideSaveState((prev) => ({
@@ -2016,22 +2006,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
         ...prev,
         [id]: { ...(prev[id] || {}), homeMetrics: { status: 'error', error: e?.message || String(e) } },
       }));
-    }
-  };
-
-  const setControlAllowed = async (deviceId, nextAllowed) => {
-    setError(null);
-    try {
-      const nextCtrl = new Set(Array.from(ctrlAllowedIds));
-      if (nextAllowed) nextCtrl.add(String(deviceId));
-      else nextCtrl.delete(String(deviceId));
-
-      const payload = {};
-      if (!ctrlLocked) payload.ctrlAllowedDeviceIds = Array.from(nextCtrl);
-      if (selectedPanelName) payload.panelName = selectedPanelName;
-      await allowlistSave.run(payload);
-    } catch (e) {
-      setError(e?.message || String(e));
     }
   };
 
@@ -2180,7 +2154,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose where each device appears: Home and/or Controls.
+              Choose which devices appear on Home.
             </div>
 
             {isPresetSelected ? (
@@ -2192,17 +2166,12 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </div>
             ) : null}
 
-            {ctrlLocked ? (
-              <div className="mt-2 text-[11px] text-neon-red">
-                Controls list locked by server env var UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS).
-              </div>
-            ) : null}
             {error ? (
               <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {error}</div>
             ) : null}
 
             <div className="mt-2 text-xs text-white/45">
-              {[statusText(homeVisibleSave.status), statusText(allowlistSave.status)].filter(Boolean).join(' ')}
+              {[statusText(homeVisibleSave.status)].filter(Boolean).join(' ')}
             </div>
 
             <div
@@ -2213,13 +2182,12 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 allDevices.map((d) => {
                   const allDeviceIds = allDevices.map((x) => String(x.id));
                   const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
-                  const isCtrl = ctrlAllowedIds.has(String(d.id));
 
                   const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
                     ? deviceOverrideDrafts[d.id]
                     : {};
                   const displayNameDraft = String(draft.label ?? '');
-                  const explicitCommands = Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : null;
+                  const explicitCommands = Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : [];
                   const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
                   const availableAllowedCommands = UI_DEVICE_COMMANDS.filter((c) => Array.isArray(d.commands) && d.commands.includes(c));
 
@@ -2239,7 +2207,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                   const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
                   const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
                   const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
-                  const isInheritCommands = explicitCommands === null;
                   const isInheritHomeMetrics = explicitHomeMetrics === null;
 
                   return (
@@ -2265,17 +2232,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
                             />
                             Home
-                          </label>
-
-                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                            <input
-                              type="checkbox"
-                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || allowlistSave.status === 'saving' || ctrlLocked}
-                              checked={isCtrl}
-                              onChange={(e) => setControlAllowed(d.id, e.target.checked)}
-                            />
-                            Controls
                           </label>
                         </div>
                       </div>
@@ -2413,14 +2369,14 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                                   ? 'Saved'
                                   : (cmdSave?.status === 'error'
                                     ? 'Error'
-                                    : (isInheritCommands ? 'Inherit' : 'Custom')))}
+                                    : (explicitCommands.length ? 'Selected' : 'None')))}
                             </div>
                           </div>
 
                           {availableAllowedCommands.length ? (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {availableAllowedCommands.map((cmd) => {
-                                const checked = isInheritCommands ? true : explicitCommands.includes(cmd);
+                                const checked = explicitCommands.includes(cmd);
                                 const label = cmd === 'setLevel' ? 'Level' : cmd;
                                 return (
                                   <label key={cmd} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
@@ -2437,11 +2393,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
                               <button
                                 type="button"
-                                disabled={!connected || busy || isInheritCommands}
+                                disabled={!connected || busy || !explicitCommands.length}
                                 onClick={async () => {
                                   setDeviceOverrideDrafts((prev) => ({
                                     ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), commands: null },
+                                    [d.id]: { ...(prev[d.id] || {}), commands: [] },
                                   }));
                                   if (!connected) return;
                                   setDeviceOverrideSaveState((prev) => ({
@@ -2451,7 +2407,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                                   try {
                                     await saveDeviceOverrides({
                                       deviceId: String(d.id),
-                                      commands: null,
+                                      commands: [],
                                       ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
                                     });
                                     setDeviceOverrideSaveState((prev) => ({
@@ -2465,7 +2421,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                                     }));
                                   }
                                 }}
-                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritCommands) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !explicitCommands.length) ? 'opacity-50' : 'hover:bg-white/5'}`}
                               >
                                 Reset
                               </button>

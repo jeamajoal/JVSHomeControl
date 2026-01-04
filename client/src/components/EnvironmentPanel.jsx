@@ -16,7 +16,7 @@ import {
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getAllowedDeviceIdSet, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
+import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
 import {
   normalizeToleranceColorId,
@@ -349,7 +349,6 @@ const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, acc
   );
 };
 
-// Room/device joins are centralized in ../deviceSelectors.
 
 const isOutsideRoomName = (name) => {
   const n = String(name || '').toLowerCase();
@@ -559,7 +558,7 @@ const getDeviceHomeMetricAllowlistForId = (deviceHomeMetricAllowlist, deviceId) 
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -568,8 +567,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
   const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
   const metrics = useMemo(
-    () => computeRoomMetrics(devices, allowedControlIds, deviceHomeMetricAllowlist),
-    [devices, allowedControlIds, deviceHomeMetricAllowlist],
+    () => computeRoomMetrics(devices, null, deviceHomeMetricAllowlist),
+    [devices, deviceHomeMetricAllowlist],
   );
 
   const supportedActions = useMemo(() => {
@@ -581,20 +580,20 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
         commands: d.status?.commands || [],
         attrs: d.status?.attributes || {},
       }))
-      .filter((d) => allowedControlIds?.has(String(d.id)))
       .filter((d) => Array.isArray(d.commands) && d.commands.length)
       .map((d) => ({
         ...d,
         commands: (() => {
-          const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
           const base = d.commands.filter((c) => allow.has(c));
-          if (!perDevice) return base;
+          const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
+          // Home controls only appear when commands are explicitly selected.
+          if (!perDevice || perDevice.length === 0) return [];
           const set = new Set(perDevice);
           return base.filter((c) => set.has(c));
         })(),
       }))
       .filter((d) => d.commands.length);
-  }, [devices, allowedControlIds, deviceCommandAllowlist]);
+  }, [devices, deviceCommandAllowlist]);
 
   const runAction = async (deviceId, command) => {
     const key = `${deviceId}:${command}`;
@@ -1052,10 +1051,6 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return Array.from(new Set(keys));
   }, [config?.ui?.homeRoomMetricKeys]);
 
-  // Controls remain restricted by explicit allowlists.
-  // Home visibility (metrics/room cards) is controlled separately.
-  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'ctrl'), [config]);
-
   const homeVisibleDeviceIds = useMemo(() => getHomeVisibleDeviceIdSet(config), [config]);
   const rooms = useMemo(
     () => buildRoomsWithStatuses(config, statuses, { deviceIdSet: homeVisibleDeviceIds }),
@@ -1075,13 +1070,13 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
   const overall = useMemo(() => {
     const allDevices = (rooms || []).flatMap((r) => r.devices);
-    return computeRoomMetrics(allDevices, allowedControlIds);
-  }, [rooms, allowedControlIds]);
+    return computeRoomMetrics(allDevices, null, config?.ui?.deviceHomeMetricAllowlist);
+  }, [rooms, config?.ui?.deviceHomeMetricAllowlist]);
 
   const outsideSensors = useMemo(() => {
     const outsideDevices = pickOutsideDevices(rooms);
-    return computeRoomMetrics(outsideDevices, allowedControlIds);
-  }, [rooms, allowedControlIds]);
+    return computeRoomMetrics(outsideDevices, null, config?.ui?.deviceHomeMetricAllowlist);
+  }, [rooms, config?.ui?.deviceHomeMetricAllowlist]);
 
   useEffect(() => {
     let alive = true;
@@ -1321,7 +1316,6 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   roomName={r.room.name}
                   devices={r.devices}
                   connected={connected}
-                  allowedControlIds={allowedControlIds}
                   uiScheme={resolvedUiScheme}
                   climateTolerances={climateTolerances}
                   climateToleranceColors={climateToleranceColors}

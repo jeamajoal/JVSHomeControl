@@ -4,7 +4,7 @@ import { Loader2, Power, SlidersHorizontal } from 'lucide-react';
 import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getAllowedDeviceIdSet, getDeviceCommandAllowlist } from '../deviceSelectors';
+import { buildRoomsWithStatuses } from '../deviceSelectors';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -206,13 +206,11 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     [uiScheme, config?.ui?.accentColorId],
   );
 
-  const allowedControlIds = useMemo(() => {
-    return getAllowedDeviceIdSet(config, 'ctrl');
-  }, [config]);
-
   const rooms = useMemo(() => {
     return buildRoomsWithStatuses(config, statuses, { ignoreVisibleRooms: true });
   }, [config, statuses]);
+
+  const safeUiCommands = useMemo(() => new Set(['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']), []);
 
   const [busy, setBusy] = useState(() => new Set());
 
@@ -278,8 +276,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                   .map((d) => {
                     const attrs = d.status?.attributes || {};
                     const commandsRaw = Array.isArray(d.status?.commands) ? d.status.commands : [];
-                    const perDevice = getDeviceCommandAllowlist(config, d.id);
-                    const commands = perDevice ? commandsRaw.filter((c) => perDevice.includes(c)) : commandsRaw;
+                    const commands = commandsRaw.filter((c) => safeUiCommands.has(String(c)));
                     return {
                       id: d.id,
                       label: d.label,
@@ -288,8 +285,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       state: d.status?.state,
                     };
                   })
-                  .filter((d) => allowedControlIds.has(String(d.id)))
-                  .filter((d) => d.commands.length || typeof d.attrs.switch === 'string' || typeof d.state === 'string');
+                  .filter((d) => d.commands.length);
 
                 if (!controllables.length) return null;
 
@@ -361,7 +357,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         }
 
                         // Fallback: show safe action buttons if present
-                        const allow = new Set(['push', 'on', 'off']);
+                        const allow = new Set(['push', 'refresh', 'on', 'off']);
                         const actions = d.commands.filter((c) => allow.has(c));
                         if (!actions.length) return null;
 
