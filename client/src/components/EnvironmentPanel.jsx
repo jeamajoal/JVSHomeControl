@@ -4,6 +4,7 @@ import {
   Droplets,
   Sun,
   Activity,
+  DoorOpen,
   Power,
   Loader2,
   Clock,
@@ -613,14 +614,24 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const badgeBase = `inline-flex items-center rounded-lg border px-2 py-1 ${scaleNum === 1 ? 'text-[10px]' : ''} font-bold uppercase tracking-[0.18em] border-white/10 bg-white/5`;
+  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 ${scaleNum === 1 ? 'w-7 h-7' : ''}`;
+  const statusIconStyle = scaleNum === 1
+    ? undefined
+    : {
+        width: `${Math.round(28 * scaleNum)}px`,
+        height: `${Math.round(28 * scaleNum)}px`,
+      };
 
-  const motionBadgeText = getToleranceTextClassForColorId(
-    normalizeToleranceColorId(sensorIndicatorColors?.motion, 'warning')
-  );
-  const doorBadgeText = getToleranceTextClassForColorId(
-    normalizeToleranceColorId(sensorIndicatorColors?.door, 'neon-red')
-  );
+  const statusIconSizeClass = scaleNum === 1 ? 'w-4 h-4' : '';
+  const statusIconSizeStyle = scaleNum === 1
+    ? undefined
+    : {
+        width: `${Math.round(16 * scaleNum)}px`,
+        height: `${Math.round(16 * scaleNum)}px`,
+      };
+
+  const activeIconClass = `${uiScheme?.selectedText || 'text-neon-blue'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`.trim();
+  const inactiveIconClass = 'text-white/35';
 
   const metricCards = useMemo(() => {
     const cards = [];
@@ -732,8 +743,28 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
         </h2>
 
         <div className="shrink-0 flex items-center gap-2">
-          {metrics.motionActive ? <span className={`${badgeBase} ${motionBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Motion</span> : null}
-          {metrics.doorOpen ? <span className={`${badgeBase} ${doorBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Door</span> : null}
+          <span
+            className={statusIconBase}
+            style={statusIconStyle}
+            title={metrics.motionActive ? 'Motion active' : 'Motion'}
+            aria-label={metrics.motionActive ? 'Motion active' : 'Motion'}
+          >
+            <Activity
+              className={`${statusIconSizeClass} jvs-icon ${metrics.motionActive ? activeIconClass : inactiveIconClass}`.trim()}
+              style={statusIconSizeStyle}
+            />
+          </span>
+          <span
+            className={statusIconBase}
+            style={statusIconStyle}
+            title={metrics.doorOpen ? 'Door open' : 'Door'}
+            aria-label={metrics.doorOpen ? 'Door open' : 'Door'}
+          >
+            <DoorOpen
+              className={`${statusIconSizeClass} jvs-icon ${metrics.doorOpen ? activeIconClass : inactiveIconClass}`.trim()}
+              style={statusIconSizeStyle}
+            />
+          </span>
         </div>
       </div>
 
