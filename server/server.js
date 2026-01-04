@@ -48,6 +48,7 @@ const UI_COLOR_SCHEMES = Object.freeze([
 // Used for validating color id settings coming from the UI (climate tolerance colors,
 // sensor indicator colors, and Home secondary text color).
 const ALLOWED_TOLERANCE_COLOR_IDS = new Set([
+    'none',
     'neon-blue',
     'neon-green',
     'warning',

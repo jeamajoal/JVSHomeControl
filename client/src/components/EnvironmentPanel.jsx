@@ -572,7 +572,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
       <div className="flex items-center justify-between gap-3">
         <h2
-          className={`min-w-0 jvs-primary-text-strong ${scaleNum === 1 ? 'jvs-home-room-title' : ''} font-extrabold tracking-wide text-white truncate`}
+          className={`min-w-0 jvs-primary-text-strong ${scaleNum === 1 ? 'jvs-home-room-title' : ''} font-extrabold tracking-wide truncate ${primaryTextColorClassName || 'text-white'}`.trim()}
           style={scaleNum === 1 ? undefined : titleStyle}
         >
           {roomName}
@@ -611,7 +611,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueClassName={
               colorizeHomeValues
                 ? getColorizedValueClass('humidity', metrics.humidity, climateTolerances, climateToleranceColors, true)
-                : 'text-white'
+                : ''
             }
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
@@ -631,7 +631,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueClassName={
               colorizeHomeValues
                 ? getColorizedValueClass('illuminance', metrics.illuminance, climateTolerances, climateToleranceColors, true)
-                : 'text-white'
+                : ''
             }
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
@@ -1115,7 +1115,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')
                   : 'border-danger/30'
               }
-              valueClassName={connected ? 'text-white' : 'text-neon-red'}
+              valueClassName={connected ? '' : 'text-neon-red'}
               uiScheme={resolvedUiScheme}
               primaryTextColorClassName={primaryTextColorClass}
               secondaryTextClassName={secondaryTextColorClass}

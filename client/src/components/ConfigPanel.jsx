@@ -812,6 +812,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     setHomeValueOpacityDraft(homeValueOpacityFromConfig);
   }, [homeValueOpacityDirty, homeValueOpacityFromConfig]);
 
+  // When switching profiles, ensure the Home background editor reflects the selected profile.
+  useEffect(() => {
+    setHomeBackgroundError(null);
+    setHomeBackgroundDirty(false);
+    setHomeBackgroundDraft(homeBackgroundFromConfig);
+  }, [selectedPanelName]);
+
   useEffect(() => {
     if (cardOpacityScaleDirty) return;
     setCardOpacityScaleDraft(cardOpacityScaleFromConfig);

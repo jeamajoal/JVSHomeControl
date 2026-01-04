@@ -1,4 +1,15 @@
 export const TOLERANCE_COLOR_STYLES = {
+  none: {
+    id: 'none',
+    label: 'None (inherit)',
+    swatch: 'bg-transparent ring-1 ring-white/20',
+    text: '',
+    bgTemp: 'bg-transparent',
+    bgHum: 'bg-transparent',
+    bgLuxStrong: 'bg-transparent',
+    ring30: 'ring-white/0',
+    ring40: 'ring-white/0',
+  },
   // Existing custom palette
   'neon-blue': {
     id: 'neon-blue',
