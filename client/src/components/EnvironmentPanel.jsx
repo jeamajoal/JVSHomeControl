@@ -134,82 +134,6 @@ const useClock = (intervalMs = 1000) => {
   return now;
 };
 
-const useRoomsFitScale = (cardScalePct = 100) => {
-  const viewportRef = useRef(null);
-  const metricRowRef = useRef(null);
-  const roomsRef = useRef(null);
-
-  const [roomsScale, setRoomsScale] = useState(1);
-  const [scaledRoomsHeightPx, setScaledRoomsHeightPx] = useState(null);
-
-  useEffect(() => {
-    const viewportEl = viewportRef.current;
-    const metricEl = metricRowRef.current;
-    const roomsEl = roomsRef.current;
-    if (!viewportEl || !metricEl || !roomsEl) return;
-
-    const pctNum = Number(cardScalePct);
-    const userFactor = Number.isFinite(pctNum)
-      ? Math.max(0.5, Math.min(2, pctNum / 100))
-      : 1;
-
-    const compute = () => {
-      const isMdUp = typeof window !== 'undefined'
-        ? window.matchMedia('(min-width: 768px)').matches
-        : true;
-
-      // On small screens, keep natural size and allow scroll.
-      if (!isMdUp) {
-        setRoomsScale(1);
-        setScaledRoomsHeightPx(null);
-        return;
-      }
-
-      const SAFE_GUTTER_PX = 8;
-      const viewportW = Math.max((viewportEl.clientWidth || 1) - SAFE_GUTTER_PX, 1);
-      const viewportH = Math.max((viewportEl.clientHeight || 1) - SAFE_GUTTER_PX, 1);
-      const metricH = Math.max(metricEl.getBoundingClientRect().height || 0, 0);
-      // Match the existing spacing between the metric row and rooms grid (mt-4).
-      const BETWEEN_PX = 16;
-      const availableRoomsH = Math.max(viewportH - metricH - BETWEEN_PX, 1);
-
-      const roomsW = Math.max(roomsEl.scrollWidth, roomsEl.clientWidth, 1);
-      const roomsH = Math.max(roomsEl.scrollHeight, roomsEl.clientHeight, 1);
-
-      // User controls the baseline size; we only shrink further if needed to fit.
-      const desired = userFactor;
-      const desiredW = roomsW * desired;
-      const desiredH = roomsH * desired;
-
-      // Fit both directions; never auto-scale up (keeps cardScalePct predictable).
-      const fit = Math.min(
-        viewportW / desiredW,
-        availableRoomsH / desiredH,
-        1,
-      );
-
-      const nextScale = Math.max(0.5, Math.min(2, desired * fit));
-
-      setRoomsScale((prev) => (Math.abs(prev - nextScale) < 0.01 ? prev : nextScale));
-      setScaledRoomsHeightPx(Math.ceil(roomsH * nextScale));
-    };
-
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(viewportEl);
-    ro.observe(metricEl);
-    ro.observe(roomsEl);
-    window.addEventListener('resize', compute);
-
-    return () => {
-      window.removeEventListener('resize', compute);
-      ro.disconnect();
-    };
-  }, [cardScalePct]);
-
-  return { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx };
-};
-
 const MetricCard = ({
   title,
   value,
@@ -222,34 +146,90 @@ const MetricCard = ({
   iconWrapClassName,
   className,
   uiScheme,
+  scaled,
+  scale,
 }) => {
   const effectiveValueClassName = (valueClassName && String(valueClassName).trim().length)
     ? valueClassName
     : 'text-white';
 
+  const scaleNumRaw = Number(scale);
+  const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
+  const isScaled = scaled === true;
+
+  const scaledPaddingStyle = isScaled
+    ? { padding: `${Math.round(16 * scaleNum)}px` }
+    : undefined;
+
+  const scaledTitleStyle = isScaled
+    ? { fontSize: `${Math.round(11 * scaleNum)}px` }
+    : undefined;
+
+  const scaledValueStyle = isScaled
+    ? {
+        fontSize: `${Math.round(34 * scaleNum)}px`,
+        lineHeight: 1.05,
+        ...(valueStyle || {}),
+      }
+    : valueStyle;
+
+  const scaledSubStyle = isScaled
+    ? { fontSize: `${Math.round(13 * scaleNum)}px` }
+    : undefined;
+
+  const scaledIconWrapStyle = isScaled
+    ? {
+        width: `${Math.round(48 * scaleNum)}px`,
+        height: `${Math.round(48 * scaleNum)}px`,
+        borderRadius: `${Math.round(16 * scaleNum)}px`,
+        marginTop: `${Math.round(4 * scaleNum)}px`,
+        transform: `translate(${Math.round(6 * scaleNum)}px, ${Math.round(14 * scaleNum)}px)`,
+      }
+    : undefined;
+
+  const scaledIconStyle = isScaled
+    ? {
+        width: `${Math.round(24 * scaleNum)}px`,
+        height: `${Math.round(24 * scaleNum)}px`,
+      }
+    : undefined;
+
   return (
-    <div className={`glass-panel p-4 md:p-5 border ${accentClassName} ${className || ''}`.trim()}>
+    <div
+      className={`glass-panel ${isScaled ? '' : 'p-4 md:p-5'} border ${accentClassName} ${className || ''}`.trim()}
+      style={scaledPaddingStyle}
+    >
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+          <div
+            className={`${isScaled ? '' : 'text-[11px] md:text-xs'} uppercase tracking-[0.2em] text-white/55 font-semibold`.trim()}
+            style={scaledTitleStyle}
+          >
             {title}
           </div>
           <div
-            style={valueStyle}
-            className={`mt-2 text-3xl md:text-4xl font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}
+            style={scaledValueStyle}
+            className={`mt-2 ${isScaled ? '' : 'text-3xl md:text-4xl'} font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}
           >
             {value}
           </div>
           {sub ? (
-            <div className={subClassName || 'mt-1 text-xs text-white/45 truncate'}>{sub}</div>
+            <div
+              className={subClassName || `mt-1 ${isScaled ? '' : 'text-xs'} text-white/45 truncate`}
+              style={scaledSubStyle}
+            >
+              {sub}
+            </div>
           ) : null}
         </div>
 
         <div
-          className={`shrink-0 self-start mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+          className={`shrink-0 self-start ${isScaled ? '' : 'mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl'} border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+          style={scaledIconWrapStyle}
         >
           {React.createElement(IconComponent, {
-            className: `w-5 h-5 md:w-6 md:h-6 ${uiScheme?.metricIcon || 'text-neon-blue'}`,
+            className: `${isScaled ? '' : 'w-5 h-5 md:w-6 md:h-6'} ${uiScheme?.metricIcon || 'text-neon-blue'}`.trim(),
+            style: scaledIconStyle,
           })}
         </div>
       </div>
@@ -306,21 +286,41 @@ const SwitchButton = ({ label, isOn, disabled, onToggle, busy, uiScheme }) => {
   );
 };
 
-const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, accent = 'blue', uiScheme }) => {
+const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, accent = 'blue', uiScheme, scaled, scale }) => {
   const accentClass = accent === 'green'
     ? 'text-neon-green border-neon-green/30 bg-neon-green/10'
     : (accent === 'fixed'
       ? 'text-white/80 border-white/15 bg-white/5'
       : (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10'));
 
+  const scaleNumRaw = Number(scale);
+  const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
+  const isScaled = scaled === true;
+
+  const scaledButtonStyle = isScaled
+    ? {
+        padding: `${Math.round(8 * scaleNum)}px ${Math.round(12 * scaleNum)}px`,
+        borderRadius: `${Math.round(12 * scaleNum)}px`,
+        fontSize: `${Math.round(12 * scaleNum)}px`,
+      }
+    : undefined;
+
+  const scaledIconStyle = isScaled
+    ? {
+        width: `${Math.round(16 * scaleNum)}px`,
+        height: `${Math.round(16 * scaleNum)}px`,
+      }
+    : undefined;
+
   return (
     <button
       type="button"
       disabled={disabled || busy}
       onClick={onClick}
+      style={scaledButtonStyle}
       className={`
-        rounded-xl border px-3 py-2
-        text-xs font-bold uppercase tracking-[0.18em]
+        rounded-xl border ${isScaled ? '' : 'px-3 py-2'}
+        ${isScaled ? '' : 'text-xs'} font-bold uppercase tracking-[0.18em]
         transition-colors
         active:scale-[0.99]
         ${accentClass}
@@ -329,9 +329,9 @@ const ActionButton = ({ label, icon: IconComponent, disabled, busy, onClick, acc
     >
       <span className="inline-flex items-center gap-2">
         {busy ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
+          <Loader2 className={`${isScaled ? '' : 'w-4 h-4'} animate-spin`.trim()} style={scaledIconStyle} />
         ) : (
-          React.createElement(IconComponent, { className: 'w-4 h-4' })
+          React.createElement(IconComponent, { className: isScaled ? '' : 'w-4 h-4', style: scaledIconStyle })
         )}
         {label}
       </span>
@@ -489,8 +489,13 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
+
+  const scaleNumRaw = Number(contentScale);
+  const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
+  const titleStyle = { fontSize: `${Math.round(18 * scaleNum)}px` };
+  const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
 
@@ -545,7 +550,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const badgeBase = 'inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] border-white/10 bg-white/5';
+  const badgeBase = `inline-flex items-center rounded-lg border px-2 py-1 ${scaleNum === 1 ? 'text-[10px]' : ''} font-bold uppercase tracking-[0.18em] border-white/10 bg-white/5`;
 
   const motionBadgeText = getToleranceTextClassForColorId(
     normalizeToleranceColorId(sensorIndicatorColors?.motion, 'warning')
@@ -557,13 +562,16 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
   return (
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
       <div className="flex items-center justify-between gap-3">
-        <h2 className="min-w-0 text-base md:text-lg font-extrabold tracking-wide text-white truncate">
+        <h2
+          className={`min-w-0 ${scaleNum === 1 ? 'text-base md:text-lg' : ''} font-extrabold tracking-wide text-white truncate`}
+          style={scaleNum === 1 ? undefined : titleStyle}
+        >
           {roomName}
         </h2>
 
         <div className="shrink-0 flex items-center gap-2">
-          {metrics.motionActive ? <span className={`${badgeBase} ${motionBadgeText}`}>Motion</span> : null}
-          {metrics.doorOpen ? <span className={`${badgeBase} ${doorBadgeText}`}>Door</span> : null}
+          {metrics.motionActive ? <span className={`${badgeBase} ${motionBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Motion</span> : null}
+          {metrics.doorOpen ? <span className={`${badgeBase} ${doorBadgeText}`} style={scaleNum === 1 ? undefined : badgeStyle}>Door</span> : null}
         </div>
       </div>
 
@@ -579,6 +587,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            scaled
+            scale={scaleNum}
           />
           <MetricCard
             title="Humidity"
@@ -594,6 +604,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            scaled
+            scale={scaleNum}
           />
           <MetricCard
             title="Illuminance"
@@ -609,6 +621,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            scaled
+            scale={scaleNum}
           />
         </div>
       ) : null}
@@ -620,8 +634,15 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {supportedActions.map((d) => (
-              <div key={d.id} className="glass-panel p-4 border border-white/10">
-                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
+              <div
+                key={d.id}
+                className={`glass-panel ${scaleNum === 1 ? 'p-4' : ''} border border-white/10`}
+                style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
+              >
+                <div
+                  className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} uppercase tracking-[0.2em] text-white/55 font-semibold truncate`.trim()}
+                  style={scaleNum === 1 ? undefined : { fontSize: `${Math.round(11 * scaleNum)}px` }}
+                >
                   {d.label}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -634,6 +655,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       busy={busyActions.has(`${d.id}:on`)}
                       onClick={() => runAction(d.id, 'on')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                   {d.commands.includes('off') ? (
@@ -645,6 +668,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       busy={busyActions.has(`${d.id}:off`)}
                       onClick={() => runAction(d.id, 'off')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                   {d.commands.includes('refresh') ? (
@@ -656,6 +681,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       busy={busyActions.has(`${d.id}:refresh`)}
                       onClick={() => runAction(d.id, 'refresh')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                   {d.commands.includes('push') ? (
@@ -667,6 +694,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                       busy={busyActions.has(`${d.id}:push`)}
                       onClick={() => runAction(d.id, 'push')}
                       uiScheme={uiScheme}
+                      scaled
+                      scale={scaleNum}
                     />
                   ) : null}
                 </div>
@@ -689,6 +718,9 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const statuses = statusesProp ?? ctx?.statuses;
   const connected = connectedProp ?? ctx?.connected;
   const uiScheme = uiSchemeProp ?? ctx?.uiScheme;
+
+  const viewportRef = useRef(null);
+  const metricRowRef = useRef(null);
 
   const resolvedUiScheme = useMemo(
     () => uiScheme || getUiScheme(config?.ui?.colorScheme),
@@ -803,7 +835,11 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
   const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
   const now = useClock(1000);
-  const { viewportRef, metricRowRef, roomsRef, roomsScale, scaledRoomsHeightPx } = useRoomsFitScale(cardScalePct);
+  const roomContentScale = useMemo(() => {
+    const raw = Number(cardScalePct);
+    if (!Number.isFinite(raw)) return 1;
+    return Math.max(0.5, Math.min(2, raw / 100));
+  }, [cardScalePct]);
 
   const [weather, setWeather] = useState(null);
   const [weatherError, setWeatherError] = useState(null);
@@ -935,6 +971,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
             />
+
             <MetricCard
               title="Outside"
               value={formatTemp(outsideTempForValue)}
@@ -1031,17 +1068,11 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
             />
           </div>
 
-          <div
-            className="mt-4"
-            style={scaledRoomsHeightPx ? { height: `${scaledRoomsHeightPx}px` } : undefined}
-          >
+          <div className="mt-4">
             <div
-              ref={roomsRef}
               className="jvs-home-rooms-grid gap-4"
               style={{
-                '--jvs-home-rooms-cols-xl': homeRoomColumnsXl,
-                transform: `scale(${roomsScale})`,
-                transformOrigin: 'top left',
+                '--jvs-home-rooms-cols-desktop': homeRoomColumnsXl,
               }}
             >
             {rooms.length ? (
@@ -1058,6 +1089,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
+                  contentScale={roomContentScale}
                 />
               ))
             ) : (

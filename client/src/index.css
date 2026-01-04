@@ -79,13 +79,13 @@
 
 @media (min-width: 1024px) {
   .jvs-home-rooms-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--jvs-home-rooms-cols-desktop, 2), minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1280px) {
   .jvs-home-rooms-grid {
-    grid-template-columns: repeat(var(--jvs-home-rooms-cols-xl, 3), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--jvs-home-rooms-cols-desktop, 3), minmax(0, 1fr));
   }
 }
 
