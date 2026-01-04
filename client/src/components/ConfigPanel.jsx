@@ -37,6 +37,22 @@ async function saveVisibleRoomIds(visibleRoomIds, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveHomeVisibleDeviceIds(homeVisibleDeviceIds, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/home-visible-device-ids`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      homeVisibleDeviceIds: Array.isArray(homeVisibleDeviceIds) ? homeVisibleDeviceIds : [],
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Home visible devices save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveDeviceOverrides(payload) {
   const res = await fetch(`${API_HOST}/api/ui/device-overrides`, {
     method: 'PUT',
@@ -582,6 +598,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const scheme = getUiScheme(accentColorId);
 
   const allowlistSave = useAsyncSave(saveAllowlists);
+  const homeVisibleSave = useAsyncSave((payload) => {
+    const ids = payload && typeof payload === 'object' ? payload.homeVisibleDeviceIds : [];
+    const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
+    return saveHomeVisibleDeviceIds(ids, panelName);
+  });
   const visibleRoomsSave = useAsyncSave((payload) => {
     const ids = payload && typeof payload === 'object' ? payload.visibleRoomIds : [];
     const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
@@ -1516,13 +1537,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [labelSaveState, setLabelSaveState] = useState(() => ({}));
   const labelSaveTimersRef = useRef(new Map());
 
-  const mainAllowedIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds)
-      ? config.ui.mainAllowedDeviceIds
-      : [];
-    return new Set(ids.map((v) => String(v)));
-  }, [config?.ui?.mainAllowedDeviceIds]);
-
   const ctrlAllowedIds = useMemo(() => {
     const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds)
       ? config.ui.ctrlAllowedDeviceIds
@@ -1530,8 +1544,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return new Set(ids.map((v) => String(v)));
   }, [config?.ui?.ctrlAllowedDeviceIds, config?.ui?.allowedDeviceIds]);
 
-  const mainLocked = Boolean(config?.ui?.mainAllowlistLocked);
   const ctrlLocked = Boolean(config?.ui?.ctrlAllowlistLocked);
+
+  const homeVisibleDeviceIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.homeVisibleDeviceIds) ? config.ui.homeVisibleDeviceIds : [];
+    const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
+    return cleaned.length ? new Set(cleaned) : null;
+  }, [config?.ui?.homeVisibleDeviceIds]);
 
   const allDevices = useMemo(() => {
     const devices = (config?.sensors || [])
@@ -1819,20 +1838,44 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     }
   };
 
-  const setAllowed = async (deviceId, list, nextAllowed) => {
+  const setControlAllowed = async (deviceId, nextAllowed) => {
     setError(null);
     try {
-      const nextMain = new Set(Array.from(mainAllowedIds));
       const nextCtrl = new Set(Array.from(ctrlAllowedIds));
-      const target = list === 'main' ? nextMain : nextCtrl;
-      if (nextAllowed) target.add(String(deviceId));
-      else target.delete(String(deviceId));
+      if (nextAllowed) nextCtrl.add(String(deviceId));
+      else nextCtrl.delete(String(deviceId));
 
       const payload = {};
-      if (!mainLocked) payload.mainAllowedDeviceIds = Array.from(nextMain);
       if (!ctrlLocked) payload.ctrlAllowedDeviceIds = Array.from(nextCtrl);
       if (selectedPanelName) payload.panelName = selectedPanelName;
       await allowlistSave.run(payload);
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
+  const setHomeVisible = async (deviceId, nextVisible, allDeviceIds) => {
+    const id = String(deviceId || '').trim();
+    if (!id) return;
+
+    setError(null);
+    try {
+      const base = homeVisibleDeviceIds
+        ? new Set(Array.from(homeVisibleDeviceIds))
+        : new Set(Array.isArray(allDeviceIds) ? allDeviceIds.map((v) => String(v)) : []);
+
+      if (nextVisible) base.add(id);
+      else base.delete(id);
+
+      // Empty list means "show all".
+      const nextArr = base.size === (Array.isArray(allDeviceIds) ? allDeviceIds.length : base.size)
+        ? []
+        : Array.from(base);
+
+      await homeVisibleSave.run({
+        homeVisibleDeviceIds: nextArr,
+        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
     } catch (e) {
       setError(e?.message || String(e));
     }
@@ -1968,11 +2011,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               </div>
             ) : null}
 
-            {mainLocked ? (
-              <div className="mt-2 text-[11px] text-neon-red">
-                Home list locked by server env var UI_ALLOWED_MAIN_DEVICE_IDS.
-              </div>
-            ) : null}
             {ctrlLocked ? (
               <div className="mt-2 text-[11px] text-neon-red">
                 Controls list locked by server env var UI_ALLOWED_CTRL_DEVICE_IDS (or legacy UI_ALLOWED_DEVICE_IDS).
@@ -1983,7 +2021,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             ) : null}
 
             <div className="mt-2 text-xs text-white/45">
-              {statusText(allowlistSave.status)}
+              {[statusText(homeVisibleSave.status), statusText(allowlistSave.status)].filter(Boolean).join(' ')}
             </div>
 
             <div
@@ -1992,7 +2030,8 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             >
               {allDevices.length ? (
                 allDevices.map((d) => {
-                  const isMain = mainAllowedIds.has(String(d.id));
+                  const allDeviceIds = allDevices.map((x) => String(x.id));
+                  const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
                   const isCtrl = ctrlAllowedIds.has(String(d.id));
 
                   const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
@@ -2024,9 +2063,9 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             <input
                               type="checkbox"
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || allowlistSave.status === 'saving' || mainLocked}
-                              checked={isMain}
-                              onChange={(e) => setAllowed(d.id, 'main', e.target.checked)}
+                              disabled={!connected || homeVisibleSave.status === 'saving'}
+                              checked={isHome}
+                              onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
                             />
                             Home
                           </label>
@@ -2037,7 +2076,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
                               disabled={!connected || allowlistSave.status === 'saving' || ctrlLocked}
                               checked={isCtrl}
-                              onChange={(e) => setAllowed(d.id, 'ctrl', e.target.checked)}
+                              onChange={(e) => setControlAllowed(d.id, e.target.checked)}
                             />
                             Controls
                           </label>

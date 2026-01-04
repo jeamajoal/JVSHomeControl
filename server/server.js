@@ -807,6 +807,12 @@ function normalizePersistedConfig(raw) {
         ? uiRaw.mainAllowedDeviceIds
         : [];
 
+    // Home visibility (which devices contribute to Home room cards/metrics).
+    // Empty list means "show all".
+    const homeVisibleDeviceIds = Array.isArray(uiRaw.homeVisibleDeviceIds)
+        ? uiRaw.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+
     const visibleRoomIds = Array.isArray(uiRaw.visibleRoomIds)
         ? uiRaw.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
         : [];
@@ -1096,6 +1102,12 @@ function normalizePersistedConfig(raw) {
                 : [])
             : null;
 
+        const pHomeVisibleDeviceIds = Object.prototype.hasOwnProperty.call(p, 'homeVisibleDeviceIds')
+            ? (Array.isArray(p.homeVisibleDeviceIds)
+                ? p.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
         const pCtrlAllowedDeviceIds = (() => {
             if (!Object.prototype.hasOwnProperty.call(p, 'ctrlAllowedDeviceIds') && !Object.prototype.hasOwnProperty.call(p, 'allowedDeviceIds')) {
                 return null;
@@ -1177,6 +1189,7 @@ function normalizePersistedConfig(raw) {
             ...(pIconOpacityPct !== null ? { iconOpacityPct: pIconOpacityPct } : {}),
             ...(pIconSizePct !== null ? { iconSizePct: pIconSizePct } : {}),
             ...(pVisibleRoomIds !== null ? { visibleRoomIds: pVisibleRoomIds } : {}),
+            ...(pHomeVisibleDeviceIds !== null ? { homeVisibleDeviceIds: pHomeVisibleDeviceIds } : {}),
             ...(pCtrlAllowedDeviceIds !== null ? { ctrlAllowedDeviceIds: pCtrlAllowedDeviceIds } : {}),
             ...(pMainAllowedDeviceIds !== null ? { mainAllowedDeviceIds: pMainAllowedDeviceIds } : {}),
             ...(pDeviceLabelOverrides !== null ? { deviceLabelOverrides: pDeviceLabelOverrides } : {}),
@@ -1211,6 +1224,7 @@ function normalizePersistedConfig(raw) {
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         visibleRoomIds,
+        homeVisibleDeviceIds,
         deviceLabelOverrides,
         deviceCommandAllowlist,
         accentColorId,
@@ -1271,6 +1285,7 @@ function ensurePanelProfileExists(panelName) {
         [name]: {
             // Seed new profiles from current global defaults.
             visibleRoomIds: Array.isArray(ui.visibleRoomIds) ? ui.visibleRoomIds : [],
+            homeVisibleDeviceIds: Array.isArray(ui.homeVisibleDeviceIds) ? ui.homeVisibleDeviceIds : [],
             ctrlAllowedDeviceIds: Array.isArray(ui.ctrlAllowedDeviceIds)
                 ? ui.ctrlAllowedDeviceIds
                 : (Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : []),
@@ -2561,6 +2576,80 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
             ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
             mainAllowlistSource: nextAllowlists.main.source,
             mainAllowlistLocked: nextAllowlists.main.locked,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({
+        ok: true,
+        ui: {
+            ...(config?.ui || {}),
+        },
+    });
+});
+
+// Update which devices are visible on the Home dashboard (metrics/room cards) for the current panel.
+// Expected payload: { homeVisibleDeviceIds: string[], panelName?: string }
+// Empty list means "show all devices".
+app.put('/api/ui/home-visible-device-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const homeVisibleDeviceIds = Array.isArray(body.homeVisibleDeviceIds)
+        ? body.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(homeVisibleDeviceIds)) {
+        return res.status(400).json({ error: 'Expected { homeVisibleDeviceIds: string[] }' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        homeVisibleDeviceIds,
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                homeVisibleDeviceIds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-home-visible-device-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            // carry through allowlist lock/source fields
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            // new field
+            homeVisibleDeviceIds: persistedConfig?.ui?.homeVisibleDeviceIds,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };

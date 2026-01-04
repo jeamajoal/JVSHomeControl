@@ -15,7 +15,7 @@ import {
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
-import { buildRoomsWithStatuses, getAllowedDeviceIdSet } from '../deviceSelectors';
+import { buildRoomsWithStatuses, getAllowedDeviceIdSet, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
 import {
   normalizeToleranceColorId,
@@ -890,8 +890,15 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return Math.max(1, Math.min(6, Math.round(raw)));
   }, [config?.ui?.homeRoomColumnsXl]);
 
-  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'main'), [config]);
-  const rooms = useMemo(() => buildRoomsWithStatuses(config, statuses), [config, statuses]);
+  // Controls remain restricted by explicit allowlists.
+  // Home visibility (metrics/room cards) is controlled separately.
+  const allowedControlIds = useMemo(() => getAllowedDeviceIdSet(config, 'ctrl'), [config]);
+
+  const homeVisibleDeviceIds = useMemo(() => getHomeVisibleDeviceIdSet(config), [config]);
+  const rooms = useMemo(
+    () => buildRoomsWithStatuses(config, statuses, { deviceIdSet: homeVisibleDeviceIds }),
+    [config, statuses, homeVisibleDeviceIds],
+  );
   const now = useClock(1000);
   const roomContentScale = useMemo(() => {
     const raw = Number(cardScalePct);

@@ -4,6 +4,14 @@ const asText = (value) => {
   return s.length ? s : null;
 };
 
+export function getHomeVisibleDeviceIdSet(config) {
+  const ids = Array.isArray(config?.ui?.homeVisibleDeviceIds)
+    ? config.ui.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+    : [];
+  // Empty means "show all".
+  return ids.length ? new Set(ids) : null;
+}
+
 function getVisibleRoomIdSet(config) {
   const ids = Array.isArray(config?.ui?.visibleRoomIds)
     ? config.ui.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
@@ -60,10 +68,11 @@ export function getAllowedDeviceIdSet(config, scope = 'union') {
   return new Set(getAllowedDeviceIds(config, scope).map((v) => String(v)));
 }
 
-export function buildRoomsWithStatuses(config, statuses) {
+export function buildRoomsWithStatuses(config, statuses, options = {}) {
   const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
   const devices = Array.isArray(config?.sensors) ? config.sensors : [];
   const visibleRoomIds = getVisibleRoomIdSet(config);
+  const deviceIdSet = (options && options.deviceIdSet instanceof Set) ? options.deviceIdSet : null;
 
   const byRoomId = new Map();
   for (const r of rooms) {
@@ -77,6 +86,8 @@ export function buildRoomsWithStatuses(config, statuses) {
   for (const dev of devices) {
     const id = asText(dev?.id);
     if (!id) continue;
+
+    if (deviceIdSet && !deviceIdSet.has(id)) continue;
 
     const labelOverride = getDeviceLabelOverride(config, id);
     const entry = {
