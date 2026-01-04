@@ -21,6 +21,22 @@ async function saveAllowlists(payload) {
   return res.json().catch(() => ({}));
 }
 
+async function saveVisibleRoomIds(visibleRoomIds, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/visible-room-ids`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      visibleRoomIds: Array.isArray(visibleRoomIds) ? visibleRoomIds : [],
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Visible rooms save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -553,6 +569,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const scheme = getUiScheme(accentColorId);
 
   const allowlistSave = useAsyncSave(saveAllowlists);
+  const visibleRoomsSave = useAsyncSave((payload) => {
+    const ids = payload && typeof payload === 'object' ? payload.visibleRoomIds : [];
+    const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
+    return saveVisibleRoomIds(ids, panelName);
+  });
   const accentColorSave = useAsyncSave((nextAccentColorId) => saveAccentColorId(nextAccentColorId, selectedPanelName || null));
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
@@ -1524,6 +1545,40 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       .sort((a, b) => a.id.localeCompare(b.id));
   }, [config?.labels]);
 
+  const visibleRoomIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.visibleRoomIds) ? config.ui.visibleRoomIds : [];
+    return new Set(ids.map((v) => String(v)));
+  }, [config?.ui?.visibleRoomIds]);
+
+  const allRoomsForVisibility = useMemo(() => {
+    const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
+    const out = rooms
+      .map((r) => ({ id: String(r?.id || '').trim(), name: String(r?.name || r?.id || '').trim() }))
+      .filter((r) => r.id)
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return out;
+  }, [config?.rooms]);
+
+  const toggleVisibleRoom = async (roomId, nextVisible) => {
+    const id = String(roomId || '').trim();
+    if (!id) return;
+    setError(null);
+    try {
+      const next = new Set(Array.from(visibleRoomIds));
+      if (nextVisible) next.add(id);
+      else next.delete(id);
+
+      // Empty list means "show all rooms".
+      const arr = Array.from(next);
+      await visibleRoomsSave.run({
+        visibleRoomIds: arr,
+        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
   useEffect(() => {
     // Keep drafts in sync when labels update from server
     setLabelDrafts((prev) => {
@@ -1597,6 +1652,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
       const payload = {};
       if (!mainLocked) payload.mainAllowedDeviceIds = Array.from(nextMain);
       if (!ctrlLocked) payload.ctrlAllowedDeviceIds = Array.from(nextCtrl);
+      if (selectedPanelName) payload.panelName = selectedPanelName;
       await allowlistSave.run(payload);
     } catch (e) {
       setError(e?.message || String(e));
@@ -2896,6 +2952,43 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 </div>
                 <div className="mt-1 text-xs text-white/45">
                   These controls affect Home and the Climate (heatmap) view.
+                </div>
+
+                <div className="mt-4 utility-group p-4">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms</div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Choose which rooms appear on this panel. If none are selected, all rooms are shown.
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {allRoomsForVisibility.map((r) => {
+                      const checked = visibleRoomIds.has(r.id);
+                      return (
+                        <label key={r.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!connected || busy || visibleRoomsSave.status === 'saving'}
+                            onChange={(e) => toggleVisibleRoom(r.id, Boolean(e.target.checked))}
+                          />
+                          <span className="min-w-0 truncate text-sm font-semibold text-white/85">{r.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {visibleRoomIds.size ? `${visibleRoomIds.size} selected` : 'All rooms'}
+                    </div>
+                    <div className="text-xs text-white/45">
+                      {statusText(visibleRoomsSave.status)}
+                    </div>
+                  </div>
+
+                  {visibleRoomsSave.error ? (
+                    <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {visibleRoomsSave.error}</div>
+                  ) : null}
                 </div>
 
                 <div className="mt-4 utility-group p-4">

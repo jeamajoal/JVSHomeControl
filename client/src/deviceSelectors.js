@@ -4,6 +4,13 @@ const asText = (value) => {
   return s.length ? s : null;
 };
 
+function getVisibleRoomIdSet(config) {
+  const ids = Array.isArray(config?.ui?.visibleRoomIds)
+    ? config.ui.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+    : [];
+  return ids.length ? new Set(ids) : null;
+}
+
 export function getDeviceStatus(statuses, deviceId) {
   const id = asText(deviceId);
   if (!id) return null;
@@ -33,6 +40,7 @@ export function getAllowedDeviceIdSet(config, scope = 'union') {
 export function buildRoomsWithStatuses(config, statuses) {
   const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
   const devices = Array.isArray(config?.sensors) ? config.sensors : [];
+  const visibleRoomIds = getVisibleRoomIdSet(config);
 
   const byRoomId = new Map();
   for (const r of rooms) {
@@ -62,16 +70,21 @@ export function buildRoomsWithStatuses(config, statuses) {
     .map(({ room, devices: roomDevices }) => ({ room, devices: roomDevices }))
     .filter((r) => r.devices.length > 0);
 
-  if (unassigned.length) {
-    result.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
+  const filtered = visibleRoomIds
+    ? result.filter((r) => visibleRoomIds.has(asText(r?.room?.id) || ''))
+    : result;
+
+  if (unassigned.length && (!visibleRoomIds || visibleRoomIds.has('unassigned'))) {
+    filtered.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
   }
 
-  return result;
+  return filtered;
 }
 
 export function buildRoomsWithActivity(config, statuses) {
   const rooms = Array.isArray(config?.rooms) ? config.rooms : [];
   const devices = Array.isArray(config?.sensors) ? config.sensors : [];
+  const visibleRoomIds = getVisibleRoomIdSet(config);
 
   const byRoomId = new Map();
   for (const r of rooms) {
@@ -114,9 +127,13 @@ export function buildRoomsWithActivity(config, statuses) {
     .filter((r) => r.devices.length > 0)
     .sort((a, b) => String(a.room?.name || '').localeCompare(String(b.room?.name || '')));
 
-  if (unassigned.length) {
-    result.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
+  const filtered = visibleRoomIds
+    ? result.filter((r) => visibleRoomIds.has(asText(r?.room?.id) || ''))
+    : result;
+
+  if (unassigned.length && (!visibleRoomIds || visibleRoomIds.has('unassigned'))) {
+    filtered.push({ room: { id: 'unassigned', name: 'Unassigned' }, devices: unassigned });
   }
 
-  return result;
+  return filtered;
 }

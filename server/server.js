@@ -651,7 +651,39 @@ function getUiMainAllowedDeviceIds() {
 
 function getUiAllowedDeviceIdsUnion() {
     const { ctrl, main } = getUiAllowlistsInfo();
-    return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || [])]));
+
+    // Panel profiles can further restrict the UI, but server-side enforcement must allow
+    // any device that *any* panel is configured to control, otherwise the UI can show
+    // a control that the backend rejects.
+    //
+    // Important: environment allowlists remain authoritative/locked.
+    const profiles = (persistedConfig?.ui?.panelProfiles && typeof persistedConfig.ui.panelProfiles === 'object')
+        ? persistedConfig.ui.panelProfiles
+        : {};
+
+    const profileCtrl = [];
+    const profileMain = [];
+    for (const p of Object.values(profiles)) {
+        if (!p || typeof p !== 'object') continue;
+        if (!ctrl.locked) {
+            const ids = Array.isArray(p.ctrlAllowedDeviceIds)
+                ? p.ctrlAllowedDeviceIds
+                : (Array.isArray(p.allowedDeviceIds) ? p.allowedDeviceIds : []);
+            for (const v of ids) {
+                const s = String(v || '').trim();
+                if (s) profileCtrl.push(s);
+            }
+        }
+        if (!main.locked) {
+            const ids = Array.isArray(p.mainAllowedDeviceIds) ? p.mainAllowedDeviceIds : [];
+            for (const v of ids) {
+                const s = String(v || '').trim();
+                if (s) profileMain.push(s);
+            }
+        }
+    }
+
+    return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || []), ...profileCtrl, ...profileMain]));
 }
 
 function isUiDeviceAllowedForControl(deviceId) {
@@ -769,6 +801,10 @@ function normalizePersistedConfig(raw) {
         : legacyAllowed;
     const mainAllowed = Array.isArray(uiRaw.mainAllowedDeviceIds)
         ? uiRaw.mainAllowedDeviceIds
+        : [];
+
+    const visibleRoomIds = Array.isArray(uiRaw.visibleRoomIds)
+        ? uiRaw.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
         : [];
 
     const rawAccent = String(uiRaw.accentColorId || uiRaw.colorScheme || '').trim();
@@ -1016,6 +1052,28 @@ function normalizePersistedConfig(raw) {
             ? clampInt(p.iconSizePct, ICON_SIZE_PCT_RANGE.min, ICON_SIZE_PCT_RANGE.max, iconSizePct)
             : null;
 
+        const pVisibleRoomIds = Object.prototype.hasOwnProperty.call(p, 'visibleRoomIds')
+            ? (Array.isArray(p.visibleRoomIds)
+                ? p.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
+        const pCtrlAllowedDeviceIds = (() => {
+            if (!Object.prototype.hasOwnProperty.call(p, 'ctrlAllowedDeviceIds') && !Object.prototype.hasOwnProperty.call(p, 'allowedDeviceIds')) {
+                return null;
+            }
+            const raw = Array.isArray(p.ctrlAllowedDeviceIds)
+                ? p.ctrlAllowedDeviceIds
+                : (Array.isArray(p.allowedDeviceIds) ? p.allowedDeviceIds : []);
+            return raw.map((v) => String(v || '').trim()).filter(Boolean);
+        })();
+
+        const pMainAllowedDeviceIds = Object.prototype.hasOwnProperty.call(p, 'mainAllowedDeviceIds')
+            ? (Array.isArray(p.mainAllowedDeviceIds)
+                ? p.mainAllowedDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
         const pHomeBackground = pHomeBgRaw
             ? {
@@ -1045,6 +1103,9 @@ function normalizePersistedConfig(raw) {
             ...(pIconColorId !== null ? { iconColorId: pIconColorId } : {}),
             ...(pIconOpacityPct !== null ? { iconOpacityPct: pIconOpacityPct } : {}),
             ...(pIconSizePct !== null ? { iconSizePct: pIconSizePct } : {}),
+            ...(pVisibleRoomIds !== null ? { visibleRoomIds: pVisibleRoomIds } : {}),
+            ...(pCtrlAllowedDeviceIds !== null ? { ctrlAllowedDeviceIds: pCtrlAllowedDeviceIds } : {}),
+            ...(pMainAllowedDeviceIds !== null ? { mainAllowedDeviceIds: pMainAllowedDeviceIds } : {}),
             ...(PRESET_PANEL_PROFILE_NAMES.has(name) ? { _preset: true } : {}),
         };
 
@@ -1074,6 +1135,7 @@ function normalizePersistedConfig(raw) {
         allowedDeviceIds: legacyAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
+        visibleRoomIds,
         accentColorId,
         colorizeHomeValues,
         colorizeHomeValuesOpacityPct,
@@ -1131,6 +1193,11 @@ function ensurePanelProfileExists(panelName) {
         ...profiles,
         [name]: {
             // Seed new profiles from current global defaults.
+            visibleRoomIds: Array.isArray(ui.visibleRoomIds) ? ui.visibleRoomIds : [],
+            ctrlAllowedDeviceIds: Array.isArray(ui.ctrlAllowedDeviceIds)
+                ? ui.ctrlAllowedDeviceIds
+                : (Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : []),
+            mainAllowedDeviceIds: Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [],
             accentColorId: ui.accentColorId,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
@@ -2327,6 +2394,11 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
     const body = req.body;
     const allowlists = getUiAllowlistsInfo();
 
+    const panelName = normalizePanelName(body && typeof body === 'object' ? body.panelName : null);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+    }
+
     const legacyCtrl = Array.isArray(body)
         ? body
         : (body && typeof body === 'object' ? body.allowedDeviceIds : null);
@@ -2365,14 +2437,36 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
     const nextCtrlIds = Array.isArray(incomingCtrl) ? normalizeIds(incomingCtrl) : null;
     const nextMainIds = Array.isArray(incomingMain) ? normalizeIds(incomingMain) : null;
 
-    persistedConfig = normalizePersistedConfig({
-        ...(persistedConfig || {}),
-        ui: {
-            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
-            ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds, allowedDeviceIds: nextCtrlIds } : {}),
-            ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
-        },
-    });
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds } : {}),
+                        ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds, allowedDeviceIds: nextCtrlIds } : {}),
+                ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
+            },
+        });
+    }
 
     persistConfigToDiskIfChanged('api-ui');
 
@@ -2399,6 +2493,72 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
             ...(config?.ui || {}),
         },
     });
+});
+
+// Update visible rooms (room filtering) for the current panel.
+// Expected payload: { visibleRoomIds: string[], panelName?: string }
+app.put('/api/ui/visible-room-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const visibleRoomIds = Array.isArray(body.visibleRoomIds)
+        ? body.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(visibleRoomIds)) {
+        return res.status(400).json({ error: 'Expected { visibleRoomIds: string[] }' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        visibleRoomIds,
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibleRoomIds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-visible-room-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            visibleRoomIds: Array.isArray(persistedConfig?.ui?.visibleRoomIds) ? persistedConfig.ui.visibleRoomIds : [],
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
 // List server-side panel profiles.
@@ -2447,6 +2607,11 @@ app.post('/api/ui/panels', (req, res) => {
 
     // Seed from "current" effective UI settings (global defaults, or the selected profile/preset).
     const seed = {
+        visibleRoomIds: Array.isArray(effectiveUi.visibleRoomIds) ? effectiveUi.visibleRoomIds : [],
+        ctrlAllowedDeviceIds: Array.isArray(effectiveUi.ctrlAllowedDeviceIds)
+            ? effectiveUi.ctrlAllowedDeviceIds
+            : (Array.isArray(effectiveUi.allowedDeviceIds) ? effectiveUi.allowedDeviceIds : []),
+        mainAllowedDeviceIds: Array.isArray(effectiveUi.mainAllowedDeviceIds) ? effectiveUi.mainAllowedDeviceIds : [],
         accentColorId: effectiveUi.accentColorId,
         homeBackground: effectiveUi.homeBackground,
         cardOpacityScalePct: effectiveUi.cardOpacityScalePct,
