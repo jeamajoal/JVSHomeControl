@@ -24,6 +24,24 @@
     "primaryTextColorId": null,
     "cardScalePct": 100,
     "homeRoomColumnsXl": 3,
+    "homeCameraPreviewsEnabled": false,
+    "controlsCameraPreviewsEnabled": false,
+    "cameraPreviewRefreshSeconds": 10,
+    "cameras": [
+      {
+        "id": "front-door",
+        "label": "Front Door",
+        "roomId": "outside",
+        "enabled": true,
+        "snapshot": {
+          "url": "http://192.168.1.50/cgi-bin/snapshot.cgi",
+          "basicAuth": {
+            "username": "admin",
+            "password": "changeme"
+          }
+        }
+      }
+    ],
     "homeBackground": {
       "enabled": false,
       "url": null,

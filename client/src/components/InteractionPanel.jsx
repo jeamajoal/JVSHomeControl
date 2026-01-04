@@ -210,6 +210,32 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     return buildRoomsWithStatuses(config, statuses, { ignoreVisibleRooms: true });
   }, [config, statuses]);
 
+  const controlsCameraPreviewsEnabled = useMemo(
+    () => config?.ui?.controlsCameraPreviewsEnabled === true,
+    [config?.ui?.controlsCameraPreviewsEnabled],
+  );
+
+  const cameraPreviewRefreshSeconds = useMemo(() => {
+    const raw = Number(config?.ui?.cameraPreviewRefreshSeconds);
+    if (!Number.isFinite(raw)) return 10;
+    return Math.max(2, Math.min(120, Math.round(raw)));
+  }, [config?.ui?.cameraPreviewRefreshSeconds]);
+
+  const cameras = useMemo(
+    () => (Array.isArray(config?.ui?.cameras) ? config.ui.cameras : []),
+    [config?.ui?.cameras],
+  );
+
+  const [cameraTick, setCameraTick] = useState(0);
+  useEffect(() => {
+    if (!controlsCameraPreviewsEnabled) return;
+    const ms = Math.max(2, Math.min(120, Number(cameraPreviewRefreshSeconds) || 10)) * 1000;
+    const compute = () => setCameraTick(ms > 0 ? Math.floor(Date.now() / ms) : 0);
+    compute();
+    const id = setInterval(compute, ms);
+    return () => clearInterval(id);
+  }, [controlsCameraPreviewsEnabled, cameraPreviewRefreshSeconds]);
+
   const noArgUiCommands = useMemo(() => new Set([
     // Common “safe” commands that typically take no args
     'on', 'off', 'toggle',
@@ -282,6 +308,23 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
             {rooms.length ? (
               rooms.map(({ room, devices }) => {
+                const roomCameras = controlsCameraPreviewsEnabled
+                  ? cameras
+                    .map((c) => {
+                      if (!c || typeof c !== 'object') return null;
+                      const id = String(c.id || '').trim();
+                      if (!id) return null;
+                      return {
+                        id,
+                        label: String(c.label || id).trim(),
+                        roomId: String(c.roomId || '').trim(),
+                        enabled: c.enabled !== false,
+                        hasSnapshot: c.hasSnapshot === true,
+                      };
+                    })
+                    .filter((c) => c && c.enabled && c.hasSnapshot && c.roomId === String(room.id || '').trim())
+                  : [];
+
                 const controllables = devices
                   .map((d) => {
                     const attrs = d.status?.attributes || {};
@@ -299,7 +342,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                   // Those will still show up here, even if we can’t render full controls yet.
                   .filter((d) => d.commands.length);
 
-                if (!controllables.length) return null;
+                if (!controllables.length && !roomCameras.length) return null;
 
                 return (
                   <section key={room.id} className="glass-panel p-4 md:p-5 border border-white/10">
@@ -309,6 +352,25 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                     <h2 className="mt-1 text-base md:text-lg font-extrabold tracking-wide text-white truncate">
                       {room.name}
                     </h2>
+
+                    {roomCameras.length ? (
+                      <div className="mt-4 grid grid-cols-1 gap-3">
+                        {roomCameras.map((cam) => (
+                          <div key={cam.id} className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                            <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
+                              {cam.label || cam.id}
+                            </div>
+                            <div className="mt-2 overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                              <img
+                                src={`${API_HOST}/api/cameras/${encodeURIComponent(cam.id)}/snapshot?t=${cameraTick}`}
+                                alt={cam.label || cam.id}
+                                className="w-full aspect-video object-cover"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
 
                     <div className="mt-4 grid grid-cols-1 gap-3">
                       {controllables.map((d) => {

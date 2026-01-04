@@ -1029,6 +1029,51 @@ function normalizePersistedConfig(raw) {
         return Array.from(new Set(keys));
     })();
 
+    // --- Cameras (config-driven, per camera) ---
+    // Cameras are not standard Hubitat devices; this registry supports embedding previews via a server-side snapshot proxy.
+    const cameras = (() => {
+        const rawList = Array.isArray(uiRaw.cameras) ? uiRaw.cameras : [];
+        const outList = [];
+        for (const rawCam of rawList) {
+            if (!rawCam || typeof rawCam !== 'object') continue;
+            const id = String(rawCam.id || '').trim();
+            if (!id) continue;
+
+            const label = String(rawCam.label || id).trim().slice(0, 64) || id;
+            const roomId = String(rawCam.roomId || '').trim();
+            const enabled = rawCam.enabled !== false;
+
+            const snapRaw = (rawCam.snapshot && typeof rawCam.snapshot === 'object') ? rawCam.snapshot : {};
+            const snapshotUrl = asFile(snapRaw.url);
+
+            const authRaw = (snapRaw.basicAuth && typeof snapRaw.basicAuth === 'object') ? snapRaw.basicAuth : null;
+            const basicAuth = authRaw
+                ? {
+                    username: String(authRaw.username ?? '').trim(),
+                    password: String(authRaw.password ?? '').trim(),
+                }
+                : null;
+
+            outList.push({
+                id,
+                label,
+                roomId,
+                enabled,
+                snapshot: {
+                    url: snapshotUrl,
+                    ...(basicAuth && (basicAuth.username || basicAuth.password) ? { basicAuth } : {}),
+                },
+            });
+        }
+
+        // Hard cap to avoid accidental huge payloads.
+        return outList.slice(0, 50);
+    })();
+
+    const homeCameraPreviewsEnabled = uiRaw.homeCameraPreviewsEnabled === true;
+    const controlsCameraPreviewsEnabled = uiRaw.controlsCameraPreviewsEnabled === true;
+    const cameraPreviewRefreshSeconds = clampInt(uiRaw.cameraPreviewRefreshSeconds, 2, 120, 10);
+
     // Glow/icon styling (Home page).
     // Color IDs use the same shared allowlist as tolerance/text colors.
     const glowColorIdRaw = String(uiRaw.glowColorId ?? '').trim();
@@ -1130,6 +1175,18 @@ function normalizePersistedConfig(raw) {
                     .filter((v) => v && ALLOWED_HOME_ROOM_METRIC_KEYS.has(v));
                 return Array.from(new Set(keys));
             })()
+            : null;
+
+        const pHomeCameraPreviewsEnabled = Object.prototype.hasOwnProperty.call(p, 'homeCameraPreviewsEnabled')
+            ? (p.homeCameraPreviewsEnabled === true)
+            : null;
+
+        const pControlsCameraPreviewsEnabled = Object.prototype.hasOwnProperty.call(p, 'controlsCameraPreviewsEnabled')
+            ? (p.controlsCameraPreviewsEnabled === true)
+            : null;
+
+        const pCameraPreviewRefreshSeconds = Object.prototype.hasOwnProperty.call(p, 'cameraPreviewRefreshSeconds')
+            ? clampInt(p.cameraPreviewRefreshSeconds, 2, 120, cameraPreviewRefreshSeconds)
             : null;
 
         const pGlowColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'glowColorId')
@@ -1261,6 +1318,9 @@ function normalizePersistedConfig(raw) {
             ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
             ...(pHomeRoomMetricColumns !== null ? { homeRoomMetricColumns: pHomeRoomMetricColumns } : {}),
             ...(pHomeRoomMetricKeys !== null ? { homeRoomMetricKeys: pHomeRoomMetricKeys } : {}),
+            ...(pHomeCameraPreviewsEnabled !== null ? { homeCameraPreviewsEnabled: pHomeCameraPreviewsEnabled } : {}),
+            ...(pControlsCameraPreviewsEnabled !== null ? { controlsCameraPreviewsEnabled: pControlsCameraPreviewsEnabled } : {}),
+            ...(pCameraPreviewRefreshSeconds !== null ? { cameraPreviewRefreshSeconds: pCameraPreviewRefreshSeconds } : {}),
             ...(pGlowColorId !== null ? { glowColorId: pGlowColorId } : {}),
             ...(pIconColorId !== null ? { iconColorId: pIconColorId } : {}),
             ...(pIconOpacityPct !== null ? { iconOpacityPct: pIconOpacityPct } : {}),
@@ -1343,6 +1403,11 @@ function normalizePersistedConfig(raw) {
         homeRoomMetricColumns,
         // Home room metric cards to show.
         homeRoomMetricKeys,
+        // Cameras (public fields are sanitized in /api/config; full snapshot URLs stay server-side).
+        cameras,
+        homeCameraPreviewsEnabled,
+        controlsCameraPreviewsEnabled,
+        cameraPreviewRefreshSeconds,
         // Accent glow + icon styling.
         glowColorId,
         iconColorId,
@@ -1388,6 +1453,9 @@ function ensurePanelProfileExists(panelName) {
             primaryTextColorId: ui.primaryTextColorId,
             cardScalePct: ui.cardScalePct,
             homeRoomColumnsXl: ui.homeRoomColumnsXl,
+            homeCameraPreviewsEnabled: ui.homeCameraPreviewsEnabled,
+            controlsCameraPreviewsEnabled: ui.controlsCameraPreviewsEnabled,
+            cameraPreviewRefreshSeconds: ui.cameraPreviewRefreshSeconds,
             glowColorId: ui.glowColorId,
             iconColorId: ui.iconColorId,
             iconOpacityPct: ui.iconOpacityPct,
@@ -2277,20 +2345,124 @@ function applyPostedEventToStatuses(payload) {
 
 // --- API ---
 
+function getPublicCamerasList() {
+    const ui = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const cams = Array.isArray(ui.cameras) ? ui.cameras : [];
+    return cams
+        .map((c) => {
+            const id = String(c?.id || '').trim();
+            if (!id) return null;
+            const label = String(c?.label || id).trim() || id;
+            const roomId = String(c?.roomId || '').trim();
+            const enabled = c?.enabled !== false;
+            const hasSnapshot = Boolean(c?.snapshot && typeof c.snapshot === 'object' && typeof c.snapshot.url === 'string' && c.snapshot.url.trim());
+            return { id, label, roomId, enabled, hasSnapshot };
+        })
+        .filter(Boolean);
+}
+
+function getCameraById(cameraId) {
+    const id = String(cameraId || '').trim();
+    if (!id) return null;
+    const ui = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const cams = Array.isArray(ui.cameras) ? ui.cameras : [];
+    return cams.find((c) => String(c?.id || '').trim() === id) || null;
+}
+
 // If we have a built UI, serve it at '/'. Otherwise provide a simple health message.
 app.get('/', (req, res) => {
     if (HAS_BUILT_CLIENT) return res.sendFile(CLIENT_INDEX_HTML);
     return res.send('Home Automation Server - Layout Enabled');
 });
+
+app.get('/api/cameras', (req, res) => {
+    res.json({ ok: true, cameras: getPublicCamerasList() });
+});
+
+app.get('/api/cameras/:id/snapshot', async (req, res) => {
+    try {
+        const cam = getCameraById(req.params.id);
+        if (!cam || cam.enabled === false) {
+            res.status(404).json({ ok: false, error: 'Camera not found' });
+            return;
+        }
+
+        const snap = (cam.snapshot && typeof cam.snapshot === 'object') ? cam.snapshot : {};
+        const url = String(snap.url || '').trim();
+        if (!url) {
+            res.status(404).json({ ok: false, error: 'No snapshot configured' });
+            return;
+        }
+
+        let parsed;
+        try {
+            parsed = new URL(url);
+        } catch {
+            res.status(400).json({ ok: false, error: 'Invalid snapshot URL' });
+            return;
+        }
+
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            res.status(400).json({ ok: false, error: 'Snapshot URL must be http(s)' });
+            return;
+        }
+
+        const headers = {};
+        const auth = (snap.basicAuth && typeof snap.basicAuth === 'object') ? snap.basicAuth : null;
+        const user = auth ? String(auth.username ?? '').trim() : '';
+        const pass = auth ? String(auth.password ?? '').trim() : '';
+        if (user || pass) {
+            headers.Authorization = `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}`;
+        }
+
+        const ctrl = new AbortController();
+        const timeoutMs = 8000;
+        const t = setTimeout(() => ctrl.abort(), timeoutMs);
+        let upstream;
+        try {
+            upstream = await fetch(url, {
+                method: 'GET',
+                headers,
+                signal: ctrl.signal,
+            });
+        } finally {
+            clearTimeout(t);
+        }
+
+        if (!upstream.ok) {
+            const text = await upstream.text().catch(() => '');
+            res.status(502).json({ ok: false, error: text || `Snapshot fetch failed (${upstream.status})` });
+            return;
+        }
+
+        const ct = upstream.headers.get('content-type') || 'image/jpeg';
+        const buf = Buffer.from(await upstream.arrayBuffer());
+        if (buf.length > 8 * 1024 * 1024) {
+            res.status(413).json({ ok: false, error: 'Snapshot too large' });
+            return;
+        }
+
+        res.setHeader('Content-Type', ct);
+        res.setHeader('Cache-Control', 'no-store');
+        res.status(200).send(buf);
+    } catch (err) {
+        const msg = err?.name === 'AbortError' ? 'Snapshot timed out' : (err?.message || String(err));
+        res.status(500).json({ ok: false, error: msg });
+    }
+});
+
 app.get('/api/config', (req, res) => {
     // Persist the latest discovered mapping/layout into config.json.
     // This makes config.json the stable source of truth.
     persistConfigToDiskIfChanged('api-config');
     const allowlists = getUiAllowlistsInfo();
+    const publicCameras = getPublicCamerasList();
     res.json({
         ...config,
         ui: {
             ...(config?.ui || {}),
+            // Do not leak camera URLs or credentials to the browser.
+            cameras: publicCameras,
             ctrlAllowedDeviceIds: allowlists.ctrl.ids,
             mainAllowedDeviceIds: allowlists.main.ids,
             // Back-compat for older clients
