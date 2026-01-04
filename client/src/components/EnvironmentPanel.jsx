@@ -594,7 +594,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
         })(),
       }))
       .filter((d) => d.commands.length);
-  }, [devices, allowedControlIds]);
+  }, [devices, allowedControlIds, deviceCommandAllowlist]);
 
   const runAction = async (deviceId, command) => {
     const key = `${deviceId}:${command}`;
