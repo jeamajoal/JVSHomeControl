@@ -45,6 +45,41 @@ const UI_COLOR_SCHEMES = Object.freeze([
     'neon-red',
 ]);
 
+// Used for validating color id settings coming from the UI (climate tolerance colors,
+// sensor indicator colors, and Home secondary text color).
+const ALLOWED_TOLERANCE_COLOR_IDS = new Set([
+    'neon-blue',
+    'neon-green',
+    'warning',
+    'neon-red',
+    'primary',
+    'success',
+    'danger',
+    'sky',
+    'cyan',
+    'teal',
+    'emerald',
+    'lime',
+    'amber',
+    'yellow',
+    'orange',
+    'rose',
+    'pink',
+    'fuchsia',
+    'purple',
+    'violet',
+    'indigo',
+    'blue',
+    'slate',
+    'stone',
+    'white',
+    'black',
+    'zinc',
+    'neutral',
+    'tan',
+    'brown',
+]);
+
 const SECONDARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
 
 function normalizePanelName(raw) {
@@ -581,39 +616,6 @@ function normalizePersistedConfig(raw) {
         humidityPct: { dry: 'neon-blue', comfy: 'neon-green', humid: 'warning', veryHumid: 'neon-red' },
         illuminanceLux: { dark: 'neon-blue', dim: 'neon-green', bright: 'warning', veryBright: 'neon-green' },
     };
-
-    const ALLOWED_TOLERANCE_COLOR_IDS = new Set([
-        'neon-blue',
-        'neon-green',
-        'warning',
-        'neon-red',
-        'primary',
-        'success',
-        'danger',
-        'sky',
-        'cyan',
-        'teal',
-        'emerald',
-        'lime',
-        'amber',
-        'yellow',
-        'orange',
-        'rose',
-        'pink',
-        'fuchsia',
-        'purple',
-        'violet',
-        'indigo',
-        'blue',
-        'slate',
-        'stone',
-        'white',
-        'black',
-        'zinc',
-        'neutral',
-        'tan',
-        'brown',
-    ]);
 
     const colorsRaw = (uiRaw.climateToleranceColors && typeof uiRaw.climateToleranceColors === 'object')
         ? uiRaw.climateToleranceColors
