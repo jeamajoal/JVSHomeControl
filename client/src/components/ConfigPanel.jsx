@@ -1633,7 +1633,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
           <div className="mt-3 flex items-center gap-2 overflow-x-auto">
             {TABS.map((t) => {
               const selected = t.id === activeTab;
-                  This is a shipped preset (read-only). Pick a preset you like, enter a new panel name, then click Create — the new panel profile starts from this preset.
+              return (
                 <button
                   key={t.id}
                   type="button"
