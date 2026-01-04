@@ -183,6 +183,54 @@ async function saveCardOpacityScalePct(cardOpacityScalePct, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveSecondaryTextOpacityPct(secondaryTextOpacityPct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/secondary-text-opacity`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      secondaryTextOpacityPct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Secondary text save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveSecondaryTextSizePct(secondaryTextSizePct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/secondary-text-size`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      secondaryTextSizePct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Secondary text size save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveSecondaryTextColorId(secondaryTextColorId, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/secondary-text-color`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      secondaryTextColorId: secondaryTextColorId || null,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Secondary text color save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveCardScalePct(cardScalePct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/card-scale`, {
     method: 'PUT',
@@ -441,6 +489,9 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
   const homeBackgroundSave = useAsyncSave((homeBackground) => saveHomeBackground(homeBackground, selectedPanelName || null));
   const cardOpacitySave = useAsyncSave((cardOpacityScalePct) => saveCardOpacityScalePct(cardOpacityScalePct, selectedPanelName || null));
+  const secondaryTextOpacitySave = useAsyncSave((secondaryTextOpacityPct) => saveSecondaryTextOpacityPct(secondaryTextOpacityPct, selectedPanelName || null));
+  const secondaryTextSizeSave = useAsyncSave((secondaryTextSizePct) => saveSecondaryTextSizePct(secondaryTextSizePct, selectedPanelName || null));
+  const secondaryTextColorSave = useAsyncSave((secondaryTextColorId) => saveSecondaryTextColorId(secondaryTextColorId, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
@@ -567,6 +618,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(0, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardOpacityScalePct]);
 
+  const secondaryTextOpacityFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.secondaryTextOpacityPct);
+    if (!Number.isFinite(raw)) return 45;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [config?.ui?.secondaryTextOpacityPct]);
+
+  const secondaryTextSizeFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.secondaryTextSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.secondaryTextSizePct]);
+
+  const secondaryTextColorFromConfig = useMemo(() => {
+    const raw = String(config?.ui?.secondaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    if (TOLERANCE_COLOR_CHOICES.some((c) => c.id === raw)) return raw;
+    return '';
+  }, [config?.ui?.secondaryTextColorId]);
+
   const cardScaleFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
     if (!Number.isFinite(raw)) return 100;
@@ -582,6 +652,18 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [cardOpacityScaleDraft, setCardOpacityScaleDraft] = useState(() => 100);
   const [cardOpacityScaleDirty, setCardOpacityScaleDirty] = useState(false);
   const [cardOpacityScaleError, setCardOpacityScaleError] = useState(null);
+
+  const [secondaryTextOpacityDraft, setSecondaryTextOpacityDraft] = useState(() => 45);
+  const [secondaryTextOpacityDirty, setSecondaryTextOpacityDirty] = useState(false);
+  const [secondaryTextOpacityError, setSecondaryTextOpacityError] = useState(null);
+
+  const [secondaryTextSizeDraft, setSecondaryTextSizeDraft] = useState(() => 100);
+  const [secondaryTextSizeDirty, setSecondaryTextSizeDirty] = useState(false);
+  const [secondaryTextSizeError, setSecondaryTextSizeError] = useState(null);
+
+  const [secondaryTextColorDraft, setSecondaryTextColorDraft] = useState(() => '');
+  const [secondaryTextColorDirty, setSecondaryTextColorDirty] = useState(false);
+  const [secondaryTextColorError, setSecondaryTextColorError] = useState(null);
 
   const [cardScaleDraft, setCardScaleDraft] = useState(() => 100);
   const [cardScaleDirty, setCardScaleDirty] = useState(false);
@@ -625,6 +707,21 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (cardOpacityScaleDirty) return;
     setCardOpacityScaleDraft(cardOpacityScaleFromConfig);
   }, [cardOpacityScaleDirty, cardOpacityScaleFromConfig]);
+
+  useEffect(() => {
+    if (secondaryTextOpacityDirty) return;
+    setSecondaryTextOpacityDraft(secondaryTextOpacityFromConfig);
+  }, [secondaryTextOpacityDirty, secondaryTextOpacityFromConfig]);
+
+  useEffect(() => {
+    if (secondaryTextSizeDirty) return;
+    setSecondaryTextSizeDraft(secondaryTextSizeFromConfig);
+  }, [secondaryTextSizeDirty, secondaryTextSizeFromConfig]);
+
+  useEffect(() => {
+    if (secondaryTextColorDirty) return;
+    setSecondaryTextColorDraft(secondaryTextColorFromConfig);
+  }, [secondaryTextColorDirty, secondaryTextColorFromConfig]);
 
   useEffect(() => {
     if (cardScaleDirty) return;
@@ -710,6 +807,60 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, cardOpacityScaleDirty, cardOpacityScaleDraft]);
+
+  // Autosave: Secondary text opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!secondaryTextOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setSecondaryTextOpacityError(null);
+      try {
+        await secondaryTextOpacitySave.run(secondaryTextOpacityDraft);
+        setSecondaryTextOpacityDirty(false);
+      } catch (err) {
+        setSecondaryTextOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, secondaryTextOpacityDirty, secondaryTextOpacityDraft]);
+
+  // Autosave: Secondary text size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!secondaryTextSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setSecondaryTextSizeError(null);
+      try {
+        await secondaryTextSizeSave.run(secondaryTextSizeDraft);
+        setSecondaryTextSizeDirty(false);
+      } catch (err) {
+        setSecondaryTextSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, secondaryTextSizeDirty, secondaryTextSizeDraft]);
+
+  // Autosave: Secondary text color.
+  useEffect(() => {
+    if (!connected) return;
+    if (!secondaryTextColorDirty) return;
+
+    const t = setTimeout(async () => {
+      setSecondaryTextColorError(null);
+      try {
+        await secondaryTextColorSave.run(secondaryTextColorDraft || null);
+        setSecondaryTextColorDirty(false);
+      } catch (err) {
+        setSecondaryTextColorError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, secondaryTextColorDirty, secondaryTextColorDraft]);
 
   // Autosave: Card scale.
   useEffect(() => {
@@ -1358,6 +1509,175 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               {cardOpacityScaleError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {cardOpacityScaleError}</div>
               ) : null}
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Secondary text
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Controls the small gray text on Home (labels/subtitles).
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={secondaryTextOpacityDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 45;
+                      setSecondaryTextOpacityError(null);
+                      setSecondaryTextOpacityDirty(true);
+                      setSecondaryTextOpacityDraft(next);
+                    }}
+                    className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  />
+                  <div className="text-xs text-white/45">%</div>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={secondaryTextOpacityDraft}
+                disabled={!connected || busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 45;
+                  setSecondaryTextOpacityError(null);
+                  setSecondaryTextOpacityDirty(true);
+                  setSecondaryTextOpacityDraft(next);
+                }}
+                className="mt-3 w-full"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {secondaryTextOpacityDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(secondaryTextOpacitySave.status)}
+                </div>
+              </div>
+
+              {secondaryTextOpacityError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {secondaryTextOpacityError}</div>
+              ) : null}
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                      Size
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      100% = default.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={50}
+                      max={200}
+                      step={1}
+                      value={secondaryTextSizeDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                        setSecondaryTextSizeError(null);
+                        setSecondaryTextSizeDirty(true);
+                        setSecondaryTextSizeDraft(next);
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={50}
+                  max={200}
+                  step={1}
+                  value={secondaryTextSizeDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                    setSecondaryTextSizeError(null);
+                    setSecondaryTextSizeDirty(true);
+                    setSecondaryTextSizeDraft(next);
+                  }}
+                  className="mt-3 w-full"
+                />
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {secondaryTextSizeDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(secondaryTextSizeSave.status)}
+                  </div>
+                </div>
+
+                {secondaryTextSizeError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {secondaryTextSizeError}</div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                      Color
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Choose a color for Home secondary text.
+                    </div>
+                  </div>
+
+                  <select
+                    value={secondaryTextColorDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const v = String(e.target.value || '').trim();
+                      setSecondaryTextColorError(null);
+                      setSecondaryTextColorDirty(true);
+                      setSecondaryTextColorDraft(v);
+                    }}
+                    className="w-[220px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  >
+                    <option value="">Default</option>
+                    {TOLERANCE_COLOR_CHOICES.map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {secondaryTextColorDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(secondaryTextColorSave.status)}
+                  </div>
+                </div>
+
+                {secondaryTextColorError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {secondaryTextColorError}</div>
+                ) : null}
+              </div>
             </div>
 
             <div className="mt-4 utility-group p-4">

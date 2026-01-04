@@ -12,6 +12,9 @@
   "ui": {
     "colorScheme": "electric-blue",
     "cardOpacityScalePct": 100,
+    "secondaryTextOpacityPct": 45,
+    "secondaryTextSizePct": 100,
+    "secondaryTextColorId": null,
     "cardScalePct": 100,
     "homeRoomColumnsXl": 3,
     "homeBackground": {

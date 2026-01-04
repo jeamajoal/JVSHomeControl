@@ -143,6 +143,8 @@ const MetricCard = ({
   valueClassName,
   valueStyle,
   subClassName,
+  secondaryTextClassName,
+  secondaryTextStrongClassName,
   iconWrapClassName,
   className,
   uiScheme,
@@ -161,9 +163,11 @@ const MetricCard = ({
     ? { padding: `${Math.round(16 * scaleNum)}px` }
     : undefined;
 
-  const scaledTitleStyle = isScaled
-    ? { fontSize: `${Math.round(11 * scaleNum)}px` }
-    : undefined;
+  const secondaryTextScaleVar = 'var(--jvs-secondary-text-size-scale, 1)';
+  const titleFontPx = Math.round((isScaled ? 11 * scaleNum : 11));
+  const subFontPx = Math.round((isScaled ? 13 * scaleNum : 13));
+  const titleStyle = { fontSize: `calc(${titleFontPx}px * ${secondaryTextScaleVar})` };
+  const subStyle = { fontSize: `calc(${subFontPx}px * ${secondaryTextScaleVar})` };
 
   const scaledValueStyle = isScaled
     ? {
@@ -173,9 +177,6 @@ const MetricCard = ({
       }
     : valueStyle;
 
-  const scaledSubStyle = isScaled
-    ? { fontSize: `${Math.round(13 * scaleNum)}px` }
-    : undefined;
 
   const scaledIconWrapStyle = isScaled
     ? {
@@ -202,8 +203,8 @@ const MetricCard = ({
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <div
-            className={`${isScaled ? '' : 'text-[11px] md:text-xs'} uppercase tracking-[0.2em] text-white/55 font-semibold`.trim()}
-            style={scaledTitleStyle}
+            className={`uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextStrongClassName || ''}`.trim()}
+            style={titleStyle}
           >
             {title}
           </div>
@@ -215,8 +216,8 @@ const MetricCard = ({
           </div>
           {sub ? (
             <div
-              className={subClassName || `mt-1 ${isScaled ? '' : 'text-xs'} text-white/45 truncate`}
-              style={scaledSubStyle}
+              className={subClassName || `mt-1 jvs-secondary-text truncate ${secondaryTextClassName || ''}`}
+              style={subStyle}
             >
               {sub}
             </div>
@@ -489,7 +490,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -587,6 +588,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            secondaryTextClassName={secondaryTextColorClassName}
+            secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
             scale={scaleNum}
           />
@@ -604,6 +607,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            secondaryTextClassName={secondaryTextColorClassName}
+            secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
             scale={scaleNum}
           />
@@ -621,6 +626,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            secondaryTextClassName={secondaryTextColorClassName}
+            secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
             scale={scaleNum}
           />
@@ -629,7 +636,10 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
 
       {supportedActions.length ? (
         <div className="mt-4">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/45 font-semibold mb-3">
+          <div
+            className={`text-[11px] md:text-xs uppercase tracking-[0.2em] jvs-secondary-text font-semibold mb-3 ${secondaryTextColorClassName}`.trim()}
+            style={{ fontSize: `calc(11px * var(--jvs-secondary-text-size-scale, 1))` }}
+          >
             Controls
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -640,8 +650,8 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
                 style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
               >
                 <div
-                  className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} uppercase tracking-[0.2em] text-white/55 font-semibold truncate`.trim()}
-                  style={scaleNum === 1 ? undefined : { fontSize: `${Math.round(11 * scaleNum)}px` }}
+                  className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold truncate ${secondaryTextColorClassName}`.trim()}
+                  style={{ fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
                 >
                   {d.label}
                 </div>
@@ -826,6 +836,17 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardScalePct]);
 
+  const secondaryTextColorId = useMemo(() => {
+    const raw = String(config?.ui?.secondaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    return normalizeToleranceColorId(raw, 'neon-green');
+  }, [config?.ui?.secondaryTextColorId]);
+
+  const secondaryTextColorClass = useMemo(() => {
+    if (!secondaryTextColorId) return '';
+    return getToleranceTextClassForColorId(secondaryTextColorId);
+  }, [secondaryTextColorId]);
+
   const homeRoomColumnsXl = useMemo(() => {
     const raw = Number(config?.ui?.homeRoomColumnsXl);
     if (!Number.isFinite(raw)) return 3;
@@ -966,10 +987,12 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               title="Time"
               value={formatTime(now)}
               sub={formatDate(now)}
-              subClassName="mt-1 text-[13px] text-white/45 truncate"
+              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
               icon={Clock}
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
 
             <MetricCard
@@ -977,7 +1000,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               value={formatTemp(outsideTempForValue)}
               sub={(
                 <div className="space-y-1">
-                  <div className="text-white/55">
+                  <div className={`jvs-secondary-text-strong ${secondaryTextColorClass}`.trim()}>
                     {asText(outsideDisplay.condition)
                       ? (
                         `${outsideDisplay.condition}${outsideDisplay.currentHumidity !== null ? ` • ${formatPercent(outsideDisplay.currentHumidity)}` : ''}`
@@ -989,7 +1012,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                       )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-white/45">
+                  <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 jvs-secondary-text ${secondaryTextColorClass}`.trim()}>
                     {(outsideDisplay.todayHigh !== null || outsideDisplay.todayLow !== null) ? (
                       <span className="inline-flex items-center gap-1">
                         <Cloud className="w-3.5 h-3.5" />
@@ -1021,12 +1044,14 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   </div>
                 </div>
               )}
-              subClassName="mt-2 text-[13px] text-white/45"
+              subClassName={`mt-2 text-[13px] jvs-secondary-text ${secondaryTextColorClass}`.trim()}
               icon={Cloud}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
               valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               uiScheme={resolvedUiScheme}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
             <MetricCard
               title="Inside"
@@ -1036,13 +1061,15 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   ? 'No sensors'
                   : `RH ${overall.humidity === null ? '—' : formatPercent(overall.humidity)} • Lux ${overall.illuminance === null ? '—' : formatLux(overall.illuminance)}`
               }
-              subClassName="mt-1 text-[13px] text-white/45 truncate"
+              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
               icon={Thermometer}
               accentClassName="border-white/10"
               valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
               valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               iconWrapClassName="bg-white/5"
               uiScheme={resolvedUiScheme}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
             <MetricCard
               title="Home"
@@ -1056,7 +1083,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   ? 'Disconnected'
                   : (`Motion: ${overall.motionActiveCount || 0} • Doors: ${overall.doorOpenCount || 0}${hubitatModeError ? ` • Mode unavailable (${hubitatModeError})` : ''}`)
               }
-              subClassName="mt-1 text-[13px] text-white/45 truncate"
+              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
               icon={Activity}
               accentClassName={
                 connected
@@ -1065,6 +1092,8 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               }
               valueClassName={connected ? 'text-white' : 'text-neon-red'}
               uiScheme={resolvedUiScheme}
+              secondaryTextClassName={secondaryTextColorClass}
+              secondaryTextStrongClassName={secondaryTextColorClass}
             />
           </div>
 
@@ -1089,6 +1118,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
+                  secondaryTextColorClassName={secondaryTextColorClass}
                   contentScale={roomContentScale}
                 />
               ))

@@ -114,6 +114,30 @@ function App() {
     }
   }, [effectiveConfig?.ui?.cardOpacityScalePct]);
 
+  useEffect(() => {
+    try {
+      const raw = Number(effectiveConfig?.ui?.secondaryTextOpacityPct);
+      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 45;
+      const base = pct / 100;
+      const strong = Math.max(0, Math.min(1, base + 0.10));
+      document.documentElement.style.setProperty('--jvs-secondary-text-opacity', String(base));
+      document.documentElement.style.setProperty('--jvs-secondary-text-strong-opacity', String(strong));
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.secondaryTextOpacityPct]);
+
+  useEffect(() => {
+    try {
+      const raw = Number(effectiveConfig?.ui?.secondaryTextSizePct);
+      const pct = Number.isFinite(raw) ? Math.max(50, Math.min(200, Math.round(raw))) : 100;
+      const scale = pct / 100;
+      document.documentElement.style.setProperty('--jvs-secondary-text-size-scale', String(scale));
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.secondaryTextSizePct]);
+
   const pageLabel = page === 0
     ? 'Home'
     : page === 1

@@ -45,6 +45,8 @@ const UI_COLOR_SCHEMES = Object.freeze([
     'neon-red',
 ]);
 
+const SECONDARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
+
 function normalizePanelName(raw) {
     const s = String(raw ?? '').trim();
     if (!s) return null;
@@ -663,6 +665,20 @@ function normalizePersistedConfig(raw) {
     // 100 = default styling, 0 = fully transparent, 200 = twice as opaque (clamped per-card).
     const cardOpacityScalePct = clampInt(uiRaw.cardOpacityScalePct, 0, 200, 100);
 
+    // Secondary text styling (Home page).
+    // Stored as a percent for easier UI controls; the client maps these to CSS.
+    const secondaryTextOpacityPct = clampInt(uiRaw.secondaryTextOpacityPct, 0, 100, 45);
+    const secondaryTextSizePct = clampInt(
+        uiRaw.secondaryTextSizePct,
+        SECONDARY_TEXT_SIZE_PCT_RANGE.min,
+        SECONDARY_TEXT_SIZE_PCT_RANGE.max,
+        SECONDARY_TEXT_SIZE_PCT_RANGE.def,
+    );
+    const secondaryTextColorIdRaw = String(uiRaw.secondaryTextColorId ?? '').trim();
+    const secondaryTextColorId = secondaryTextColorIdRaw
+        ? (ALLOWED_TOLERANCE_COLOR_IDS.has(secondaryTextColorIdRaw) ? secondaryTextColorIdRaw : null)
+        : null;
+
     // Card scale percent.
     // 100 = default sizing, 50 = half-size, 200 = double-size.
     // Currently used by the Home panel to scale cards/controls for different screens.
@@ -683,6 +699,23 @@ function normalizePersistedConfig(raw) {
         const pColorScheme = UI_COLOR_SCHEMES.includes(pSchemeRaw) ? pSchemeRaw : null;
         const pCardOpacityScalePct = Object.prototype.hasOwnProperty.call(p, 'cardOpacityScalePct')
             ? clampInt(p.cardOpacityScalePct, 0, 200, cardOpacityScalePct)
+            : null;
+        const pSecondaryTextOpacityPct = Object.prototype.hasOwnProperty.call(p, 'secondaryTextOpacityPct')
+            ? clampInt(p.secondaryTextOpacityPct, 0, 100, secondaryTextOpacityPct)
+            : null;
+        const pSecondaryTextSizePct = Object.prototype.hasOwnProperty.call(p, 'secondaryTextSizePct')
+            ? clampInt(
+                p.secondaryTextSizePct,
+                SECONDARY_TEXT_SIZE_PCT_RANGE.min,
+                SECONDARY_TEXT_SIZE_PCT_RANGE.max,
+                secondaryTextSizePct,
+            )
+            : null;
+        const pSecondaryTextColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'secondaryTextColorId')
+            ? String(p.secondaryTextColorId ?? '').trim()
+            : null;
+        const pSecondaryTextColorId = pSecondaryTextColorIdRaw
+            ? (ALLOWED_TOLERANCE_COLOR_IDS.has(pSecondaryTextColorIdRaw) ? pSecondaryTextColorIdRaw : null)
             : null;
         const pCardScalePct = Object.prototype.hasOwnProperty.call(p, 'cardScalePct')
             ? clampInt(p.cardScalePct, 50, 200, cardScalePct)
@@ -707,6 +740,9 @@ function normalizePersistedConfig(raw) {
             ...(pColorScheme ? { colorScheme: pColorScheme } : {}),
             ...(pHomeBackground ? { homeBackground: pHomeBackground } : {}),
             ...(pCardOpacityScalePct !== null ? { cardOpacityScalePct: pCardOpacityScalePct } : {}),
+            ...(pSecondaryTextOpacityPct !== null ? { secondaryTextOpacityPct: pSecondaryTextOpacityPct } : {}),
+            ...(pSecondaryTextSizePct !== null ? { secondaryTextSizePct: pSecondaryTextSizePct } : {}),
+            ...(pSecondaryTextColorId !== null ? { secondaryTextColorId: pSecondaryTextColorId } : {}),
             ...(pCardScalePct !== null ? { cardScalePct: pCardScalePct } : {}),
             ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
         };
@@ -756,6 +792,10 @@ function normalizePersistedConfig(raw) {
         homeBackground,
         // Opacity scale for UI cards/panels (affects panel backgrounds only).
         cardOpacityScalePct,
+        // Secondary (small/gray) text styling (Home page).
+        secondaryTextOpacityPct,
+        secondaryTextSizePct,
+        secondaryTextColorId,
         // Scale percent for UI cards/controls (used by Home fit-scale).
         cardScalePct,
         // Home room columns at XL breakpoint.
@@ -782,6 +822,9 @@ function ensurePanelProfileExists(panelName) {
             colorScheme: ui.colorScheme,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
+            secondaryTextOpacityPct: ui.secondaryTextOpacityPct,
+            secondaryTextSizePct: ui.secondaryTextSizePct,
+            secondaryTextColorId: ui.secondaryTextColorId,
             cardScalePct: ui.cardScalePct,
             homeRoomColumnsXl: ui.homeRoomColumnsXl,
         },
@@ -824,11 +867,14 @@ function loadPersistedConfig() {
             const hadSensorIndicatorColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'sensorIndicatorColors'));
             const hadHomeBackground = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeBackground'));
             const hadCardOpacityScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardOpacityScalePct'));
+            const hadSecondaryTextOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'secondaryTextOpacityPct'));
+            const hadSecondaryTextSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'secondaryTextSizePct'));
+            const hadSecondaryTextColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'secondaryTextColorId'));
             const hadCardScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardScalePct'));
             const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadCardScalePct || !hadHomeRoomColumnsXl) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -838,6 +884,9 @@ function loadPersistedConfig() {
                 else if (!hadClimateToleranceColors) label = 'migrate-ui-climate-tolerance-colors';
                 else if (!hadHomeBackground) label = 'migrate-ui-home-background';
                 else if (!hadCardOpacityScalePct) label = 'migrate-ui-card-opacity-scale';
+                else if (!hadSecondaryTextOpacityPct) label = 'migrate-ui-secondary-text-opacity';
+                else if (!hadSecondaryTextSizePct) label = 'migrate-ui-secondary-text-size';
+                else if (!hadSecondaryTextColorId) label = 'migrate-ui-secondary-text-color';
                 else if (!hadCardScalePct) label = 'migrate-ui-card-scale';
                 else if (!hadHomeRoomColumnsXl) label = 'migrate-ui-home-room-columns';
                 persistConfigToDiskIfChanged(label, { force: true });
@@ -2457,6 +2506,215 @@ app.put('/api/ui/card-opacity-scale', (req, res) => {
             cardOpacityScalePct: persistedConfig?.ui?.cardOpacityScalePct,
             cardScalePct: persistedConfig?.ui?.cardScalePct,
             homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update secondary (small/gray) text opacity percent (Home page).
+// Expected payload: { secondaryTextOpacityPct: number(0-100) }
+app.put('/api/ui/secondary-text-opacity', (req, res) => {
+    const raw = req.body?.secondaryTextOpacityPct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing secondaryTextOpacityPct (0-100)' });
+    }
+
+    const secondaryTextOpacityPct = Math.max(0, Math.min(100, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        secondaryTextOpacityPct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-secondary-text-opacity-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            secondaryTextOpacityPct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-secondary-text-opacity');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            secondaryTextOpacityPct: persistedConfig?.ui?.secondaryTextOpacityPct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update secondary (small/gray) text size percent (Home page).
+// Expected payload: { secondaryTextSizePct: number(50-200) }
+app.put('/api/ui/secondary-text-size', (req, res) => {
+    const raw = req.body?.secondaryTextSizePct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing secondaryTextSizePct (50-200)' });
+    }
+
+    const secondaryTextSizePct = Math.max(
+        SECONDARY_TEXT_SIZE_PCT_RANGE.min,
+        Math.min(SECONDARY_TEXT_SIZE_PCT_RANGE.max, Math.round(num)),
+    );
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        secondaryTextSizePct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-secondary-text-size-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            secondaryTextSizePct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-secondary-text-size');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            secondaryTextSizePct: persistedConfig?.ui?.secondaryTextSizePct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update secondary (small/gray) text color id (Home page).
+// Expected payload: { secondaryTextColorId: string | null } (null/empty = default)
+app.put('/api/ui/secondary-text-color', (req, res) => {
+    const raw = req.body?.secondaryTextColorId;
+    const s = String(raw ?? '').trim();
+    const secondaryTextColorId = s
+        ? (ALLOWED_TOLERANCE_COLOR_IDS.has(s) ? s : null)
+        : null;
+
+    if (s && !secondaryTextColorId) {
+        return res.status(400).json({ error: 'Invalid secondaryTextColorId' });
+    }
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        secondaryTextColorId,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-secondary-text-color-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            secondaryTextColorId,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-secondary-text-color');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            secondaryTextColorId: persistedConfig?.ui?.secondaryTextColorId,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };

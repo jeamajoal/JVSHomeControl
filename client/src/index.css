@@ -33,6 +33,15 @@
   backdrop-filter: blur(var(--jvs-glass-panel-blur-px, 24px));
 }
 
+/* Home: allow controlling the "secondary" (small/gray) text opacity via Settings. */
+.jvs-secondary-text {
+  opacity: var(--jvs-secondary-text-opacity, 0.45);
+}
+
+.jvs-secondary-text-strong {
+  opacity: var(--jvs-secondary-text-strong-opacity, 0.55);
+}
+
 /* Accent-tinted card background (used for active/selected states).
    Uses the current scheme's --accent-rgb and is scaled via cardOpacityScalePct. */
 .jvs-accent-card-bg {
