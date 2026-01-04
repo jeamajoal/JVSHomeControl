@@ -183,6 +183,22 @@ async function saveCardOpacityScalePct(cardOpacityScalePct, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveBlurScalePct(blurScalePct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/blur-scale`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      blurScalePct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Blur save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveSecondaryTextOpacityPct(secondaryTextOpacityPct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/secondary-text-opacity`, {
     method: 'PUT',
@@ -231,6 +247,54 @@ async function saveSecondaryTextColorId(secondaryTextColorId, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function savePrimaryTextOpacityPct(primaryTextOpacityPct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/primary-text-opacity`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      primaryTextOpacityPct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Primary text save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function savePrimaryTextSizePct(primaryTextSizePct, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/primary-text-size`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      primaryTextSizePct,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Primary text size save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function savePrimaryTextColorId(primaryTextColorId, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/primary-text-color`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      primaryTextColorId: primaryTextColorId || null,
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Primary text color save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveCardScalePct(cardScalePct, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/card-scale`, {
     method: 'PUT',
@@ -242,7 +306,7 @@ async function saveCardScalePct(cardScalePct, panelName) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(text || `Card scale save failed (${res.status})`);
+    throw new Error(text || `Card spacing save failed (${res.status})`);
   }
   return res.json().catch(() => ({}));
 }
@@ -489,9 +553,13 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
   const homeBackgroundSave = useAsyncSave((homeBackground) => saveHomeBackground(homeBackground, selectedPanelName || null));
   const cardOpacitySave = useAsyncSave((cardOpacityScalePct) => saveCardOpacityScalePct(cardOpacityScalePct, selectedPanelName || null));
+  const blurScaleSave = useAsyncSave((blurScalePct) => saveBlurScalePct(blurScalePct, selectedPanelName || null));
   const secondaryTextOpacitySave = useAsyncSave((secondaryTextOpacityPct) => saveSecondaryTextOpacityPct(secondaryTextOpacityPct, selectedPanelName || null));
   const secondaryTextSizeSave = useAsyncSave((secondaryTextSizePct) => saveSecondaryTextSizePct(secondaryTextSizePct, selectedPanelName || null));
   const secondaryTextColorSave = useAsyncSave((secondaryTextColorId) => saveSecondaryTextColorId(secondaryTextColorId, selectedPanelName || null));
+  const primaryTextOpacitySave = useAsyncSave((primaryTextOpacityPct) => savePrimaryTextOpacityPct(primaryTextOpacityPct, selectedPanelName || null));
+  const primaryTextSizeSave = useAsyncSave((primaryTextSizePct) => savePrimaryTextSizePct(primaryTextSizePct, selectedPanelName || null));
+  const primaryTextColorSave = useAsyncSave((primaryTextColorId) => savePrimaryTextColorId(primaryTextColorId, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
@@ -618,6 +686,12 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return Math.max(0, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardOpacityScalePct]);
 
+  const blurScaleFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.blurScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.blurScalePct]);
+
   const secondaryTextOpacityFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.secondaryTextOpacityPct);
     if (!Number.isFinite(raw)) return 45;
@@ -637,6 +711,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return '';
   }, [config?.ui?.secondaryTextColorId]);
 
+  const primaryTextOpacityFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.primaryTextOpacityPct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }, [config?.ui?.primaryTextOpacityPct]);
+
+  const primaryTextSizeFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.primaryTextSizePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.primaryTextSizePct]);
+
+  const primaryTextColorFromConfig = useMemo(() => {
+    const raw = String(config?.ui?.primaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    if (TOLERANCE_COLOR_CHOICES.some((c) => c.id === raw)) return raw;
+    return '';
+  }, [config?.ui?.primaryTextColorId]);
+
   const cardScaleFromConfig = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
     if (!Number.isFinite(raw)) return 100;
@@ -653,6 +746,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [cardOpacityScaleDirty, setCardOpacityScaleDirty] = useState(false);
   const [cardOpacityScaleError, setCardOpacityScaleError] = useState(null);
 
+  const [blurScaleDraft, setBlurScaleDraft] = useState(() => 100);
+  const [blurScaleDirty, setBlurScaleDirty] = useState(false);
+  const [blurScaleError, setBlurScaleError] = useState(null);
+
   const [secondaryTextOpacityDraft, setSecondaryTextOpacityDraft] = useState(() => 45);
   const [secondaryTextOpacityDirty, setSecondaryTextOpacityDirty] = useState(false);
   const [secondaryTextOpacityError, setSecondaryTextOpacityError] = useState(null);
@@ -664,6 +761,18 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   const [secondaryTextColorDraft, setSecondaryTextColorDraft] = useState(() => '');
   const [secondaryTextColorDirty, setSecondaryTextColorDirty] = useState(false);
   const [secondaryTextColorError, setSecondaryTextColorError] = useState(null);
+
+  const [primaryTextOpacityDraft, setPrimaryTextOpacityDraft] = useState(() => 100);
+  const [primaryTextOpacityDirty, setPrimaryTextOpacityDirty] = useState(false);
+  const [primaryTextOpacityError, setPrimaryTextOpacityError] = useState(null);
+
+  const [primaryTextSizeDraft, setPrimaryTextSizeDraft] = useState(() => 100);
+  const [primaryTextSizeDirty, setPrimaryTextSizeDirty] = useState(false);
+  const [primaryTextSizeError, setPrimaryTextSizeError] = useState(null);
+
+  const [primaryTextColorDraft, setPrimaryTextColorDraft] = useState(() => '');
+  const [primaryTextColorDirty, setPrimaryTextColorDirty] = useState(false);
+  const [primaryTextColorError, setPrimaryTextColorError] = useState(null);
 
   const [cardScaleDraft, setCardScaleDraft] = useState(() => 100);
   const [cardScaleDirty, setCardScaleDirty] = useState(false);
@@ -709,6 +818,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
   }, [cardOpacityScaleDirty, cardOpacityScaleFromConfig]);
 
   useEffect(() => {
+    if (blurScaleDirty) return;
+    setBlurScaleDraft(blurScaleFromConfig);
+  }, [blurScaleDirty, blurScaleFromConfig]);
+
+  useEffect(() => {
     if (secondaryTextOpacityDirty) return;
     setSecondaryTextOpacityDraft(secondaryTextOpacityFromConfig);
   }, [secondaryTextOpacityDirty, secondaryTextOpacityFromConfig]);
@@ -722,6 +836,21 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     if (secondaryTextColorDirty) return;
     setSecondaryTextColorDraft(secondaryTextColorFromConfig);
   }, [secondaryTextColorDirty, secondaryTextColorFromConfig]);
+
+  useEffect(() => {
+    if (primaryTextOpacityDirty) return;
+    setPrimaryTextOpacityDraft(primaryTextOpacityFromConfig);
+  }, [primaryTextOpacityDirty, primaryTextOpacityFromConfig]);
+
+  useEffect(() => {
+    if (primaryTextSizeDirty) return;
+    setPrimaryTextSizeDraft(primaryTextSizeFromConfig);
+  }, [primaryTextSizeDirty, primaryTextSizeFromConfig]);
+
+  useEffect(() => {
+    if (primaryTextColorDirty) return;
+    setPrimaryTextColorDraft(primaryTextColorFromConfig);
+  }, [primaryTextColorDirty, primaryTextColorFromConfig]);
 
   useEffect(() => {
     if (cardScaleDirty) return;
@@ -808,6 +937,24 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return () => clearTimeout(t);
   }, [connected, cardOpacityScaleDirty, cardOpacityScaleDraft]);
 
+  // Autosave: Blur scale.
+  useEffect(() => {
+    if (!connected) return;
+    if (!blurScaleDirty) return;
+
+    const t = setTimeout(async () => {
+      setBlurScaleError(null);
+      try {
+        await blurScaleSave.run(blurScaleDraft);
+        setBlurScaleDirty(false);
+      } catch (err) {
+        setBlurScaleError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, blurScaleDirty, blurScaleDraft]);
+
   // Autosave: Secondary text opacity.
   useEffect(() => {
     if (!connected) return;
@@ -861,6 +1008,60 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     return () => clearTimeout(t);
   }, [connected, secondaryTextColorDirty, secondaryTextColorDraft]);
+
+  // Autosave: Primary text opacity.
+  useEffect(() => {
+    if (!connected) return;
+    if (!primaryTextOpacityDirty) return;
+
+    const t = setTimeout(async () => {
+      setPrimaryTextOpacityError(null);
+      try {
+        await primaryTextOpacitySave.run(primaryTextOpacityDraft);
+        setPrimaryTextOpacityDirty(false);
+      } catch (err) {
+        setPrimaryTextOpacityError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, primaryTextOpacityDirty, primaryTextOpacityDraft]);
+
+  // Autosave: Primary text size.
+  useEffect(() => {
+    if (!connected) return;
+    if (!primaryTextSizeDirty) return;
+
+    const t = setTimeout(async () => {
+      setPrimaryTextSizeError(null);
+      try {
+        await primaryTextSizeSave.run(primaryTextSizeDraft);
+        setPrimaryTextSizeDirty(false);
+      } catch (err) {
+        setPrimaryTextSizeError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, primaryTextSizeDirty, primaryTextSizeDraft]);
+
+  // Autosave: Primary text color.
+  useEffect(() => {
+    if (!connected) return;
+    if (!primaryTextColorDirty) return;
+
+    const t = setTimeout(async () => {
+      setPrimaryTextColorError(null);
+      try {
+        await primaryTextColorSave.run(primaryTextColorDraft || null);
+        setPrimaryTextColorDirty(false);
+      } catch (err) {
+        setPrimaryTextColorError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, primaryTextColorDirty, primaryTextColorDraft]);
 
   // Autosave: Card scale.
   useEffect(() => {
@@ -1515,6 +1716,238 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Blur
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Adjusts background blur on cards/panels. 100% = default.
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={200}
+                    step={1}
+                    value={blurScaleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                      setBlurScaleError(null);
+                      setBlurScaleDirty(true);
+                      setBlurScaleDraft(next);
+                    }}
+                    className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  />
+                  <div className="text-xs text-white/45">%</div>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={200}
+                step={1}
+                value={blurScaleDraft}
+                disabled={!connected || busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  const next = Number.isFinite(n) ? Math.max(0, Math.min(200, Math.round(n))) : 100;
+                  setBlurScaleError(null);
+                  setBlurScaleDirty(true);
+                  setBlurScaleDraft(next);
+                }}
+                className="mt-3 w-full"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {blurScaleDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(blurScaleSave.status)}
+                </div>
+              </div>
+
+              {blurScaleError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {blurScaleError}</div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                    Primary text
+                  </div>
+                  <div className="mt-1 text-xs text-white/45">
+                    Transparency for the main text on Home (room titles/values).
+                  </div>
+                </div>
+
+                <div className="shrink-0 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={primaryTextOpacityDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                      setPrimaryTextOpacityError(null);
+                      setPrimaryTextOpacityDirty(true);
+                      setPrimaryTextOpacityDraft(next);
+                    }}
+                    className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  />
+                  <div className="text-xs text-white/45">%</div>
+                </div>
+              </div>
+
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={primaryTextOpacityDraft}
+                disabled={!connected || busy}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  const next = Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : 100;
+                  setPrimaryTextOpacityError(null);
+                  setPrimaryTextOpacityDirty(true);
+                  setPrimaryTextOpacityDraft(next);
+                }}
+                className="mt-3 w-full"
+              />
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {primaryTextOpacityDirty ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(primaryTextOpacitySave.status)}
+                </div>
+              </div>
+
+              {primaryTextOpacityError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {primaryTextOpacityError}</div>
+              ) : null}
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                      Size
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      100% = default.
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={50}
+                      max={200}
+                      step={1}
+                      value={primaryTextSizeDraft}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                        setPrimaryTextSizeError(null);
+                        setPrimaryTextSizeDirty(true);
+                        setPrimaryTextSizeDraft(next);
+                      }}
+                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    />
+                    <div className="text-xs text-white/45">%</div>
+                  </div>
+                </div>
+
+                <input
+                  type="range"
+                  min={50}
+                  max={200}
+                  step={1}
+                  value={primaryTextSizeDraft}
+                  disabled={!connected || busy}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    const next = Number.isFinite(n) ? Math.max(50, Math.min(200, Math.round(n))) : 100;
+                    setPrimaryTextSizeError(null);
+                    setPrimaryTextSizeDirty(true);
+                    setPrimaryTextSizeDraft(next);
+                  }}
+                  className="mt-3 w-full"
+                />
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {primaryTextSizeDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(primaryTextSizeSave.status)}
+                  </div>
+                </div>
+
+                {primaryTextSizeError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {primaryTextSizeError}</div>
+                ) : null}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                      Color
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Choose a color for Home primary text.
+                    </div>
+                  </div>
+
+                  <select
+                    value={primaryTextColorDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const v = String(e.target.value || '').trim();
+                      setPrimaryTextColorError(null);
+                      setPrimaryTextColorDirty(true);
+                      setPrimaryTextColorDraft(v);
+                    }}
+                    className="w-[220px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  >
+                    <option value="">Default</option>
+                    {TOLERANCE_COLOR_CHOICES.map((c) => (
+                      <option key={c.id} value={c.id}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs text-white/45">
+                    {primaryTextColorDirty ? 'Pending changes…' : 'Saved'}
+                  </div>
+                  <div className="text-xs text-white/45">
+                    {statusText(primaryTextColorSave.status)}
+                  </div>
+                </div>
+
+                {primaryTextColorError ? (
+                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {primaryTextColorError}</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                     Secondary text
                   </div>
                   <div className="mt-1 text-xs text-white/45">
@@ -1684,10 +2117,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                    Card size
+                    Card spacing
                   </div>
                   <div className="mt-1 text-xs text-white/45">
-                    Scales Home cards/controls. 100% = default.
+                    Scales Home card padding/spacing & icon sizes. 100% = default.
                   </div>
                 </div>
 

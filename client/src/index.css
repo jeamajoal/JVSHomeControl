@@ -42,6 +42,38 @@
   opacity: var(--jvs-secondary-text-strong-opacity, 0.55);
 }
 
+/* Home: allow controlling the "primary" (main) text opacity via Settings. */
+.jvs-primary-text {
+  opacity: var(--jvs-primary-text-opacity, 1);
+}
+
+.jvs-primary-text-strong {
+  opacity: var(--jvs-primary-text-strong-opacity, 1);
+}
+
+/* Home: primary metric values scale (in addition to card scaling). */
+.jvs-home-primary-metric-value {
+  font-size: calc(1.875rem * var(--jvs-primary-text-size-scale, 1));
+  line-height: 1.05;
+}
+
+@media (min-width: 768px) {
+  .jvs-home-primary-metric-value {
+    font-size: calc(2.25rem * var(--jvs-primary-text-size-scale, 1));
+  }
+}
+
+/* Home: room titles scale (in addition to card scaling). */
+.jvs-home-room-title {
+  font-size: calc(1rem * var(--jvs-primary-text-size-scale, 1));
+}
+
+@media (min-width: 768px) {
+  .jvs-home-room-title {
+    font-size: calc(1.125rem * var(--jvs-primary-text-size-scale, 1));
+  }
+}
+
 /* Accent-tinted card background (used for active/selected states).
    Uses the current scheme's --accent-rgb and is scaled via cardOpacityScalePct. */
 .jvs-accent-card-bg {

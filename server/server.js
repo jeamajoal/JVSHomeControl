@@ -81,6 +81,117 @@ const ALLOWED_TOLERANCE_COLOR_IDS = new Set([
 ]);
 
 const SECONDARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
+const PRIMARY_TEXT_SIZE_PCT_RANGE = Object.freeze({ min: 50, max: 200, def: 100 });
+const BLUR_SCALE_PCT_RANGE = Object.freeze({ min: 0, max: 200, def: 100 });
+
+// Default preset panel profiles that ship with the product.
+// These are used when there are no existing panel profiles in config.json.
+const DEFAULT_PANEL_PROFILES_PRESETS = Object.freeze({
+    'Neon Glass': {
+        colorScheme: 'electric-blue',
+        cardOpacityScalePct: 75,
+        blurScalePct: 170,
+        primaryTextOpacityPct: 100,
+        primaryTextSizePct: 110,
+        primaryTextColorId: 'white',
+        secondaryTextOpacityPct: 55,
+        secondaryTextSizePct: 105,
+        secondaryTextColorId: 'slate',
+        cardScalePct: 105,
+        homeRoomColumnsXl: 3,
+    },
+    'Stealth Slate': {
+        colorScheme: 'slate',
+        cardOpacityScalePct: 60,
+        blurScalePct: 0,
+        primaryTextOpacityPct: 95,
+        primaryTextSizePct: 105,
+        primaryTextColorId: 'white',
+        secondaryTextOpacityPct: 35,
+        secondaryTextSizePct: 95,
+        secondaryTextColorId: 'slate',
+        cardScalePct: 110,
+        homeRoomColumnsXl: 3,
+    },
+    'Arcade Mint': {
+        colorScheme: 'neon-green',
+        cardOpacityScalePct: 90,
+        blurScalePct: 140,
+        primaryTextOpacityPct: 100,
+        primaryTextSizePct: 115,
+        primaryTextColorId: 'neon-green',
+        secondaryTextOpacityPct: 50,
+        secondaryTextSizePct: 100,
+        secondaryTextColorId: 'emerald',
+        cardScalePct: 100,
+        homeRoomColumnsXl: 3,
+    },
+    'Copper Warmth': {
+        colorScheme: 'copper',
+        cardOpacityScalePct: 115,
+        blurScalePct: 110,
+        primaryTextOpacityPct: 100,
+        primaryTextSizePct: 110,
+        primaryTextColorId: 'tan',
+        secondaryTextOpacityPct: 45,
+        secondaryTextSizePct: 100,
+        secondaryTextColorId: 'brown',
+        cardScalePct: 100,
+        homeRoomColumnsXl: 3,
+    },
+    'Ice Cave': {
+        colorScheme: 'classic-blue',
+        cardOpacityScalePct: 80,
+        blurScalePct: 200,
+        primaryTextOpacityPct: 100,
+        primaryTextSizePct: 110,
+        primaryTextColorId: 'cyan',
+        secondaryTextOpacityPct: 50,
+        secondaryTextSizePct: 100,
+        secondaryTextColorId: 'sky',
+        cardScalePct: 100,
+        homeRoomColumnsXl: 3,
+    },
+    'Amber Signal': {
+        colorScheme: 'amber',
+        cardOpacityScalePct: 100,
+        blurScalePct: 120,
+        primaryTextOpacityPct: 100,
+        primaryTextSizePct: 110,
+        primaryTextColorId: 'amber',
+        secondaryTextOpacityPct: 45,
+        secondaryTextSizePct: 100,
+        secondaryTextColorId: 'stone',
+        cardScalePct: 100,
+        homeRoomColumnsXl: 3,
+    },
+    'Zinc Minimal': {
+        colorScheme: 'zinc',
+        cardOpacityScalePct: 130,
+        blurScalePct: 35,
+        primaryTextOpacityPct: 100,
+        primaryTextSizePct: 105,
+        primaryTextColorId: 'white',
+        secondaryTextOpacityPct: 30,
+        secondaryTextSizePct: 95,
+        secondaryTextColorId: 'zinc',
+        cardScalePct: 95,
+        homeRoomColumnsXl: 3,
+    },
+    'Red Alert': {
+        colorScheme: 'neon-red',
+        cardOpacityScalePct: 95,
+        blurScalePct: 90,
+        primaryTextOpacityPct: 100,
+        primaryTextSizePct: 115,
+        primaryTextColorId: 'neon-red',
+        secondaryTextOpacityPct: 50,
+        secondaryTextSizePct: 100,
+        secondaryTextColorId: 'rose',
+        cardScalePct: 105,
+        homeRoomColumnsXl: 3,
+    },
+});
 
 function normalizePanelName(raw) {
     const s = String(raw ?? '').trim();
@@ -667,6 +778,10 @@ function normalizePersistedConfig(raw) {
     // 100 = default styling, 0 = fully transparent, 200 = twice as opaque (clamped per-card).
     const cardOpacityScalePct = clampInt(uiRaw.cardOpacityScalePct, 0, 200, 100);
 
+    // Backdrop blur scale.
+    // 100 = default blur, 0 = no blur, 200 = double blur.
+    const blurScalePct = clampInt(uiRaw.blurScalePct, BLUR_SCALE_PCT_RANGE.min, BLUR_SCALE_PCT_RANGE.max, BLUR_SCALE_PCT_RANGE.def);
+
     // Secondary text styling (Home page).
     // Stored as a percent for easier UI controls; the client maps these to CSS.
     const secondaryTextOpacityPct = clampInt(uiRaw.secondaryTextOpacityPct, 0, 100, 45);
@@ -681,6 +796,20 @@ function normalizePersistedConfig(raw) {
         ? (ALLOWED_TOLERANCE_COLOR_IDS.has(secondaryTextColorIdRaw) ? secondaryTextColorIdRaw : null)
         : null;
 
+    // Primary text styling (Home page).
+    // Stored as a percent for easier UI controls; the client maps these to CSS.
+    const primaryTextOpacityPct = clampInt(uiRaw.primaryTextOpacityPct, 0, 100, 100);
+    const primaryTextSizePct = clampInt(
+        uiRaw.primaryTextSizePct,
+        PRIMARY_TEXT_SIZE_PCT_RANGE.min,
+        PRIMARY_TEXT_SIZE_PCT_RANGE.max,
+        PRIMARY_TEXT_SIZE_PCT_RANGE.def,
+    );
+    const primaryTextColorIdRaw = String(uiRaw.primaryTextColorId ?? '').trim();
+    const primaryTextColorId = primaryTextColorIdRaw
+        ? (ALLOWED_TOLERANCE_COLOR_IDS.has(primaryTextColorIdRaw) ? primaryTextColorIdRaw : null)
+        : null;
+
     // Card scale percent.
     // 100 = default sizing, 50 = half-size, 200 = double-size.
     // Currently used by the Home panel to scale cards/controls for different screens.
@@ -691,8 +820,9 @@ function normalizePersistedConfig(raw) {
     const homeRoomColumnsXl = clampInt(uiRaw.homeRoomColumnsXl, 1, 6, 3);
 
     const rawPanelProfiles = (uiRaw.panelProfiles && typeof uiRaw.panelProfiles === 'object') ? uiRaw.panelProfiles : {};
+    const sourcePanelProfiles = Object.keys(rawPanelProfiles).length ? rawPanelProfiles : DEFAULT_PANEL_PROFILES_PRESETS;
     const panelProfiles = {};
-    for (const [rawName, rawProfile] of Object.entries(rawPanelProfiles)) {
+    for (const [rawName, rawProfile] of Object.entries(sourcePanelProfiles)) {
         const name = normalizePanelName(rawName);
         if (!name) continue;
         const p = (rawProfile && typeof rawProfile === 'object') ? rawProfile : {};
@@ -701,6 +831,9 @@ function normalizePersistedConfig(raw) {
         const pColorScheme = UI_COLOR_SCHEMES.includes(pSchemeRaw) ? pSchemeRaw : null;
         const pCardOpacityScalePct = Object.prototype.hasOwnProperty.call(p, 'cardOpacityScalePct')
             ? clampInt(p.cardOpacityScalePct, 0, 200, cardOpacityScalePct)
+            : null;
+        const pBlurScalePct = Object.prototype.hasOwnProperty.call(p, 'blurScalePct')
+            ? clampInt(p.blurScalePct, BLUR_SCALE_PCT_RANGE.min, BLUR_SCALE_PCT_RANGE.max, blurScalePct)
             : null;
         const pSecondaryTextOpacityPct = Object.prototype.hasOwnProperty.call(p, 'secondaryTextOpacityPct')
             ? clampInt(p.secondaryTextOpacityPct, 0, 100, secondaryTextOpacityPct)
@@ -718,6 +851,24 @@ function normalizePersistedConfig(raw) {
             : null;
         const pSecondaryTextColorId = pSecondaryTextColorIdRaw
             ? (ALLOWED_TOLERANCE_COLOR_IDS.has(pSecondaryTextColorIdRaw) ? pSecondaryTextColorIdRaw : null)
+            : null;
+
+        const pPrimaryTextOpacityPct = Object.prototype.hasOwnProperty.call(p, 'primaryTextOpacityPct')
+            ? clampInt(p.primaryTextOpacityPct, 0, 100, primaryTextOpacityPct)
+            : null;
+        const pPrimaryTextSizePct = Object.prototype.hasOwnProperty.call(p, 'primaryTextSizePct')
+            ? clampInt(
+                p.primaryTextSizePct,
+                PRIMARY_TEXT_SIZE_PCT_RANGE.min,
+                PRIMARY_TEXT_SIZE_PCT_RANGE.max,
+                primaryTextSizePct,
+            )
+            : null;
+        const pPrimaryTextColorIdRaw = Object.prototype.hasOwnProperty.call(p, 'primaryTextColorId')
+            ? String(p.primaryTextColorId ?? '').trim()
+            : null;
+        const pPrimaryTextColorId = pPrimaryTextColorIdRaw
+            ? (ALLOWED_TOLERANCE_COLOR_IDS.has(pPrimaryTextColorIdRaw) ? pPrimaryTextColorIdRaw : null)
             : null;
         const pCardScalePct = Object.prototype.hasOwnProperty.call(p, 'cardScalePct')
             ? clampInt(p.cardScalePct, 50, 200, cardScalePct)
@@ -742,9 +893,13 @@ function normalizePersistedConfig(raw) {
             ...(pColorScheme ? { colorScheme: pColorScheme } : {}),
             ...(pHomeBackground ? { homeBackground: pHomeBackground } : {}),
             ...(pCardOpacityScalePct !== null ? { cardOpacityScalePct: pCardOpacityScalePct } : {}),
+            ...(pBlurScalePct !== null ? { blurScalePct: pBlurScalePct } : {}),
             ...(pSecondaryTextOpacityPct !== null ? { secondaryTextOpacityPct: pSecondaryTextOpacityPct } : {}),
             ...(pSecondaryTextSizePct !== null ? { secondaryTextSizePct: pSecondaryTextSizePct } : {}),
             ...(pSecondaryTextColorId !== null ? { secondaryTextColorId: pSecondaryTextColorId } : {}),
+            ...(pPrimaryTextOpacityPct !== null ? { primaryTextOpacityPct: pPrimaryTextOpacityPct } : {}),
+            ...(pPrimaryTextSizePct !== null ? { primaryTextSizePct: pPrimaryTextSizePct } : {}),
+            ...(pPrimaryTextColorId !== null ? { primaryTextColorId: pPrimaryTextColorId } : {}),
             ...(pCardScalePct !== null ? { cardScalePct: pCardScalePct } : {}),
             ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
         };
@@ -794,10 +949,16 @@ function normalizePersistedConfig(raw) {
         homeBackground,
         // Opacity scale for UI cards/panels (affects panel backgrounds only).
         cardOpacityScalePct,
+        // Backdrop blur scale for UI cards/panels.
+        blurScalePct,
         // Secondary (small/gray) text styling (Home page).
         secondaryTextOpacityPct,
         secondaryTextSizePct,
         secondaryTextColorId,
+        // Primary (main) text styling (Home page).
+        primaryTextOpacityPct,
+        primaryTextSizePct,
+        primaryTextColorId,
         // Scale percent for UI cards/controls (used by Home fit-scale).
         cardScalePct,
         // Home room columns at XL breakpoint.
@@ -824,9 +985,13 @@ function ensurePanelProfileExists(panelName) {
             colorScheme: ui.colorScheme,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
+            blurScalePct: ui.blurScalePct,
             secondaryTextOpacityPct: ui.secondaryTextOpacityPct,
             secondaryTextSizePct: ui.secondaryTextSizePct,
             secondaryTextColorId: ui.secondaryTextColorId,
+            primaryTextOpacityPct: ui.primaryTextOpacityPct,
+            primaryTextSizePct: ui.primaryTextSizePct,
+            primaryTextColorId: ui.primaryTextColorId,
             cardScalePct: ui.cardScalePct,
             homeRoomColumnsXl: ui.homeRoomColumnsXl,
         },
@@ -869,14 +1034,18 @@ function loadPersistedConfig() {
             const hadSensorIndicatorColors = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'sensorIndicatorColors'));
             const hadHomeBackground = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeBackground'));
             const hadCardOpacityScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardOpacityScalePct'));
+            const hadBlurScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'blurScalePct'));
             const hadSecondaryTextOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'secondaryTextOpacityPct'));
             const hadSecondaryTextSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'secondaryTextSizePct'));
             const hadSecondaryTextColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'secondaryTextColorId'));
+            const hadPrimaryTextOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'primaryTextOpacityPct'));
+            const hadPrimaryTextSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'primaryTextSizePct'));
+            const hadPrimaryTextColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'primaryTextColorId'));
             const hadCardScalePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'cardScalePct'));
             const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
             persistedConfig = normalizePersistedConfig(raw);
             // If we added new fields for back-compat, write them back once.
-            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl) {
+            if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeRoomColumnsXl) {
                 lastPersistedSerialized = stableStringify(raw);
                 let label = 'migrate-ui-sensor-indicator-colors';
                 if (!hadAlertSounds) label = 'migrate-ui-alert-sounds';
@@ -886,9 +1055,13 @@ function loadPersistedConfig() {
                 else if (!hadClimateToleranceColors) label = 'migrate-ui-climate-tolerance-colors';
                 else if (!hadHomeBackground) label = 'migrate-ui-home-background';
                 else if (!hadCardOpacityScalePct) label = 'migrate-ui-card-opacity-scale';
+                else if (!hadBlurScalePct) label = 'migrate-ui-blur-scale';
                 else if (!hadSecondaryTextOpacityPct) label = 'migrate-ui-secondary-text-opacity';
                 else if (!hadSecondaryTextSizePct) label = 'migrate-ui-secondary-text-size';
                 else if (!hadSecondaryTextColorId) label = 'migrate-ui-secondary-text-color';
+                else if (!hadPrimaryTextOpacityPct) label = 'migrate-ui-primary-text-opacity';
+                else if (!hadPrimaryTextSizePct) label = 'migrate-ui-primary-text-size';
+                else if (!hadPrimaryTextColorId) label = 'migrate-ui-primary-text-color';
                 else if (!hadCardScalePct) label = 'migrate-ui-card-scale';
                 else if (!hadHomeRoomColumnsXl) label = 'migrate-ui-home-room-columns';
                 persistConfigToDiskIfChanged(label, { force: true });
@@ -2516,6 +2689,74 @@ app.put('/api/ui/card-opacity-scale', (req, res) => {
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
+// Update UI blur scale from the kiosk.
+// Expected payload: { blurScalePct: number(0-200) }
+app.put('/api/ui/blur-scale', (req, res) => {
+    const raw = req.body?.blurScalePct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing blurScalePct (0-200)' });
+    }
+
+    const blurScalePct = Math.max(BLUR_SCALE_PCT_RANGE.min, Math.min(BLUR_SCALE_PCT_RANGE.max, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        blurScalePct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-blur-scale-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            blurScalePct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-blur-scale');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            blurScalePct: persistedConfig?.ui?.blurScalePct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
 // Update secondary (small/gray) text opacity percent (Home page).
 // Expected payload: { secondaryTextOpacityPct: number(0-100) }
 app.put('/api/ui/secondary-text-opacity', (req, res) => {
@@ -2717,6 +2958,215 @@ app.put('/api/ui/secondary-text-color', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             secondaryTextColorId: persistedConfig?.ui?.secondaryTextColorId,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update primary (main) text opacity percent (Home page).
+// Expected payload: { primaryTextOpacityPct: number(0-100) }
+app.put('/api/ui/primary-text-opacity', (req, res) => {
+    const raw = req.body?.primaryTextOpacityPct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing primaryTextOpacityPct (0-100)' });
+    }
+
+    const primaryTextOpacityPct = Math.max(0, Math.min(100, Math.round(num)));
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        primaryTextOpacityPct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-primary-text-opacity-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            primaryTextOpacityPct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-primary-text-opacity');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            primaryTextOpacityPct: persistedConfig?.ui?.primaryTextOpacityPct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update primary (main) text size percent (Home page).
+// Expected payload: { primaryTextSizePct: number(50-200) }
+app.put('/api/ui/primary-text-size', (req, res) => {
+    const raw = req.body?.primaryTextSizePct;
+    const num = (typeof raw === 'number') ? raw : Number(raw);
+    if (!Number.isFinite(num)) {
+        return res.status(400).json({ error: 'Missing primaryTextSizePct (50-200)' });
+    }
+
+    const primaryTextSizePct = Math.max(
+        PRIMARY_TEXT_SIZE_PCT_RANGE.min,
+        Math.min(PRIMARY_TEXT_SIZE_PCT_RANGE.max, Math.round(num)),
+    );
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        primaryTextSizePct,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-primary-text-size-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            primaryTextSizePct,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-primary-text-size');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            primaryTextSizePct: persistedConfig?.ui?.primaryTextSizePct,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update primary (main) text color id (Home page).
+// Expected payload: { primaryTextColorId: string | null } (null/empty = default)
+app.put('/api/ui/primary-text-color', (req, res) => {
+    const raw = req.body?.primaryTextColorId;
+    const s = String(raw ?? '').trim();
+    const primaryTextColorId = s
+        ? (ALLOWED_TOLERANCE_COLOR_IDS.has(s) ? s : null)
+        : null;
+
+    if (s && !primaryTextColorId) {
+        return res.status(400).json({ error: 'Invalid primaryTextColorId' });
+    }
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        primaryTextColorId,
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-primary-text-color-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            primaryTextColorId,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-primary-text-color');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            primaryTextColorId: persistedConfig?.ui?.primaryTextColorId,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };

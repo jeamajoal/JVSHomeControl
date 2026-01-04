@@ -143,6 +143,7 @@ const MetricCard = ({
   valueClassName,
   valueStyle,
   subClassName,
+  primaryTextColorClassName,
   secondaryTextClassName,
   secondaryTextStrongClassName,
   iconWrapClassName,
@@ -151,9 +152,15 @@ const MetricCard = ({
   scaled,
   scale,
 }) => {
-  const effectiveValueClassName = (valueClassName && String(valueClassName).trim().length)
-    ? valueClassName
-    : 'text-white';
+  const valueClassTrimmed = (valueClassName && String(valueClassName).trim().length)
+    ? String(valueClassName).trim()
+    : '';
+  const primaryColorTrimmed = (primaryTextColorClassName && String(primaryTextColorClassName).trim().length)
+    ? String(primaryTextColorClassName).trim()
+    : '';
+  const effectiveValueClassName = valueClassTrimmed
+    ? `${primaryColorTrimmed} ${valueClassTrimmed}`.trim()
+    : (primaryColorTrimmed || 'text-white');
 
   const scaleNumRaw = Number(scale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
@@ -169,9 +176,10 @@ const MetricCard = ({
   const titleStyle = { fontSize: `calc(${titleFontPx}px * ${secondaryTextScaleVar})` };
   const subStyle = { fontSize: `calc(${subFontPx}px * ${secondaryTextScaleVar})` };
 
+  const primaryTextScaleVar = 'var(--jvs-primary-text-size-scale, 1)';
   const scaledValueStyle = isScaled
     ? {
-        fontSize: `${Math.round(34 * scaleNum)}px`,
+        fontSize: `calc(${Math.round(34 * scaleNum)}px * ${primaryTextScaleVar})`,
         lineHeight: 1.05,
         ...(valueStyle || {}),
       }
@@ -210,7 +218,7 @@ const MetricCard = ({
           </div>
           <div
             style={scaledValueStyle}
-            className={`mt-2 ${isScaled ? '' : 'text-3xl md:text-4xl'} font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}
+            className={`mt-2 jvs-primary-text-strong ${isScaled ? '' : 'jvs-home-primary-metric-value'} font-extrabold tracking-tight truncate ${effectiveValueClassName}`.trim()}
           >
             {value}
           </div>
@@ -490,12 +498,12 @@ async function sendDeviceCommand(deviceId, command, args = []) {
   }
 }
 
-const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
-  const titleStyle = { fontSize: `${Math.round(18 * scaleNum)}px` };
+  const titleStyle = { fontSize: `calc(${Math.round(18 * scaleNum)}px * var(--jvs-primary-text-size-scale, 1))` };
   const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
   const metrics = useMemo(() => computeRoomMetrics(devices, allowedControlIds), [devices, allowedControlIds]);
@@ -564,7 +572,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
     <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
       <div className="flex items-center justify-between gap-3">
         <h2
-          className={`min-w-0 ${scaleNum === 1 ? 'text-base md:text-lg' : ''} font-extrabold tracking-wide text-white truncate`}
+          className={`min-w-0 jvs-primary-text-strong ${scaleNum === 1 ? 'jvs-home-room-title' : ''} font-extrabold tracking-wide text-white truncate`}
           style={scaleNum === 1 ? undefined : titleStyle}
         >
           {roomName}
@@ -588,6 +596,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            primaryTextColorClassName={primaryTextColorClassName}
             secondaryTextClassName={secondaryTextColorClassName}
             secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
@@ -607,6 +616,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            primaryTextColorClassName={primaryTextColorClassName}
             secondaryTextClassName={secondaryTextColorClassName}
             secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
@@ -626,6 +636,7 @@ const RoomPanel = ({ roomName, devices, connected, allowedControlIds, uiScheme, 
             valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
             iconWrapClassName="bg-white/5"
             uiScheme={uiScheme}
+            primaryTextColorClassName={primaryTextColorClassName}
             secondaryTextClassName={secondaryTextColorClassName}
             secondaryTextStrongClassName={secondaryTextColorClassName}
             scaled
@@ -847,6 +858,17 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return getToleranceTextClassForColorId(secondaryTextColorId);
   }, [secondaryTextColorId]);
 
+  const primaryTextColorId = useMemo(() => {
+    const raw = String(config?.ui?.primaryTextColorId ?? '').trim();
+    if (!raw) return '';
+    return normalizeToleranceColorId(raw, 'neon-green');
+  }, [config?.ui?.primaryTextColorId]);
+
+  const primaryTextColorClass = useMemo(() => {
+    if (!primaryTextColorId) return '';
+    return getToleranceTextClassForColorId(primaryTextColorId);
+  }, [primaryTextColorId]);
+
   const homeRoomColumnsXl = useMemo(() => {
     const raw = Number(config?.ui?.homeRoomColumnsXl);
     if (!Number.isFinite(raw)) return 3;
@@ -991,6 +1013,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               icon={Clock}
               accentClassName="border-white/10"
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
               secondaryTextClassName={secondaryTextColorClass}
               secondaryTextStrongClassName={secondaryTextColorClass}
             />
@@ -1050,6 +1073,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
               valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
               secondaryTextClassName={secondaryTextColorClass}
               secondaryTextStrongClassName={secondaryTextColorClass}
             />
@@ -1068,6 +1092,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
               iconWrapClassName="bg-white/5"
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
               secondaryTextClassName={secondaryTextColorClass}
               secondaryTextStrongClassName={secondaryTextColorClass}
             />
@@ -1092,6 +1117,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               }
               valueClassName={connected ? 'text-white' : 'text-neon-red'}
               uiScheme={resolvedUiScheme}
+              primaryTextColorClassName={primaryTextColorClass}
               secondaryTextClassName={secondaryTextColorClass}
               secondaryTextStrongClassName={secondaryTextColorClass}
             />
@@ -1118,6 +1144,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   sensorIndicatorColors={sensorIndicatorColors}
+                  primaryTextColorClassName={primaryTextColorClass}
                   secondaryTextColorClassName={secondaryTextColorClass}
                   contentScale={roomContentScale}
                 />
@@ -1125,7 +1152,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
             ) : (
               <div className="glass-panel p-8 border border-white/10 text-center text-white/50 lg:col-span-2 xl:col-span-3">
                 <div className="text-sm uppercase tracking-[0.2em]">No data</div>
-                <div className="mt-2 text-xl font-extrabold text-white">Waiting for devices…</div>
+                <div className={`mt-2 text-xl font-extrabold jvs-primary-text-strong ${primaryTextColorClass || 'text-white'}`.trim()}>Waiting for devices…</div>
               </div>
             )}
             </div>

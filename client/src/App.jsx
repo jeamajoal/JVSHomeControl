@@ -91,17 +91,18 @@ function App() {
       document.documentElement.style.setProperty('--jvs-utility-group-bg-opacity', String(clamp01(0.20 * scale)));
       document.documentElement.style.setProperty('--jvs-accent-card-bg-opacity', String(clamp01(0.10 * scale)));
 
-      // Backdrop blur looks "smeary" when we turn opacity down (especially on some GPUs/browsers).
-      // Keep the frosted-glass blur at 100%+, but disable blur entirely when making panels more transparent.
+      const blurRaw = Number(effectiveConfig?.ui?.blurScalePct);
+      const blurScalePct = Number.isFinite(blurRaw) ? Math.max(0, Math.min(200, Math.round(blurRaw))) : 100;
+      const blurScale = blurScalePct / 100;
+
       const baseBlurPx = 24;
-      const blurScale = scale >= 1 ? scale : 0;
-      const blurPx = clamp(baseBlurPx * blurScale, 0, baseBlurPx);
+      const blurPx = clamp(baseBlurPx * blurScale, 0, baseBlurPx * 2);
       document.documentElement.style.setProperty('--jvs-glass-panel-blur-px', `${blurPx}px`);
       document.documentElement.style.setProperty('--jvs-utility-panel-blur-px', `${blurPx}px`);
 
       // Menu/header surfaces should also fade out so Home background can be full-screen.
       const baseMenuBlurPx = 12;
-      const menuBlurPx = clamp(baseMenuBlurPx * blurScale, 0, baseMenuBlurPx);
+      const menuBlurPx = clamp(baseMenuBlurPx * blurScale, 0, baseMenuBlurPx * 2);
       document.documentElement.style.setProperty('--jvs-header-bg-opacity', String(clamp01(0.20 * scale)));
       document.documentElement.style.setProperty('--jvs-menu-surface-bg-opacity', String(clamp01(0.20 * scale)));
       document.documentElement.style.setProperty('--jvs-menu-row-bg-opacity', String(clamp01(0.10 * scale)));
@@ -112,7 +113,7 @@ function App() {
     } catch {
       // ignore
     }
-  }, [effectiveConfig?.ui?.cardOpacityScalePct]);
+  }, [effectiveConfig?.ui?.cardOpacityScalePct, effectiveConfig?.ui?.blurScalePct]);
 
   useEffect(() => {
     try {
@@ -137,6 +138,30 @@ function App() {
       // ignore
     }
   }, [effectiveConfig?.ui?.secondaryTextSizePct]);
+
+  useEffect(() => {
+    try {
+      const raw = Number(effectiveConfig?.ui?.primaryTextOpacityPct);
+      const pct = Number.isFinite(raw) ? Math.max(0, Math.min(100, Math.round(raw))) : 100;
+      const base = pct / 100;
+      const strong = Math.max(0, Math.min(1, base + 0.10));
+      document.documentElement.style.setProperty('--jvs-primary-text-opacity', String(base));
+      document.documentElement.style.setProperty('--jvs-primary-text-strong-opacity', String(strong));
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.primaryTextOpacityPct]);
+
+  useEffect(() => {
+    try {
+      const raw = Number(effectiveConfig?.ui?.primaryTextSizePct);
+      const pct = Number.isFinite(raw) ? Math.max(50, Math.min(200, Math.round(raw))) : 100;
+      const scale = pct / 100;
+      document.documentElement.style.setProperty('--jvs-primary-text-size-scale', String(scale));
+    } catch {
+      // ignore
+    }
+  }, [effectiveConfig?.ui?.primaryTextSizePct]);
 
   const pageLabel = page === 0
     ? 'Home'
