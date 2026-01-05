@@ -379,6 +379,20 @@ const RTSP_HLS_OUTPUT_FPS = (() => {
     return Math.max(1, Math.min(60, Math.round(parsed)));
 })();
 
+const RTSP_HLS_PROBESIZE = (() => {
+    // Increase if ffmpeg can't determine codec parameters (e.g., MJPEG size) during startup.
+    const raw = String(process.env.RTSP_HLS_PROBESIZE || '').trim();
+    if (!raw) return '10M';
+    return raw;
+})();
+
+const RTSP_HLS_ANALYZEDURATION = (() => {
+    // Increase if ffmpeg needs more time to detect stream parameters.
+    const raw = String(process.env.RTSP_HLS_ANALYZEDURATION || '').trim();
+    if (!raw) return '10M';
+    return raw;
+})();
+
 const RTSP_HLS_RTSP_TRANSPORT = (() => {
     const raw = String(process.env.RTSP_HLS_RTSP_TRANSPORT || '').trim().toLowerCase();
     // Keep TCP as the safe default (NAT/Wi-Fi/firewalls). Allow UDP for low-latency setups.
@@ -547,9 +561,11 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
     const args = [
         '-y',
         // Make RTSP sources with bad/missing timestamps behave.
-        '-fflags', '+genpts',
+        '-fflags', '+genpts+discardcorrupt',
         '-use_wallclock_as_timestamps', '1',
         '-avoid_negative_ts', 'make_zero',
+        '-analyzeduration', String(RTSP_HLS_ANALYZEDURATION),
+        '-probesize', String(RTSP_HLS_PROBESIZE),
         '-rtsp_transport', RTSP_HLS_RTSP_TRANSPORT,
         '-i', streamUrl,
         '-an',
@@ -2907,13 +2923,31 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
             }
             : {};
 
+        const stderrTail = Array.isArray(state.stderrTail) ? state.stderrTail.slice(-30) : null;
+        const stderrText = Array.isArray(state.stderrTail) ? state.stderrTail.join('\n') : '';
+
+        const hint = (() => {
+            // Heuristic hints for common RTSP startup failures.
+            if (/Output file does not contain any stream/i.test(stderrText)) {
+                return 'ffmpeg did not detect a usable video stream. If this is a D-Link MJPEG RTSP URL (e.g. play3.sdp), try switching the camera to an H.264 RTSP profile/URL or use RTSP over TCP.';
+            }
+            if (/Quantization tables not found/i.test(stderrText) || /Invalid RTP\/JPEG packet/i.test(stderrText)) {
+                return 'The RTSP stream appears to be MJPEG over RTP with invalid/missing JPEG quantization tables (often caused by packet loss on UDP or a camera profile issue). Try RTSP over TCP and/or switch to an H.264 RTSP URL/profile.';
+            }
+            if (/Could not find codec parameters/i.test(stderrText) || /unspecified size/i.test(stderrText)) {
+                return 'ffmpeg could not determine the video dimensions during probe. Try increasing RTSP_HLS_PROBESIZE/RTSP_HLS_ANALYZEDURATION and prefer RTSP over TCP.';
+            }
+            return null;
+        })();
+
         if (state.ffmpeg && state.ffmpeg.exitCode !== null && !fs.existsSync(state.playlistPath)) {
             return res.status(502).json({
                 ok: false,
                 error: 'hls_ffmpeg_exited',
                 exitCode: state.ffmpeg.exitCode,
                 lastError: state.lastError || null,
-                stderrTail: Array.isArray(state.stderrTail) ? state.stderrTail.slice(-30) : null,
+                stderrTail,
+                ...(hint ? { hint } : {}),
                 ...debugPayload,
             });
         }
@@ -2924,7 +2958,8 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
                 error: 'hls_start_timeout',
                 timeoutMs: RTSP_HLS_STARTUP_TIMEOUT_MS,
                 lastError: state.lastError || null,
-                stderrTail: Array.isArray(state.stderrTail) ? state.stderrTail.slice(-30) : null,
+                stderrTail,
+                ...(hint ? { hint } : {}),
                 ...debugPayload,
             });
         }
