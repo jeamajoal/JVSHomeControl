@@ -815,10 +815,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     const next = (payload && typeof payload === 'object') ? payload : {};
     return saveTopCameras(next.cameraIds, next.size, selectedPanelName || null);
   });
-  const roomCameraIdsSave = useAsyncSave((payload) => {
-    const next = (payload && typeof payload === 'object') ? payload : {};
-    return saveRoomCameraIds(next.roomId, next.cameraIds, selectedPanelName || null);
-  });
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
