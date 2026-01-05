@@ -18,7 +18,7 @@ import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
-import RtspPlayer from './RtspPlayer';
+import HlsPlayer from './HlsPlayer';
 import {
   normalizeToleranceColorId,
   getToleranceTextClass as getToleranceTextClassForColorId,
@@ -1430,7 +1430,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                               referrerPolicy="no-referrer"
                             />
                           ) : cam.hasRtsp ? (
-                            <RtspPlayer cameraId={cam.id} />
+                            <HlsPlayer cameraId={cam.id} />
                           ) : (!broken ? (
                             <img
                               src={src}

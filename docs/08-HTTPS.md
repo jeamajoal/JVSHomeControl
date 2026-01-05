@@ -65,20 +65,29 @@ Example:
 sudo systemctl restart jvshomecontrol
 ```
 
-## RTSP camera previews + HTTPS limitation
+## HLS (recommended for HTTPS)
 
-RTSP camera previews are implemented as:
+For customer-friendly RTSP playback under HTTPS, the server can also expose RTSP cameras as HLS over the same origin (`https://...`), avoiding the browser restriction on `ws://`.
 
-- Server-side: `ffmpeg` reads `rtsp://...` and outputs MPEG1 video
-- Backend: Node serves that video over a **plain WebSocket** (`ws://...`) (via `node-rtsp-stream`)
-- Browser: the UI connects to that websocket to render the video
+How it works:
 
-Because the stream websocket is `ws://` (not `wss://`), browsers will block it when the dashboard is loaded over `https://`.
-Firefox typically reports this as: `DOMException: The operation is insecure`.
+- Server spawns `ffmpeg` to read RTSP and write an HLS playlist (`.m3u8`) plus segment files (`.ts`).
+- UI plays the HLS stream using native HLS when available (Safari/iOS), otherwise via `hls.js`.
 
-Workarounds:
+Endpoints:
 
-- **Testing / easiest**: run the dashboard over HTTP (disable TLS): set `HTTP_ONLY=1` (or `HTTPS=0`) and restart the service.
-- **Production HTTPS**: run a reverse proxy (Caddy/Nginx) that terminates TLS and provides `wss://` for the stream websocket.
+- `GET /api/cameras/:id/hls/ensure` → returns `{ playlistUrl }`
+- `GET /api/cameras/:id/hls/playlist.m3u8`
+- `GET /api/cameras/:id/hls/seg_#.ts`
 
-Note: `ffmpeg` itself does not create websockets; only the Node server does.
+Requirements:
+
+- `ffmpeg` must be installed and available on the server.
+
+Optional tuning env vars:
+
+- `RTSP_HLS_SEGMENT_SECONDS` (default `2`, clamp `1..6`)
+- `RTSP_HLS_LIST_SIZE` (default `6`, clamp `3..20`)
+- `RTSP_HLS_STARTUP_TIMEOUT_MS` (default `15000`, clamp `2000..60000`)
+- `RTSP_HLS_CRF` (default `20`, lower = higher quality)
+- `RTSP_HLS_GOP` (default `segmentSeconds * 25`)

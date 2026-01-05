@@ -14,19 +14,14 @@ If you still see it:
 - Ensure you’re on the latest build
 - Confirm the browser URL scheme matches what you intend (http vs https)
 
-## RTSP preview: Firefox "The operation is insecure"
+## RTSP cameras
 
-If you enabled an RTSP camera preview and Firefox shows:
+RTSP cameras play via server-side HLS (served from the same origin as the dashboard).
 
-- `Uncaught (in promise) DOMException: The operation is insecure`
+If an RTSP feed won’t play:
 
-That usually means the dashboard is loaded over `https://` but the RTSP preview websocket is `ws://`.
-Browsers block `ws://` from an `https://` page.
-
-Fix options:
-
-- For testing: disable TLS for the dashboard (`HTTP_ONLY=1` or `HTTPS=0`) and restart the service.
-- For HTTPS: use a reverse proxy that provides `wss://`.
+- Ensure `ffmpeg` is installed on the server.
+- See `docs/08-HTTPS.md` for HLS endpoints and tuning.
 
 ## Hubitat HTTPS errors
 

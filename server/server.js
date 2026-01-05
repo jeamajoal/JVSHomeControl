@@ -6,18 +6,11 @@ const https = require('https');
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const net = require('net');
+// Legacy note: previous versions used `net` for RTSP websocket port allocation.
 const { Server } = require('socket.io');
+const crypto = require('crypto');
 
-let RtspStream = null;
-try {
-    // Optional: enables RTSP -> WS (MPEG1) streaming for browser playback.
-    // Requires ffmpeg installed on the host.
-    // eslint-disable-next-line global-require
-    RtspStream = require('node-rtsp-stream');
-} catch {
-    RtspStream = null;
-}
+
 
 let UndiciAgent = null;
 try {
@@ -355,24 +348,167 @@ const server = USE_HTTPS
 
 const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
-// RTSP stream manager (node-rtsp-stream spins up its own WS server per camera).
-const RTSP_WS_BASE_PORT = (() => {
-    const raw = String(process.env.RTSP_WS_BASE_PORT || '').trim();
-    const parsed = raw ? Number(raw) : 9999;
-    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 9999;
+// --- RTSP -> HLS (HTTPS-friendly) ---
+// We intentionally implement HLS on the same origin as the app so customers don't
+// run into HTTPS+ws mixed-content issues.
+const RTSP_HLS_DIR = (() => {
+    const raw = String(process.env.RTSP_HLS_DIR || '').trim();
+    return raw || path.join(DATA_DIR, 'hls');
 })();
 
-// How long /api/cameras/:id/rtsp/ensure waits for the first bytes of video before failing.
-// Some cameras take a few seconds to start streaming.
-const RTSP_FIRST_FRAME_TIMEOUT_MS = (() => {
-    const raw = String(process.env.RTSP_FIRST_FRAME_TIMEOUT_MS || process.env.RTSP_FIRST_FRAME_TIMEOUT || '').trim();
-    const parsed = raw ? Number(raw) : 8000;
-    if (!Number.isFinite(parsed)) return 8000;
-    // Keep it sane: too short is flaky, too long makes failures feel hung.
-    return Math.max(1000, Math.min(30000, Math.floor(parsed)));
+const RTSP_HLS_SEGMENT_SECONDS = (() => {
+    const raw = String(process.env.RTSP_HLS_SEGMENT_SECONDS || '').trim();
+    const parsed = raw ? Number(raw) : 2;
+    if (!Number.isFinite(parsed)) return 2;
+    return Math.max(1, Math.min(6, Math.round(parsed)));
 })();
 
-const rtspStreams = new Map(); // cameraId -> { wsPort, stream }
+const RTSP_HLS_LIST_SIZE = (() => {
+    const raw = String(process.env.RTSP_HLS_LIST_SIZE || '').trim();
+    const parsed = raw ? Number(raw) : 6;
+    if (!Number.isFinite(parsed)) return 6;
+    return Math.max(3, Math.min(20, Math.round(parsed)));
+})();
+
+const RTSP_HLS_STARTUP_TIMEOUT_MS = (() => {
+    const raw = String(process.env.RTSP_HLS_STARTUP_TIMEOUT_MS || '').trim();
+    const parsed = raw ? Number(raw) : 15000;
+    if (!Number.isFinite(parsed)) return 15000;
+    return Math.max(2000, Math.min(60000, Math.floor(parsed)));
+})();
+
+const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, startedAtMs }
+
+function safeCameraDirName(cameraId) {
+    const id = String(cameraId || '').trim();
+    const hash = crypto.createHash('sha1').update(id).digest('hex').slice(0, 10);
+    const base = id.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 32) || 'camera';
+    return `${base}_${hash}`;
+}
+
+function ensureDir(p) {
+    fs.mkdirSync(p, { recursive: true });
+}
+
+function cleanupHlsDir(dir) {
+    try {
+        if (!fs.existsSync(dir)) return;
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const ent of entries) {
+            if (!ent.isFile()) continue;
+            const name = ent.name;
+            if (name === 'playlist.m3u8') continue;
+            // Keep only expected segment files.
+            if (!/^seg_\d+\.ts$/i.test(name)) continue;
+            try { fs.unlinkSync(path.join(dir, name)); } catch { /* ignore */ }
+        }
+        try { fs.unlinkSync(path.join(dir, 'playlist.m3u8')); } catch { /* ignore */ }
+    } catch {
+        // ignore
+    }
+}
+
+function stopHlsStream(cameraId) {
+    const id = String(cameraId || '').trim();
+    const existing = hlsStreams.get(id);
+    if (!existing) return;
+    try {
+        if (existing.ffmpeg && typeof existing.ffmpeg.kill === 'function') {
+            existing.ffmpeg.kill('SIGKILL');
+        }
+    } catch {
+        // ignore
+    }
+    try {
+        cleanupHlsDir(existing.dir);
+    } catch {
+        // ignore
+    }
+    hlsStreams.delete(id);
+}
+
+function startHlsStream(cameraId, streamUrl, ffmpegPath) {
+    const id = String(cameraId || '').trim();
+    if (!id) return null;
+
+    const existing = hlsStreams.get(id);
+    if (existing && existing.ffmpeg && existing.ffmpeg.exitCode === null) {
+        return existing;
+    }
+
+    const dir = path.join(RTSP_HLS_DIR, safeCameraDirName(id));
+    ensureDir(dir);
+    cleanupHlsDir(dir);
+
+    const playlistPath = path.join(dir, 'playlist.m3u8');
+    const segmentPattern = path.join(dir, 'seg_%d.ts');
+
+    // Good defaults for compatibility and quality.
+    // - Transcode to H.264 yuv420p for broad playback support.
+    // - Use small segments/list size to keep latency reasonable.
+    const args = [
+        '-rtsp_transport', 'tcp',
+        '-i', streamUrl,
+        '-an',
+        '-sn',
+        '-dn',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', String(process.env.RTSP_HLS_CRF || '20'),
+        '-pix_fmt', 'yuv420p',
+        '-g', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
+        '-keyint_min', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
+        '-sc_threshold', '0',
+        '-f', 'hls',
+        '-hls_time', String(RTSP_HLS_SEGMENT_SECONDS),
+        '-hls_list_size', String(RTSP_HLS_LIST_SIZE),
+        '-hls_flags', 'delete_segments+append_list+omit_endlist',
+        '-hls_segment_filename', segmentPattern,
+        playlistPath,
+    ];
+
+    const bin = ffmpegPath || 'ffmpeg';
+    const cp = require('child_process').spawn(bin, args, { detached: false });
+
+    const state = {
+        dir,
+        playlistPath,
+        ffmpeg: cp,
+        lastError: null,
+        startedAtMs: Date.now(),
+    };
+    hlsStreams.set(id, state);
+
+    try {
+        cp.on('error', (err) => {
+            state.lastError = err?.message || String(err);
+            console.error(`HLS ffmpeg spawn error: ${state.lastError}`);
+        });
+        cp.stderr?.on?.('data', (buf) => {
+            const s = String(buf || '').trim();
+            if (!s) return;
+            // Keep only the last chunk; avoids huge memory.
+            state.lastError = s.slice(-1000);
+        });
+        cp.on('exit', (code) => {
+            if (code && code !== 0) {
+                console.error(`HLS ffmpeg exited with code ${code} (camera ${id})`);
+            }
+        });
+    } catch {
+        // ignore
+    }
+
+    return state;
+}
+
+function buildHttpUrl(req, p) {
+    const proto = USE_HTTPS ? 'https' : 'http';
+    const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim();
+    const host = hostHeader ? hostHeader.split(',')[0].trim() : (req?.hostname || 'localhost');
+    const cleaned = String(p || '').startsWith('/') ? String(p) : `/${String(p || '')}`;
+    return `${proto}://${host}${cleaned}`;
+}
 
 function checkFfmpegAvailable(rawFfmpegPath) {
     const ffmpegPath = String(rawFfmpegPath || '').trim();
@@ -390,76 +526,6 @@ function checkFfmpegAvailable(rawFfmpegPath) {
         const msg = err?.message || String(err);
         return { ok: false, bin, error: `${code || 'spawn_error'}: ${msg}` };
     }
-}
-
-function attachRtspSpawnErrorHandler(rtspStreamInstance) {
-    // node-rtsp-stream does not attach a child-process 'error' handler.
-    // If ffmpeg is missing (ENOENT), Node will crash unless we handle it.
-    try {
-        const child = rtspStreamInstance?.stream;
-        if (!child || typeof child.on !== 'function') return;
-        child.on('error', (err) => {
-            try {
-                rtspStreamInstance.emit('exitWithError');
-            } catch {
-                // ignore
-            }
-            try {
-                rtspStreamInstance.stop();
-            } catch {
-                // ignore
-            }
-            const msg = err?.message || String(err);
-            console.error(`RTSP ffmpeg spawn error: ${msg}`);
-        });
-    } catch {
-        // ignore
-    }
-}
-
-function isPortAvailable(port) {
-    return new Promise((resolve) => {
-        const srv = net.createServer();
-        srv.once('error', () => resolve(false));
-        srv.once('listening', () => {
-            try {
-                srv.close(() => resolve(true));
-            } catch {
-                resolve(false);
-            }
-        });
-        try {
-            srv.listen(port, '0.0.0.0');
-        } catch {
-            resolve(false);
-        }
-    });
-}
-
-async function allocateRtspWsPort(preferred) {
-    const pref = Number(preferred);
-    if (Number.isFinite(pref) && pref > 0) {
-        // Accept configured port if available.
-        if (await isPortAvailable(Math.floor(pref))) return Math.floor(pref);
-    }
-
-    // Scan a small range starting at base.
-    for (let i = 0; i < 200; i += 1) {
-        const cand = RTSP_WS_BASE_PORT + i;
-        // eslint-disable-next-line no-await-in-loop
-        if (await isPortAvailable(cand)) return cand;
-    }
-    return null;
-}
-
-function buildWsUrlForPort(req, port) {
-    const overrideHost = String(process.env.RTSP_WS_HOST || '').trim();
-    const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim();
-    const hostOnly = hostHeader ? hostHeader.split(',')[0].trim().replace(/:\d+$/, '') : '';
-    const host = overrideHost || hostOnly || req?.hostname || 'localhost';
-    // node-rtsp-stream serves plain ws (not wss). If you run the main app over https,
-    // browsers may block ws:// as mixed-content.
-    return `ws://${host}:${port}`;
 }
 
 // Hubitat Maker API
@@ -1152,7 +1218,7 @@ function normalizePersistedConfig(raw) {
     // Cameras are not standard Hubitat devices; this registry supports:
     // - Snapshot previews via server-side proxy
     // - HTTP(S) embeds (iframe)
-    // - RTSP playback via node-rtsp-stream (requires ffmpeg)
+    // - RTSP playback via server-side HLS (requires ffmpeg)
     const cameras = (() => {
         const rawList = Array.isArray(uiRaw.cameras) ? uiRaw.cameras : [];
         const outList = [];
@@ -1184,7 +1250,6 @@ function normalizePersistedConfig(raw) {
 
             const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
             const rtspUrl = String(rtspRaw.url || '').trim();
-            const rtspWsPort = Number.isFinite(Number(rtspRaw.wsPort)) ? Math.floor(Number(rtspRaw.wsPort)) : null;
 
             outList.push({
                 id,
@@ -1198,7 +1263,7 @@ function normalizePersistedConfig(raw) {
                     },
                 } : {}),
                 ...(embedUrl ? { embed: { url: embedUrl } } : {}),
-                ...(rtspUrl ? { rtsp: { url: rtspUrl, ...(rtspWsPort ? { wsPort: rtspWsPort } : {}) } } : {}),
+                ...(rtspUrl ? { rtsp: { url: rtspUrl } } : {}),
             });
         }
 
@@ -2661,123 +2726,98 @@ app.get('/api/cameras', (req, res) => {
     res.json({ ok: true, cameras: getPublicCamerasList() });
 });
 
-// Ensure an RTSP camera has an active websocket stream.
-// Returns { wsUrl } for use with a client-side MPEG1 decoder (e.g. jsmpeg).
-app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
+// --- HLS (RTSP -> HTTPS-friendly playback) ---
+app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
     try {
-        const cam = getCameraById(req.params.id);
-        if (!cam || cam.enabled === false) {
-            return res.status(404).json({ ok: false, error: 'Camera not found' });
+        const cameraId = String(req.params.id || '').trim();
+        const camera = getCameraById(cameraId);
+        if (!camera) {
+            return res.status(404).json({ ok: false, error: 'camera_not_found' });
+        }
+        const rtspUrl = camera?.rtsp?.url;
+        if (!rtspUrl) {
+            return res.status(400).json({ ok: false, error: 'camera_has_no_rtsp_url' });
         }
 
-        const rtsp = (cam.rtsp && typeof cam.rtsp === 'object') ? cam.rtsp : {};
-        const streamUrl = String(rtsp.url || '').trim();
-        if (!streamUrl) {
-            return res.status(404).json({ ok: false, error: 'No RTSP configured' });
-        }
-        if (!/^rtsp:\/\//i.test(streamUrl)) {
-            return res.status(400).json({ ok: false, error: 'RTSP URL must start with rtsp://' });
-        }
-        if (!RtspStream) {
-            return res.status(501).json({ ok: false, error: 'RTSP streaming not available (node-rtsp-stream not installed)' });
-        }
-
-        const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim();
+        // Reuse existing ffmpeg preflight (respects FFMPEG_PATH).
+        const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim() || null;
         const ffmpegCheck = checkFfmpegAvailable(ffmpegPath);
         if (!ffmpegCheck.ok) {
-            return res.status(501).json({
+            return res.status(500).json({ ok: false, error: 'ffmpeg_not_available', detail: ffmpegCheck.error || null });
+        }
+
+        const state = startHlsStream(cameraId, rtspUrl, ffmpegPath);
+        if (!state) {
+            return res.status(500).json({ ok: false, error: 'failed_to_start_hls' });
+        }
+
+        // Wait until playlist appears (or timeout).
+        const deadline = Date.now() + RTSP_HLS_STARTUP_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+            if (fs.existsSync(state.playlistPath)) break;
+            await new Promise((r) => setTimeout(r, 150));
+        }
+
+        if (!fs.existsSync(state.playlistPath)) {
+            return res.status(502).json({
                 ok: false,
-                error: 'ffmpeg not found',
-                message: `RTSP preview requires ffmpeg. Install ffmpeg or set FFMPEG_PATH. Spawned: ${ffmpegCheck.bin}. (${ffmpegCheck.error})`,
+                error: 'hls_start_timeout',
+                timeoutMs: RTSP_HLS_STARTUP_TIMEOUT_MS,
+                lastError: state.lastError || null,
             });
         }
 
-        const id = String(cam.id || '').trim();
-        const existing = rtspStreams.get(id);
-        if (existing && existing.wsPort) {
-            return res.json({ ok: true, wsUrl: buildWsUrlForPort(req, existing.wsPort) });
-        }
-
-        const preferredPort = rtsp.wsPort;
-        const wsPort = await allocateRtspWsPort(preferredPort);
-        if (!wsPort) {
-            return res.status(503).json({ ok: false, error: 'No free RTSP websocket ports available' });
-        }
-
-        let stream;
-        try {
-            stream = new RtspStream({
-                name: `camera-${id}`,
-                streamUrl,
-                wsPort,
-                ...(ffmpegPath ? { ffmpegPath } : {}),
-                ffmpegOptions: {
-                    '-stats': '',
-                    // Many cameras/firewalls break RTSP over UDP; TCP is usually more reliable.
-                    '-rtsp_transport': 'tcp',
-                    '-r': 25,
-                    // Many RTSP sources include audio; drop it for the browser preview.
-                    '-an': '',
-                },
-            });
-        } catch (err) {
-            return res.status(500).json({ ok: false, error: err?.message || String(err) });
-        }
-
-        attachRtspSpawnErrorHandler(stream);
-
-        // Wait briefly for the stream to actually produce data so the client can get a useful error
-        // instead of a "black box" websocket URL that never sends frames.
-        const waitForFirstFrame = () => new Promise((resolve, reject) => {
-            let done = false;
-            const timeoutMs = RTSP_FIRST_FRAME_TIMEOUT_MS;
-            const timer = setTimeout(() => {
-                if (done) return;
-                done = true;
-                reject(new Error('RTSP stream did not produce data (timeout)'));
-            }, timeoutMs);
-
-            const cleanup = () => {
-                clearTimeout(timer);
-                try { stream?.removeListener?.('camdata', onData); } catch { /* ignore */ }
-                try { stream?.removeListener?.('exitWithError', onExitError); } catch { /* ignore */ }
-            };
-
-            const onData = () => {
-                if (done) return;
-                done = true;
-                cleanup();
-                resolve(true);
-            };
-
-            const onExitError = () => {
-                if (done) return;
-                done = true;
-                cleanup();
-                reject(new Error('RTSP stream exited with error (ffmpeg)'));
-            };
-
-            try {
-                stream.on('camdata', onData);
-                stream.on('exitWithError', onExitError);
-            } catch {
-                cleanup();
-                reject(new Error('Failed to attach RTSP stream listeners'));
-            }
+        return res.json({
+            ok: true,
+            playlistUrl: buildHttpUrl(req, `/api/cameras/${encodeURIComponent(cameraId)}/hls/playlist.m3u8`),
         });
+    } catch (err) {
+        console.error('HLS ensure error', err);
+        return res.status(500).json({ ok: false, error: 'internal_error' });
+    }
+});
 
-        try {
-            await waitForFirstFrame();
-        } catch (err) {
-            try { stream.stop(); } catch { /* ignore */ }
-            rtspStreams.delete(id);
-            return res.status(502).json({ ok: false, error: err?.message || String(err) });
+app.get('/api/cameras/:id/hls/playlist.m3u8', async (req, res) => {
+    try {
+        const cameraId = String(req.params.id || '').trim();
+        const state = hlsStreams.get(cameraId);
+        if (!state) {
+            return res.status(404).send('not_started');
+        }
+        if (!fs.existsSync(state.playlistPath)) {
+            return res.status(404).send('playlist_missing');
         }
 
-        rtspStreams.set(id, { wsPort, stream });
-        return res.json({ ok: true, wsUrl: buildWsUrlForPort(req, wsPort) });
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.send(fs.readFileSync(state.playlistPath, 'utf8'));
     } catch (err) {
-        return res.status(500).json({ ok: false, error: err?.message || String(err) });
+        console.error('HLS playlist error', err);
+        return res.status(500).send('internal_error');
+    }
+});
+
+app.get('/api/cameras/:id/hls/:segment', async (req, res) => {
+    try {
+        const cameraId = String(req.params.id || '').trim();
+        const segment = String(req.params.segment || '').trim();
+        if (!/^seg_\d+\.ts$/i.test(segment)) {
+            return res.status(400).send('invalid_segment');
+        }
+        const state = hlsStreams.get(cameraId);
+        if (!state) {
+            return res.status(404).send('not_started');
+        }
+        const segmentPath = path.join(state.dir, segment);
+        if (!fs.existsSync(segmentPath)) {
+            return res.status(404).send('missing');
+        }
+        res.setHeader('Content-Type', 'video/mp2t');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.sendFile(segmentPath);
+    } catch (err) {
+        console.error('HLS segment error', err);
+        return res.status(500).send('internal_error');
     }
 });
 
@@ -2950,7 +2990,6 @@ function redactCameraForUi(cam) {
 
     const rtsp = (cam.rtsp && typeof cam.rtsp === 'object') ? cam.rtsp : null;
     const rtspUrl = rtsp ? redactUrlPassword(rtsp.url) : '';
-    const wsPort = rtsp && Number.isFinite(Number(rtsp.wsPort)) ? Math.floor(Number(rtsp.wsPort)) : null;
 
     return {
         id,
@@ -2963,8 +3002,8 @@ function redactCameraForUi(cam) {
                 ...(user || hasPassword ? { basicAuth: { username: user, hasPassword } } : {}),
             },
         } : {}),
-        ...(embedUrl ? { embed: { url: embedUrl } } : {}),
-        ...(rtspUrl ? { rtsp: { url: rtspUrl, ...(wsPort ? { wsPort } : {}) } } : {}),
+                ...(embedUrl ? { embed: { url: embedUrl } } : {}),
+                ...(rtspUrl ? { rtsp: { url: rtspUrl } } : {}),
     };
 }
 
@@ -3297,9 +3336,8 @@ app.put('/api/ui/cameras/:id', (req, res) => {
     if (Object.prototype.hasOwnProperty.call(rawCam, 'rtsp')) {
         const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
         const url = String(rtspRaw.url || '').trim();
-        const wsPort = Number.isFinite(Number(rtspRaw.wsPort)) ? Math.floor(Number(rtspRaw.wsPort)) : undefined;
         if (url) {
-            next.rtsp = { url, ...(wsPort ? { wsPort } : {}) };
+            next.rtsp = { url };
         } else {
             delete next.rtsp;
         }
@@ -3336,12 +3374,8 @@ app.delete('/api/ui/cameras/:id', (req, res) => {
         return res.status(404).json({ ok: false, error: 'Camera not found' });
     }
 
-    // Best-effort stop RTSP stream if running.
-    const active = rtspStreams.get(id);
-    if (active && active.stream && typeof active.stream.stop === 'function') {
-        try { active.stream.stop(); } catch { /* ignore */ }
-    }
-    rtspStreams.delete(id);
+    // Best-effort stop HLS stream if running.
+    stopHlsStream(id);
 
     const cleanRoomMap = (rawMap) => {
         const map = (rawMap && typeof rawMap === 'object') ? rawMap : {};

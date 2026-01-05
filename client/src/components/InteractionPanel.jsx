@@ -5,7 +5,7 @@ import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses } from '../deviceSelectors';
-import RtspPlayer from './RtspPlayer';
+import HlsPlayer from './HlsPlayer';
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -401,7 +401,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                             referrerPolicy="no-referrer"
                           />
                         ) : cam.hasRtsp ? (
-                          <RtspPlayer cameraId={cam.id} />
+                          <HlsPlayer cameraId={cam.id} />
                         ) : (!broken ? (
                           <img
                             src={src}

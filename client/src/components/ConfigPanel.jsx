@@ -760,7 +760,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     snapshotHadPassword: false,
     embedUrl: '',
     rtspUrl: '',
-    rtspWsPort: '',
   }));
   const [cameraFormError, setCameraFormError] = useState(null);
 
@@ -4488,7 +4487,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         snapshotHadPassword: false,
                         embedUrl: '',
                         rtspUrl: '',
-                        rtspWsPort: '',
                       });
                     }}
                     className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
@@ -4632,10 +4630,10 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
               <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">RTSP</div>
-                <div className="mt-1 text-xs text-white/45">Streams via server-side RTSP → websocket (ffmpeg required on the server).</div>
+                <div className="mt-1 text-xs text-white/45">Streams via server-side RTSP → HLS (ffmpeg required on the server).</div>
 
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <label className="block md:col-span-2">
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <label className="block">
                     <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">RTSP URL</div>
                     <input
                       type="text"
@@ -4644,18 +4642,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                       onChange={(e) => setCameraForm((prev) => ({ ...prev, rtspUrl: String(e.target.value) }))}
                       className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
                       placeholder="rtsp://user:pass@192.168.1.50:554/stream"
-                    />
-                  </label>
-
-                  <label className="block">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">WS Port (optional)</div>
-                    <input
-                      type="number"
-                      value={cameraForm.rtspWsPort}
-                      disabled={!connected || busy}
-                      onChange={(e) => setCameraForm((prev) => ({ ...prev, rtspWsPort: String(e.target.value) }))}
-                      className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                      placeholder="9999"
                     />
                   </label>
                 </div>
@@ -4685,10 +4671,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
                       const embedUrl = String(cameraForm.embedUrl || '').trim();
                       const rtspUrl = String(cameraForm.rtspUrl || '').trim();
-                      const wsPortRaw = String(cameraForm.rtspWsPort || '').trim();
-                      const wsPortNum = wsPortRaw.length ? Number(wsPortRaw) : null;
-                      const wsPort = (wsPortNum !== null && Number.isFinite(wsPortNum) && wsPortNum > 0) ? Math.floor(wsPortNum) : null;
-
                       const payload = {
                         ...(cameraFormMode === 'create' && idTrimmed ? { id: idTrimmed } : {}),
                         label: labelTrimmed || idTrimmed,
@@ -4706,7 +4688,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                           },
                         } : {}),
                         ...(embedUrl ? { embed: { url: embedUrl } } : {}),
-                        ...(rtspUrl ? { rtsp: { url: rtspUrl, ...(wsPort ? { wsPort } : {}) } } : {}),
+                        ...(rtspUrl ? { rtsp: { url: rtspUrl } } : {}),
                       };
 
                       if (cameraFormMode === 'edit') {
@@ -4732,7 +4714,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         snapshotHadPassword: false,
                         embedUrl: '',
                         rtspUrl: '',
-                        rtspWsPort: '',
                       });
                     } catch (e) {
                       setCameraFormError(e?.message || String(e));
@@ -4807,7 +4788,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               snapshotHadPassword: snapHadPassword,
                               embedUrl: embed ? String(embed.url || '') : '',
                               rtspUrl: rtsp ? String(rtsp.url || '') : '',
-                              rtspWsPort: (rtsp && Number.isFinite(Number(rtsp.wsPort))) ? String(Math.floor(Number(rtsp.wsPort))) : '',
                             });
                           }}
                           className={`rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
