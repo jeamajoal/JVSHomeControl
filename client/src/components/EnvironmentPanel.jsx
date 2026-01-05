@@ -1080,7 +1080,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
   const topCameraSize = useMemo(() => {
     const raw = String(config?.ui?.topCameraSize ?? '').trim().toLowerCase();
-    if (raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+    if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
     return 'md';
   }, [config?.ui?.topCameraSize]);
 
@@ -1158,6 +1158,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
   const topCameraGridClassName = useMemo(() => {
     if (topCameraSize === 'lg') return 'grid-cols-1';
     if (topCameraSize === 'sm') return 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+    if (topCameraSize === 'xs') return 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
     return 'grid-cols-1 md:grid-cols-2';
   }, [topCameraSize]);
 

@@ -1235,10 +1235,10 @@ function normalizePersistedConfig(raw) {
         ? uiRaw.topCameraIds.map((v) => String(v || '').trim()).filter(Boolean)
         : [];
 
-    // Camera bar size: sm | md | lg
+    // Camera bar size: xs | sm | md | lg
     const topCameraSize = (() => {
         const raw = String(uiRaw.topCameraSize ?? '').trim().toLowerCase();
-        if (raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+        if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
         return 'md';
     })();
 
@@ -1394,7 +1394,7 @@ function normalizePersistedConfig(raw) {
         const pTopCameraSize = Object.prototype.hasOwnProperty.call(p, 'topCameraSize')
             ? (() => {
                 const raw = String(p.topCameraSize ?? '').trim().toLowerCase();
-                if (raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+                if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
                 return null;
             })()
             : null;
@@ -3781,7 +3781,7 @@ app.put('/api/ui/room-camera-ids', (req, res) => {
 });
 
 // Update which cameras are shown in the top-of-panel camera bar, plus optional size.
-// Expected payload: { cameraIds?: string[]|null, size?: 'sm'|'md'|'lg'|null, panelName?: string }
+// Expected payload: { cameraIds?: string[]|null, size?: 'xs'|'sm'|'md'|'lg'|null, panelName?: string }
 app.put('/api/ui/top-cameras', (req, res) => {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
 
@@ -3799,8 +3799,8 @@ app.put('/api/ui/top-cameras', (req, res) => {
         ? String(body.size ?? '').trim().toLowerCase()
         : undefined;
 
-    if (size !== undefined && size !== '' && size !== 'sm' && size !== 'md' && size !== 'lg') {
-        return res.status(400).json({ error: "Expected size to be one of: 'sm', 'md', 'lg'" });
+    if (size !== undefined && size !== '' && size !== 'xs' && size !== 'sm' && size !== 'md' && size !== 'lg') {
+        return res.status(400).json({ error: "Expected size to be one of: 'xs', 'sm', 'md', 'lg'" });
     }
 
     const panelName = normalizePanelName(body.panelName);

@@ -1062,7 +1062,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
   const topCameraSizeFromConfig = useMemo(() => {
     const raw = String(config?.ui?.topCameraSize ?? '').trim().toLowerCase();
-    if (raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
+    if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
     return 'md';
   }, [config?.ui?.topCameraSize]);
 
@@ -4086,6 +4086,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                           }}
                           className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
                         >
+                          <option value="xs">Extra Small</option>
                           <option value="sm">Small</option>
                           <option value="md">Medium</option>
                           <option value="lg">Large</option>
