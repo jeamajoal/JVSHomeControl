@@ -362,6 +362,16 @@ const RTSP_WS_BASE_PORT = (() => {
     return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 9999;
 })();
 
+// How long /api/cameras/:id/rtsp/ensure waits for the first bytes of video before failing.
+// Some cameras take a few seconds to start streaming.
+const RTSP_FIRST_FRAME_TIMEOUT_MS = (() => {
+    const raw = String(process.env.RTSP_FIRST_FRAME_TIMEOUT_MS || process.env.RTSP_FIRST_FRAME_TIMEOUT || '').trim();
+    const parsed = raw ? Number(raw) : 8000;
+    if (!Number.isFinite(parsed)) return 8000;
+    // Keep it sane: too short is flaky, too long makes failures feel hung.
+    return Math.max(1000, Math.min(30000, Math.floor(parsed)));
+})();
+
 const rtspStreams = new Map(); // cameraId -> { wsPort, stream }
 
 function checkFfmpegAvailable(rawFfmpegPath) {
@@ -2720,7 +2730,7 @@ app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
         // instead of a "black box" websocket URL that never sends frames.
         const waitForFirstFrame = () => new Promise((resolve, reject) => {
             let done = false;
-            const timeoutMs = 3000;
+            const timeoutMs = RTSP_FIRST_FRAME_TIMEOUT_MS;
             const timer = setTimeout(() => {
                 if (done) return;
                 done = true;
