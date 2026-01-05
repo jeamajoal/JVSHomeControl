@@ -399,7 +399,10 @@ async function allocateRtspWsPort(preferred) {
 }
 
 function buildWsUrlForPort(req, port) {
-    const host = req?.hostname || 'localhost';
+    const overrideHost = String(process.env.RTSP_WS_HOST || '').trim();
+    const hostHeader = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim();
+    const hostOnly = hostHeader ? hostHeader.split(',')[0].trim().replace(/:\d+$/, '') : '';
+    const host = overrideHost || hostOnly || req?.hostname || 'localhost';
     // node-rtsp-stream serves plain ws (not wss). If you run the main app over https,
     // browsers may block ws:// as mixed-content.
     return `ws://${host}:${port}`;
@@ -2637,19 +2640,72 @@ app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
             return res.status(503).json({ ok: false, error: 'No free RTSP websocket ports available' });
         }
 
+        const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim();
+
         let stream;
         try {
             stream = new RtspStream({
                 name: `camera-${id}`,
                 streamUrl,
                 wsPort,
+                ...(ffmpegPath ? { ffmpegPath } : {}),
                 ffmpegOptions: {
                     '-stats': '',
                     '-r': 25,
+                    // Many RTSP sources include audio; drop it for the browser preview.
+                    '-an': '',
                 },
             });
         } catch (err) {
             return res.status(500).json({ ok: false, error: err?.message || String(err) });
+        }
+
+        // Wait briefly for the stream to actually produce data so the client can get a useful error
+        // instead of a "black box" websocket URL that never sends frames.
+        const waitForFirstFrame = () => new Promise((resolve, reject) => {
+            let done = false;
+            const timeoutMs = 3000;
+            const timer = setTimeout(() => {
+                if (done) return;
+                done = true;
+                reject(new Error('RTSP stream did not produce data (timeout)'));
+            }, timeoutMs);
+
+            const cleanup = () => {
+                clearTimeout(timer);
+                try { stream?.removeListener?.('camdata', onData); } catch { /* ignore */ }
+                try { stream?.removeListener?.('exitWithError', onExitError); } catch { /* ignore */ }
+            };
+
+            const onData = () => {
+                if (done) return;
+                done = true;
+                cleanup();
+                resolve(true);
+            };
+
+            const onExitError = () => {
+                if (done) return;
+                done = true;
+                cleanup();
+                reject(new Error('RTSP stream exited with error (ffmpeg)'));
+            };
+
+            try {
+                stream.on('camdata', onData);
+                stream.on('exitWithError', onExitError);
+            } catch {
+                cleanup();
+                reject(new Error('Failed to attach RTSP stream listeners'));
+            }
+        });
+
+        try {
+            await waitForFirstFrame();
+        } catch (err) {
+            try { stream.stop(); } catch { /* ignore */ }
+            rtspStreams.delete(id);
+            return res.status(502).json({ ok: false, error: err?.message || String(err) });
         }
 
         rtspStreams.set(id, { wsPort, stream });
