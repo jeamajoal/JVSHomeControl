@@ -370,6 +370,13 @@ const RTSP_HLS_LIST_SIZE = (() => {
     return Math.max(3, Math.min(20, Math.round(parsed)));
 })();
 
+const RTSP_HLS_RTSP_TRANSPORT = (() => {
+    const raw = String(process.env.RTSP_HLS_RTSP_TRANSPORT || '').trim().toLowerCase();
+    // Keep TCP as the safe default (NAT/Wi-Fi/firewalls). Allow UDP for low-latency setups.
+    if (raw === 'udp') return 'udp';
+    return 'tcp';
+})();
+
 const RTSP_HLS_STARTUP_TIMEOUT_MS = (() => {
     const raw = String(process.env.RTSP_HLS_STARTUP_TIMEOUT_MS || '').trim();
     const parsed = raw ? Number(raw) : 15000;
@@ -452,7 +459,7 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         '-fflags', '+genpts',
         '-use_wallclock_as_timestamps', '1',
         '-avoid_negative_ts', 'make_zero',
-        '-rtsp_transport', 'tcp',
+        '-rtsp_transport', RTSP_HLS_RTSP_TRANSPORT,
         '-i', streamUrl,
         '-an',
         '-sn',
