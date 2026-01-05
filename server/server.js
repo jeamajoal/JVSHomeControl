@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const http = require('http');
 const https = require('https');
+const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
@@ -362,6 +363,49 @@ const RTSP_WS_BASE_PORT = (() => {
 })();
 
 const rtspStreams = new Map(); // cameraId -> { wsPort, stream }
+
+function checkFfmpegAvailable(rawFfmpegPath) {
+    const ffmpegPath = String(rawFfmpegPath || '').trim();
+    const bin = ffmpegPath || 'ffmpeg';
+    try {
+        const result = spawnSync(bin, ['-version'], { stdio: 'ignore' });
+        if (result && result.error) {
+            const code = result.error.code || result.error.name;
+            const msg = result.error.message || String(result.error);
+            return { ok: false, bin, error: `${code || 'spawn_error'}: ${msg}` };
+        }
+        return { ok: true, bin };
+    } catch (err) {
+        const code = err?.code || err?.name;
+        const msg = err?.message || String(err);
+        return { ok: false, bin, error: `${code || 'spawn_error'}: ${msg}` };
+    }
+}
+
+function attachRtspSpawnErrorHandler(rtspStreamInstance) {
+    // node-rtsp-stream does not attach a child-process 'error' handler.
+    // If ffmpeg is missing (ENOENT), Node will crash unless we handle it.
+    try {
+        const child = rtspStreamInstance?.stream;
+        if (!child || typeof child.on !== 'function') return;
+        child.on('error', (err) => {
+            try {
+                rtspStreamInstance.emit('exitWithError');
+            } catch {
+                // ignore
+            }
+            try {
+                rtspStreamInstance.stop();
+            } catch {
+                // ignore
+            }
+            const msg = err?.message || String(err);
+            console.error(`RTSP ffmpeg spawn error: ${msg}`);
+        });
+    } catch {
+        // ignore
+    }
+}
 
 function isPortAvailable(port) {
     return new Promise((resolve) => {
@@ -2628,6 +2672,16 @@ app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
             return res.status(501).json({ ok: false, error: 'RTSP streaming not available (node-rtsp-stream not installed)' });
         }
 
+        const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim();
+        const ffmpegCheck = checkFfmpegAvailable(ffmpegPath);
+        if (!ffmpegCheck.ok) {
+            return res.status(501).json({
+                ok: false,
+                error: 'ffmpeg not found',
+                message: `RTSP preview requires ffmpeg. Install ffmpeg or set FFMPEG_PATH. Spawned: ${ffmpegCheck.bin}. (${ffmpegCheck.error})`,
+            });
+        }
+
         const id = String(cam.id || '').trim();
         const existing = rtspStreams.get(id);
         if (existing && existing.wsPort) {
@@ -2639,8 +2693,6 @@ app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
         if (!wsPort) {
             return res.status(503).json({ ok: false, error: 'No free RTSP websocket ports available' });
         }
-
-        const ffmpegPath = String(process.env.FFMPEG_PATH || '').trim();
 
         let stream;
         try {
@@ -2661,6 +2713,8 @@ app.get('/api/cameras/:id/rtsp/ensure', async (req, res) => {
         } catch (err) {
             return res.status(500).json({ ok: false, error: err?.message || String(err) });
         }
+
+        attachRtspSpawnErrorHandler(stream);
 
         // Wait briefly for the stream to actually produce data so the client can get a useful error
         // instead of a "black box" websocket URL that never sends frames.
