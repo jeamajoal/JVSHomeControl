@@ -3578,8 +3578,9 @@ app.put('/api/ui/room-camera-ids', (req, res) => {
             : {};
         const prevMap = (prevProfile.roomCameraIds && typeof prevProfile.roomCameraIds === 'object') ? prevProfile.roomCameraIds : {};
         const nextMap = { ...prevMap };
-        if (uniq.length) nextMap[roomId] = uniq;
-        else delete nextMap[roomId];
+        // Persist empty arrays to represent an explicit "none" override.
+        // Absence of a room key means "use defaults" (derived from camera.defaultRoomId).
+        nextMap[roomId] = uniq;
 
         persistedConfig = normalizePersistedConfig({
             ...(persistedConfig || {}),
@@ -3598,8 +3599,9 @@ app.put('/api/ui/room-camera-ids', (req, res) => {
         const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
         const prevMap = (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {};
         const nextMap = { ...prevMap };
-        if (uniq.length) nextMap[roomId] = uniq;
-        else delete nextMap[roomId];
+        // Persist empty arrays to represent an explicit "none" override.
+        // Absence of a room key means "use defaults" (derived from camera.defaultRoomId).
+        nextMap[roomId] = uniq;
 
         persistedConfig = normalizePersistedConfig({
             ...(persistedConfig || {}),

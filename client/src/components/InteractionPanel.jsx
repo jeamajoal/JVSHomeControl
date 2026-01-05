@@ -331,16 +331,18 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                   if (!rid) return [];
 
                   const byId = new Map(cameras.map((c) => [String(c?.id || '').trim(), c]));
-                  const assigned = Array.isArray(roomCameraIds?.[rid])
-                    ? roomCameraIds[rid].map((v) => String(v || '').trim()).filter(Boolean)
+                  const mapped = (roomCameraIds && typeof roomCameraIds === 'object') ? roomCameraIds : {};
+                  const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(mapped, rid);
+                  const assigned = hasExplicitAssignment && Array.isArray(mapped[rid])
+                    ? mapped[rid].map((v) => String(v || '').trim()).filter(Boolean)
                     : [];
 
-                  const idsToShow = assigned.length
+                  const idsToShow = hasExplicitAssignment
                     ? assigned
                     : cameras
-                      .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
-                      .map((c) => String(c?.id || '').trim())
-                      .filter(Boolean);
+                        .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
+                        .map((c) => String(c?.id || '').trim())
+                        .filter(Boolean);
 
                   return idsToShow
                     .map((id) => {

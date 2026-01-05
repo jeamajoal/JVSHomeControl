@@ -3984,19 +3984,40 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                         {allRoomsForVisibility.map((r) => {
                           const rid = String(r.id || '').trim();
                           if (!rid) return null;
-                          const assigned = Array.isArray(roomCameraIdsFromConfig?.[rid])
-                            ? roomCameraIdsFromConfig[rid].map((v) => String(v || '').trim()).filter(Boolean)
-                            : [];
+                          const mapped = (roomCameraIdsFromConfig && typeof roomCameraIdsFromConfig === 'object') ? roomCameraIdsFromConfig : {};
+                          const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(mapped, rid);
+                          const assigned = hasExplicitAssignment
+                            ? (Array.isArray(mapped[rid])
+                              ? mapped[rid].map((v) => String(v || '').trim()).filter(Boolean)
+                              : [])
+                            : camerasFromConfig
+                              .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
+                              .map((c) => String(c?.id || '').trim())
+                              .filter(Boolean);
 
                           return (
                             <label key={rid} className="block">
                               <div className="flex items-center justify-between gap-2">
-                                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
-                                  {r.name}
+                                <div className="min-w-0">
+                                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45 truncate">
+                                    {r.name}
+                                  </div>
+                                  <div className="mt-1 text-[10px] text-white/35">
+                                    {assigned.length ? `${assigned.length} selected` : 'None'}
+                                  </div>
                                 </div>
-                                <div className="text-[10px] text-white/35">
-                                  {assigned.length ? `${assigned.length} selected` : 'None'}
-                                </div>
+                                <button
+                                  type="button"
+                                  disabled={!connected || busy || roomCameraIdsSave.status === 'saving'}
+                                  onClick={() => {
+                                    setError(null);
+                                    roomCameraIdsSave.run({ roomId: rid, cameraIds: [] })
+                                      .catch((err) => setError(err?.message || String(err)));
+                                  }}
+                                  className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || roomCameraIdsSave.status === 'saving') ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                >
+                                  None
+                                </button>
                               </div>
                               <select
                                 multiple

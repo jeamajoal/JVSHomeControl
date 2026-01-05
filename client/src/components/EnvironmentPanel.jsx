@@ -766,18 +766,19 @@ const RoomPanel = ({ roomId, roomName, devices, connected, uiScheme, climateTole
     const byId = new Map(list.map((c) => [String(c?.id || '').trim(), c]));
 
     const mapped = (roomCameraIds && typeof roomCameraIds === 'object') ? roomCameraIds : {};
-    const assignedIds = Array.isArray(mapped[rid])
+    const hasExplicitAssignment = Object.prototype.hasOwnProperty.call(mapped, rid);
+    const assignedIds = hasExplicitAssignment && Array.isArray(mapped[rid])
       ? mapped[rid].map((v) => String(v || '').trim()).filter(Boolean)
       : [];
 
-    // If there are no explicit assignments, fall back to legacy behavior
-    // (cameras registered with defaultRoomId).
-    const idsToShow = assignedIds.length
+    // Only fall back to defaults when there is no explicit room key.
+    // An explicit empty array means "none".
+    const idsToShow = hasExplicitAssignment
       ? assignedIds
       : list
-        .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
-        .map((c) => String(c?.id || '').trim())
-        .filter(Boolean);
+          .filter((c) => String(c?.defaultRoomId || '').trim() === rid)
+          .map((c) => String(c?.id || '').trim())
+          .filter(Boolean);
 
     return idsToShow
       .map((id) => {
