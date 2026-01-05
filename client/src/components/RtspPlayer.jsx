@@ -56,6 +56,16 @@ const RtspPlayer = ({ cameraId, className = '' }) => {
         const wsUrl = String(data?.wsUrl || '').trim();
         if (!wsUrl) throw new Error('RTSP stream did not return wsUrl');
 
+        // Mixed-content guard: browsers will block ws:// when the dashboard is served over https://.
+        // Firefox often reports this as: DOMException: The operation is insecure.
+        try {
+          if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:' && /^ws:\/\//i.test(wsUrl)) {
+            throw new Error('RTSP preview blocked by browser security (https page cannot open ws://). Disable HTTPS for the dashboard (HTTP_ONLY=1) or terminate TLS in a reverse proxy that provides wss://.');
+          }
+        } catch (e) {
+          throw e;
+        }
+
         if (!mounted) return;
         const wrapper = wrapperRef.current;
         if (!wrapper) throw new Error('Missing player wrapper');
