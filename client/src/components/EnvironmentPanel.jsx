@@ -1490,8 +1490,12 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           {homeTopRowEnabled && topRowCards.length ? (
             <div
               ref={metricRowRef}
-              className="grid grid-cols-2 lg:grid-cols-4"
-              style={homeTopRowScale !== 1 ? { gap: `${Math.max(6, Math.round(12 * homeTopRowScale))}px` } : undefined}
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+              style={
+                homeTopRowScale !== 1
+                  ? { gap: `${Math.max(0.375, 0.75 * homeTopRowScale)}rem` }
+                  : undefined
+              }
             >
               {topRowCards}
             </div>
