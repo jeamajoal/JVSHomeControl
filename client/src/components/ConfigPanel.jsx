@@ -730,7 +730,7 @@ const asNumber = (value) => {
 
 // Keep in sync with server RTSP redaction to preserve credentials when editing.
 const RTSP_REDACTED_PLACEHOLDER = '***';
-const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER}@`, 'i');
+const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}@`, 'i');
 
 const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, onOpenEvents }) => {
   const ctx = useAppState();
