@@ -128,6 +128,8 @@ const formatDate = (date) => {
 };
 
 const HOME_TOP_ROW_CARD_IDS = Object.freeze(['time', 'outside', 'inside', 'home']);
+const HOME_TOP_ROW_MIN_GAP_REM = 0.375; // aligns with Tailwind gap-3 (0.75rem) minimum when scaled down
+const HOME_TOP_ROW_MIN_MARGIN_REM = 0.5; // aligns with Tailwind mt-2+ minimum space when row is scaled down
 
 const useClock = (intervalMs = 1000) => {
   const [now, setNow] = useState(() => new Date());
@@ -1481,7 +1483,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               className="grid grid-cols-2 lg:grid-cols-4 gap-3"
               style={
                 homeTopRowScale !== 1
-                  ? { gap: `${Math.max(0.375, 0.75 * homeTopRowScale)}rem` }
+                  ? { gap: `${Math.max(HOME_TOP_ROW_MIN_GAP_REM, 0.75 * homeTopRowScale)}rem` }
                   : undefined
               }
             >
@@ -1493,7 +1495,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
             className="mt-4"
             style={
               homeTopRowEnabled && topRowCards.length
-                ? { marginTop: `${Math.max(0.5, homeTopRowScale)}rem` }
+                ? { marginTop: `${Math.max(HOME_TOP_ROW_MIN_MARGIN_REM, homeTopRowScale)}rem` }
                 : undefined
             }
           >
