@@ -1026,7 +1026,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     const uniq = Array.from(new Set(cards));
     if (hasCards) return uniq;
     return uniq.length ? uniq : HOME_TOP_ROW_CARD_IDS;
-  }, [config?.ui]);
+  }, [config?.ui?.homeTopRowCards]);
 
   const secondaryTextColorId = useMemo(() => {
     const raw = String(config?.ui?.secondaryTextColorId ?? '').trim();
