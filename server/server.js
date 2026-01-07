@@ -416,18 +416,21 @@ const RTSP_HLS_DEBUG = (() => {
 })();
 
 const hlsStreams = new Map(); // cameraId -> { dir, playlistPath, ffmpeg, lastError, stderrTail, startedAtMs, ffmpegArgs }
+// Redaction placeholder is kept in sync with the client Settings UI (ConfigPanel).
+const RTSP_REDACTED_PLACEHOLDER = '***';
+const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER}@`, 'i');
 
 function redactRtspUrl(url) {
     try {
         const u = new URL(String(url));
         if (u.username || u.password) {
-            u.username = u.username ? 'REDACTED' : '';
-            u.password = u.password ? 'REDACTED' : '';
+            u.username = u.username ? RTSP_REDACTED_PLACEHOLDER : '';
+            u.password = u.password ? RTSP_REDACTED_PLACEHOLDER : '';
         }
         return u.toString();
     } catch {
         // Fallback: strip user:pass@ if present.
-        return String(url || '').replace(/rtsp:\/\/[^@/]+@/i, 'rtsp://REDACTED@');
+        return String(url || '').replace(/rtsp:\/\/[^@/]+@/i, `rtsp://${RTSP_REDACTED_PLACEHOLDER}@`);
     }
 }
 
@@ -3584,7 +3587,19 @@ app.put('/api/ui/cameras/:id', (req, res) => {
 
     if (Object.prototype.hasOwnProperty.call(rawCam, 'rtsp')) {
         const rtspRaw = (rawCam.rtsp && typeof rawCam.rtsp === 'object') ? rawCam.rtsp : {};
-        const url = String(rtspRaw.url || '').trim();
+        const prevRtsp = (prev.rtsp && typeof prev.rtsp === 'object') ? prev.rtsp : {};
+        const prevRtspUrl = String(prevRtsp.url || '').trim();
+        let url = String(rtspRaw.url || '').trim();
+
+        // Allow redacted RTSP URLs from the Settings UI to keep the stored credentials.
+        if (url && prevRtspUrl) {
+            const redactedPrev = redactUrlPassword(prevRtspUrl);
+            const looksRedacted = RTSP_REDACTED_PATTERN.test(url);
+            if (url === redactedPrev || looksRedacted) {
+                url = prevRtspUrl;
+            }
+        }
+
         if (url) {
             next.rtsp = { url };
         } else {

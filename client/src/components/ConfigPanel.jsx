@@ -728,6 +728,10 @@ const asNumber = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+// Keep in sync with server RTSP redaction to preserve credentials when editing.
+const RTSP_REDACTED_PLACEHOLDER = '***';
+const RTSP_REDACTED_PATTERN = new RegExp(`:\\/\\/[^/]*${RTSP_REDACTED_PLACEHOLDER}@`, 'i');
+
 const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: connectedProp, onOpenEvents }) => {
   const ctx = useAppState();
   const config = configProp ?? ctx?.config;
@@ -4858,6 +4862,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3">
                 <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">RTSP</div>
                 <div className="mt-1 text-xs text-white/45">Streams via server-side RTSP → HLS (ffmpeg required on the server).</div>
+                {cameraFormMode === 'edit' && RTSP_REDACTED_PATTERN.test(String(cameraForm.rtspUrl || '')) ? (
+                  <div className="mt-1 text-[11px] text-white/45">
+                    Password is hidden; leave unchanged to keep the stored credentials.
+                  </div>
+                ) : null}
 
                 <div className="mt-3 grid grid-cols-1 gap-3">
                   <label className="block">
