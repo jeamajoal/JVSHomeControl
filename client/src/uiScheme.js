@@ -6,7 +6,7 @@ const ACCENT_BORDER_30 = 'border-[rgb(var(--accent-rgb)_/_0.30)]';
 const ACCENT_BORDER_40 = 'border-[rgb(var(--accent-rgb)_/_0.40)]';
 const ACCENT_RING_20 = 'ring-[rgb(var(--accent-rgb)_/_0.20)]';
 
-export function getUiScheme(_colorSchemeId) {
+export function getUiScheme() {
   return {
     tabActive: `${ACCENT_BG_10} ${ACCENT_TEXT}`,
     headerIcon: `${ACCENT_BG_20} ${ACCENT_BORDER_30} ${ACCENT_TEXT}`,

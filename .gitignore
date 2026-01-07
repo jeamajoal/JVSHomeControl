@@ -33,3 +33,6 @@ server/data/backups/
 
 # Ignore the runtime config (user-specific; do not commit to public repo)
 server/data/config.json
+
+# Ignore generated TLS certs/keys (created locally by https-setup)
+server/data/certs/

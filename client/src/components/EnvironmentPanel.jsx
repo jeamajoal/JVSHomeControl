@@ -552,13 +552,12 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
   const titleStyle = { fontSize: `calc(${Math.round(18 * scaleNum)}px * var(--jvs-primary-text-size-scale, 1))` };
-  const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
   const metrics = useMemo(
     () => computeRoomMetrics(devices, null, deviceHomeMetricAllowlist),
@@ -966,17 +965,6 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
       },
     };
   }, [config?.ui?.climateToleranceColors]);
-
-  const sensorIndicatorColors = useMemo(() => {
-    const raw = (config?.ui?.sensorIndicatorColors && typeof config.ui.sensorIndicatorColors === 'object')
-      ? config.ui.sensorIndicatorColors
-      : {};
-
-    return {
-      motion: normalizeToleranceColorId(raw.motion, 'warning'),
-      door: normalizeToleranceColorId(raw.door, 'neon-red'),
-    };
-  }, [config?.ui?.sensorIndicatorColors]);
 
   const homeBackground = useMemo(() => {
     const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
@@ -1582,7 +1570,6 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   climateToleranceColors={climateToleranceColors}
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
-                  sensorIndicatorColors={sensorIndicatorColors}
                   deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                   deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
                   homeRoomMetricKeys={homeRoomMetricKeys}
