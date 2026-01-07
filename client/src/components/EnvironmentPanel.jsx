@@ -127,6 +127,10 @@ const formatDate = (date) => {
   }
 };
 
+const HOME_TOP_ROW_CARD_IDS = Object.freeze(['time', 'outside', 'inside', 'home']);
+const HOME_TOP_ROW_MIN_GAP_REM = 0.375; // aligns with Tailwind gap-3 (0.75rem) minimum when scaled down
+const HOME_TOP_ROW_MIN_MARGIN_REM = 0.5; // aligns with Tailwind mt-2+ minimum space when row is scaled down
+
 const useClock = (intervalMs = 1000) => {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
@@ -550,13 +554,12 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, sensorIndicatorColors, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
   const titleStyle = { fontSize: `calc(${Math.round(18 * scaleNum)}px * var(--jvs-primary-text-size-scale, 1))` };
-  const badgeStyle = { fontSize: `${Math.round(10 * scaleNum)}px` };
 
   const metrics = useMemo(
     () => computeRoomMetrics(devices, null, deviceHomeMetricAllowlist),
@@ -965,17 +968,6 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     };
   }, [config?.ui?.climateToleranceColors]);
 
-  const sensorIndicatorColors = useMemo(() => {
-    const raw = (config?.ui?.sensorIndicatorColors && typeof config.ui.sensorIndicatorColors === 'object')
-      ? config.ui.sensorIndicatorColors
-      : {};
-
-    return {
-      motion: normalizeToleranceColorId(raw.motion, 'warning'),
-      door: normalizeToleranceColorId(raw.door, 'neon-red'),
-    };
-  }, [config?.ui?.sensorIndicatorColors]);
-
   const homeBackground = useMemo(() => {
     const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
       ? config.ui.homeBackground
@@ -997,6 +989,34 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     if (!Number.isFinite(raw)) return 100;
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [config?.ui?.cardScalePct]);
+
+  const homeTopRowEnabled = config?.ui?.homeTopRowEnabled !== false;
+
+  const homeTopRowScalePct = useMemo(() => {
+    const raw = Number(config?.ui?.homeTopRowScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(120, Math.round(raw)));
+  }, [config?.ui?.homeTopRowScalePct]);
+
+  const homeTopRowScale = useMemo(
+    () => Math.max(0.5, Math.min(1.2, homeTopRowScalePct / 100)),
+    [homeTopRowScalePct],
+  );
+
+  const homeTopRowCards = useMemo(() => {
+    const uiObj = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const hasCards = Object.prototype.hasOwnProperty.call(uiObj, 'homeTopRowCards');
+    const raw = hasCards
+      ? (Array.isArray(uiObj.homeTopRowCards) ? uiObj.homeTopRowCards : [])
+      : HOME_TOP_ROW_CARD_IDS;
+    const allowed = new Set(HOME_TOP_ROW_CARD_IDS);
+    const cards = raw
+      .map((v) => String(v || '').trim())
+      .filter((v) => v && allowed.has(v));
+    const uniq = Array.from(new Set(cards));
+    if (hasCards) return uniq;
+    return uniq.length ? uniq : HOME_TOP_ROW_CARD_IDS;
+  }, [config?.ui?.homeTopRowCards]);
 
   const secondaryTextColorId = useMemo(() => {
     const raw = String(config?.ui?.secondaryTextColorId ?? '').trim();
@@ -1257,6 +1277,190 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     ? outsideDisplay.currentTemp
     : outsideSensors.temperature;
 
+  const topRowCards = useMemo(() => {
+    const selected = homeTopRowCards.length ? homeTopRowCards : HOME_TOP_ROW_CARD_IDS;
+    const selectedSet = new Set(selected);
+    const scaled = homeTopRowScalePct !== 100;
+    const cards = [];
+
+    if (selectedSet.has('time')) {
+      cards.push(
+        <MetricCard
+          key="time"
+          title="Time"
+          value={formatTime(now)}
+          sub={formatDate(now)}
+          subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
+          icon={Clock}
+          accentClassName="border-white/10"
+          uiScheme={resolvedUiScheme}
+          primaryTextColorClassName={primaryTextColorClass}
+          secondaryTextClassName={secondaryTextColorClass}
+          secondaryTextStrongClassName={secondaryTextColorClass}
+          scaled={scaled}
+          scale={homeTopRowScale}
+        />
+      );
+    }
+
+    if (selectedSet.has('outside')) {
+      cards.push(
+        <MetricCard
+          key="outside"
+          title="Outside"
+          value={formatTemp(outsideTempForValue)}
+          sub={(
+            <div className="space-y-1">
+              <div className={`jvs-secondary-text-strong ${secondaryTextColorClass}`.trim()}>
+                {asText(outsideDisplay.condition)
+                  ? (
+                    `${outsideDisplay.condition}${outsideDisplay.currentHumidity !== null ? ` • ${formatPercent(outsideDisplay.currentHumidity)}` : ''}`
+                  )
+                  : (
+                    outsideSensors.humidity === null
+                      ? (weatherError ? `Weather offline (${weatherError})` : 'Weather loading…')
+                      : `Outside sensors • Humidity ${formatPercent(outsideSensors.humidity)}`
+                  )}
+              </div>
+
+              <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 jvs-secondary-text ${secondaryTextColorClass}`.trim()}>
+                {(outsideDisplay.todayHigh !== null || outsideDisplay.todayLow !== null) ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Cloud className="w-3.5 h-3.5" />
+                    H {formatTemp(outsideDisplay.todayHigh)} • L {formatTemp(outsideDisplay.todayLow)}
+                    {outsideDisplay.precipProb !== null ? ` • ${Math.round(Number(outsideDisplay.precipProb))}%` : ''}
+                  </span>
+                ) : null}
+
+                {outsideDisplay.windSpeed !== null ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Wind className="w-3.5 h-3.5" />
+                    {formatSpeed(outsideDisplay.windSpeed)}{toCompass(outsideDisplay.windDir) ? ` ${toCompass(outsideDisplay.windDir)}` : ''}
+                  </span>
+                ) : null}
+
+                {outsideDisplay.precipNow !== null ? (
+                  <span className="inline-flex items-center gap-1">
+                    <CloudRain className="w-3.5 h-3.5" />
+                    {formatInches(outsideDisplay.precipNow)}
+                  </span>
+                ) : null}
+
+                {outsideDisplay.apparentTemp !== null ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Thermometer className="w-3.5 h-3.5" />
+                    Feels {formatTemp(outsideDisplay.apparentTemp)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )}
+          subClassName={`mt-2 text-[13px] jvs-secondary-text ${secondaryTextColorClass}`.trim()}
+          icon={Cloud}
+          accentClassName="border-white/10"
+          valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          uiScheme={resolvedUiScheme}
+          primaryTextColorClassName={primaryTextColorClass}
+          secondaryTextClassName={secondaryTextColorClass}
+          secondaryTextStrongClassName={secondaryTextColorClass}
+          scaled={scaled}
+          scale={homeTopRowScale}
+        />
+      );
+    }
+
+    if (selectedSet.has('inside')) {
+      cards.push(
+        <MetricCard
+          key="inside"
+          title="Inside"
+          value={formatTemp(overall.temperature)}
+          sub={
+            overall.temperature === null
+              ? 'No sensors'
+              : `RH ${overall.humidity === null ? '—' : formatPercent(overall.humidity)} • Lux ${overall.illuminance === null ? '—' : formatLux(overall.illuminance)}`
+          }
+          subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
+          icon={Thermometer}
+          accentClassName="border-white/10"
+          valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
+          valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
+          iconWrapClassName="bg-white/5"
+          uiScheme={resolvedUiScheme}
+          primaryTextColorClassName={primaryTextColorClass}
+          secondaryTextClassName={secondaryTextColorClass}
+          secondaryTextStrongClassName={secondaryTextColorClass}
+          scaled={scaled}
+          scale={homeTopRowScale}
+        />
+      );
+    }
+
+    if (selectedSet.has('home')) {
+      cards.push(
+        <MetricCard
+          key="home"
+          title="Home"
+          value={
+            !connected
+              ? 'OFFLINE'
+              : (asText(hubitatMode?.name) || asText(hubitatMode?.label) || asText(hubitatMode?.id) || '—')
+          }
+          sub={
+            !connected
+              ? 'Disconnected'
+              : (`Motion: ${overall.motionActiveCount || 0} • Doors: ${overall.doorOpenCount || 0}${hubitatModeError ? ` • Mode unavailable (${hubitatModeError})` : ''}`)
+          }
+          subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
+          icon={Activity}
+          accentClassName={
+            connected
+              ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')
+              : 'border-danger/30'
+          }
+          valueClassName={connected ? '' : 'text-neon-red'}
+          uiScheme={resolvedUiScheme}
+          primaryTextColorClassName={primaryTextColorClass}
+          secondaryTextClassName={secondaryTextColorClass}
+          secondaryTextStrongClassName={secondaryTextColorClass}
+          scaled={scaled}
+          scale={homeTopRowScale}
+        />
+      );
+    }
+
+    return cards;
+  }, [
+    homeTopRowCards,
+    homeTopRowScale,
+    homeTopRowScalePct,
+    now,
+    secondaryTextColorClass,
+    resolvedUiScheme,
+    primaryTextColorClass,
+    outsideTempForValue,
+    outsideDisplay,
+    outsideSensors.humidity,
+    climateTolerances,
+    climateToleranceColors,
+    colorizeHomeValues,
+    colorizeHomeValuesOpacityPct,
+    overall.temperature,
+    overall.humidity,
+    overall.illuminance,
+    overall.motionActive,
+    overall.motionActiveCount,
+    overall.doorOpen,
+    overall.doorOpenCount,
+    connected,
+    hubitatMode?.name,
+    hubitatMode?.label,
+    hubitatMode?.id,
+    hubitatModeError,
+    weatherError,
+  ]);
+
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
       {homeBackground.enabled && homeBackground.url ? (
@@ -1273,126 +1477,28 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
       <div className="relative z-10 w-full">
         <div className="w-full">
-          <div ref={metricRowRef} className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-            <MetricCard
-              title="Time"
-              value={formatTime(now)}
-              sub={formatDate(now)}
-              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
-              icon={Clock}
-              accentClassName="border-white/10"
-              uiScheme={resolvedUiScheme}
-              primaryTextColorClassName={primaryTextColorClass}
-              secondaryTextClassName={secondaryTextColorClass}
-              secondaryTextStrongClassName={secondaryTextColorClass}
-            />
-
-            <MetricCard
-              title="Outside"
-              value={formatTemp(outsideTempForValue)}
-              sub={(
-                <div className="space-y-1">
-                  <div className={`jvs-secondary-text-strong ${secondaryTextColorClass}`.trim()}>
-                    {asText(outsideDisplay.condition)
-                      ? (
-                        `${outsideDisplay.condition}${outsideDisplay.currentHumidity !== null ? ` • ${formatPercent(outsideDisplay.currentHumidity)}` : ''}`
-                      )
-                      : (
-                        outsideSensors.humidity === null
-                          ? (weatherError ? `Weather offline (${weatherError})` : 'Weather loading…')
-                          : `Outside sensors • Humidity ${formatPercent(outsideSensors.humidity)}`
-                      )}
-                  </div>
-
-                  <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 jvs-secondary-text ${secondaryTextColorClass}`.trim()}>
-                    {(outsideDisplay.todayHigh !== null || outsideDisplay.todayLow !== null) ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Cloud className="w-3.5 h-3.5" />
-                        H {formatTemp(outsideDisplay.todayHigh)} • L {formatTemp(outsideDisplay.todayLow)}
-                        {outsideDisplay.precipProb !== null ? ` • ${Math.round(Number(outsideDisplay.precipProb))}%` : ''}
-                      </span>
-                    ) : null}
-
-                    {outsideDisplay.windSpeed !== null ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Wind className="w-3.5 h-3.5" />
-                        {formatSpeed(outsideDisplay.windSpeed)}{toCompass(outsideDisplay.windDir) ? ` ${toCompass(outsideDisplay.windDir)}` : ''}
-                      </span>
-                    ) : null}
-
-                    {outsideDisplay.precipNow !== null ? (
-                      <span className="inline-flex items-center gap-1">
-                        <CloudRain className="w-3.5 h-3.5" />
-                        {formatInches(outsideDisplay.precipNow)}
-                      </span>
-                    ) : null}
-
-                    {outsideDisplay.apparentTemp !== null ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Thermometer className="w-3.5 h-3.5" />
-                        Feels {formatTemp(outsideDisplay.apparentTemp)}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-              subClassName={`mt-2 text-[13px] jvs-secondary-text ${secondaryTextColorClass}`.trim()}
-              icon={Cloud}
-              accentClassName="border-white/10"
-              valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
-              valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-              uiScheme={resolvedUiScheme}
-              primaryTextColorClassName={primaryTextColorClass}
-              secondaryTextClassName={secondaryTextColorClass}
-              secondaryTextStrongClassName={secondaryTextColorClass}
-            />
-            <MetricCard
-              title="Inside"
-              value={formatTemp(overall.temperature)}
-              sub={
-                overall.temperature === null
-                  ? 'No sensors'
-                  : `RH ${overall.humidity === null ? '—' : formatPercent(overall.humidity)} • Lux ${overall.illuminance === null ? '—' : formatLux(overall.illuminance)}`
+          {homeTopRowEnabled && topRowCards.length ? (
+            <div
+              ref={metricRowRef}
+              className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+              style={
+                homeTopRowScale !== 1
+                  ? { gap: `${Math.max(HOME_TOP_ROW_MIN_GAP_REM, 0.75 * homeTopRowScale)}rem` }
+                  : undefined
               }
-              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
-              icon={Thermometer}
-              accentClassName="border-white/10"
-              valueClassName={getColorizedValueClass('temperature', overall.temperature, climateTolerances, climateToleranceColors, colorizeHomeValues)}
-              valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
-              iconWrapClassName="bg-white/5"
-              uiScheme={resolvedUiScheme}
-              primaryTextColorClassName={primaryTextColorClass}
-              secondaryTextClassName={secondaryTextColorClass}
-              secondaryTextStrongClassName={secondaryTextColorClass}
-            />
-            <MetricCard
-              title="Home"
-              value={
-                !connected
-                  ? 'OFFLINE'
-                  : (asText(hubitatMode?.name) || asText(hubitatMode?.label) || asText(hubitatMode?.id) || '—')
-              }
-              sub={
-                !connected
-                  ? 'Disconnected'
-                  : (`Motion: ${overall.motionActiveCount || 0} • Doors: ${overall.doorOpenCount || 0}${hubitatModeError ? ` • Mode unavailable (${hubitatModeError})` : ''}`)
-              }
-              subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
-              icon={Activity}
-              accentClassName={
-                connected
-                  ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')
-                  : 'border-danger/30'
-              }
-              valueClassName={connected ? '' : 'text-neon-red'}
-              uiScheme={resolvedUiScheme}
-              primaryTextColorClassName={primaryTextColorClass}
-              secondaryTextClassName={secondaryTextColorClass}
-              secondaryTextStrongClassName={secondaryTextColorClass}
-            />
-          </div>
+            >
+              {topRowCards}
+            </div>
+          ) : null}
 
-          <div className="mt-4">
+          <div
+            className="mt-4"
+            style={
+              homeTopRowEnabled && topRowCards.length
+                ? { marginTop: `${Math.max(HOME_TOP_ROW_MIN_MARGIN_REM, homeTopRowScale)}rem` }
+                : undefined
+            }
+          >
             {topCameras.length ? (
               <div className="mb-4">
                 <div
@@ -1466,7 +1572,6 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   climateToleranceColors={climateToleranceColors}
                   colorizeHomeValues={colorizeHomeValues}
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
-                  sensorIndicatorColors={sensorIndicatorColors}
                   deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                   deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
                   homeRoomMetricKeys={homeRoomMetricKeys}
