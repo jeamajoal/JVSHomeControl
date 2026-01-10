@@ -243,7 +243,7 @@ ensure_repo() {
     /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
     
     # Initialize as git repo and add remote
-    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git init"; then
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git init -b '${REPO_BRANCH}'"; then
       die "Failed to initialize git repository in ${APP_DIR}"
     fi
     
@@ -256,7 +256,7 @@ ensure_repo() {
       die "Failed to fetch branch '${REPO_BRANCH}' from remote"
     fi
     
-    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"; then
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git checkout -f -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"; then
       die "Failed to checkout branch '${REPO_BRANCH}'"
     fi
   fi
