@@ -808,6 +808,23 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
     return saveHomeVisibleDeviceIds(ids, panelName);
   });
+  const allowlistSave = useAsyncSave((payload) => {
+    const main = payload && typeof payload === 'object' && Array.isArray(payload.mainAllowedDeviceIds) 
+      ? payload.mainAllowedDeviceIds 
+      : null;
+    const ctrl = payload && typeof payload === 'object' && Array.isArray(payload.ctrlAllowedDeviceIds) 
+      ? payload.ctrlAllowedDeviceIds 
+      : null;
+    const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
+    
+    const body = {
+      ...(panelName ? { panelName } : {}),
+      ...(main !== null ? { mainAllowedDeviceIds: main } : {}),
+      ...(ctrl !== null ? { ctrlAllowedDeviceIds: ctrl } : {}),
+    };
+    
+    return saveAllowlists(body);
+  });
   const visibleRoomsSave = useAsyncSave((payload) => {
     const ids = payload && typeof payload === 'object' ? payload.visibleRoomIds : [];
     const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
@@ -2039,6 +2056,21 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
     return cleaned.length ? new Set(cleaned) : null;
   }, [config?.ui?.homeVisibleDeviceIds]);
 
+  const mainAllowedDeviceIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds) ? config.ui.mainAllowedDeviceIds : [];
+    const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
+    return cleaned.length ? new Set(cleaned) : null;
+  }, [config?.ui?.mainAllowedDeviceIds]);
+
+  const ctrlAllowedDeviceIds = useMemo(() => {
+    const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds) ? config.ui.ctrlAllowedDeviceIds : [];
+    const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
+    return cleaned.length ? new Set(cleaned) : null;
+  }, [config?.ui?.ctrlAllowedDeviceIds]);
+
+  const mainAllowlistLocked = Boolean(config?.ui?.mainAllowlistLocked);
+  const ctrlAllowlistLocked = Boolean(config?.ui?.ctrlAllowlistLocked);
+
   const allDevices = useMemo(() => {
     const devices = (config?.sensors || [])
       .map((d) => {
@@ -2429,20 +2461,62 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     setError(null);
     try {
-      const base = homeVisibleDeviceIds
+      // Update homeVisibleDeviceIds
+      const visibleBase = homeVisibleDeviceIds
         ? new Set(Array.from(homeVisibleDeviceIds))
         : new Set(Array.isArray(allDeviceIds) ? allDeviceIds.map((v) => String(v)) : []);
 
-      if (nextVisible) base.add(id);
-      else base.delete(id);
+      if (nextVisible) visibleBase.add(id);
+      else visibleBase.delete(id);
 
       // Empty list means "show all".
-      const nextArr = base.size === (Array.isArray(allDeviceIds) ? allDeviceIds.length : base.size)
+      const nextVisibleArr = visibleBase.size === (Array.isArray(allDeviceIds) ? allDeviceIds.length : visibleBase.size)
         ? []
-        : Array.from(base);
+        : Array.from(visibleBase);
 
-      await homeVisibleSave.run({
-        homeVisibleDeviceIds: nextArr,
+      // Update mainAllowedDeviceIds - if shown, also allow control
+      const allowedBase = mainAllowedDeviceIds
+        ? new Set(Array.from(mainAllowedDeviceIds))
+        : new Set([]);
+
+      if (nextVisible) allowedBase.add(id);
+      else allowedBase.delete(id);
+
+      const nextAllowedArr = Array.from(allowedBase);
+
+      // Save both visibility and allowlist
+      await Promise.all([
+        homeVisibleSave.run({
+          homeVisibleDeviceIds: nextVisibleArr,
+          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+        }),
+        allowlistSave.run({
+          mainAllowedDeviceIds: nextAllowedArr,
+          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+        }),
+      ]);
+    } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
+  const setControlsAllowed = async (deviceId, nextAllowed) => {
+    const id = String(deviceId || '').trim();
+    if (!id) return;
+
+    setError(null);
+    try {
+      const base = ctrlAllowedDeviceIds
+        ? new Set(Array.from(ctrlAllowedDeviceIds))
+        : new Set([]);
+
+      if (nextAllowed) base.add(id);
+      else base.delete(id);
+
+      const nextArr = Array.from(base);
+
+      await allowlistSave.run({
+        ctrlAllowedDeviceIds: nextArr,
         ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
       });
     } catch (e) {
@@ -2568,7 +2642,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose which devices appear on Home.
+              Choose which devices appear on Home and Controls screens.
             </div>
 
             {isPresetSelected ? (
@@ -2585,7 +2659,25 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             ) : null}
 
             <div className="mt-2 text-xs text-white/45">
-              {[statusText(homeVisibleSave.status)].filter(Boolean).join(' ')}
+              {[statusText(homeVisibleSave.status), statusText(allowlistSave.status)].filter(Boolean).join(' · ')}
+            </div>
+
+            {(mainAllowlistLocked || ctrlAllowlistLocked) ? (
+              <div className="mt-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
+                {mainAllowlistLocked && ctrlAllowlistLocked
+                  ? 'Home and Controls allowlists are locked by environment variables. Contact your administrator to make changes.'
+                  : mainAllowlistLocked
+                  ? 'Home allowlist is locked by environment variables. Contact your administrator to make changes.'
+                  : 'Controls allowlist is locked by environment variables. Contact your administrator to make changes.'}
+              </div>
+            ) : null}
+
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60 mb-2">Info</div>
+              <div className="grid gap-1.5 text-xs text-white/60">
+                <div><span className="font-semibold text-white/80">Home:</span> Show and allow control on Home screen</div>
+                <div><span className="font-semibold text-white/80">Controls:</span> Allow control from Controls screen</div>
+              </div>
             </div>
 
             <div
@@ -2596,6 +2688,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 allDevices.map((d) => {
                   const allDeviceIds = allDevices.map((x) => String(x.id));
                   const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
+                  const isCtrlAllowed = ctrlAllowedDeviceIds ? ctrlAllowedDeviceIds.has(String(d.id)) : false;
 
                   const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
                     ? deviceOverrideDrafts[d.id]
@@ -2636,16 +2729,26 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                           <div className="mt-1 text-xs text-white/45 truncate">ID: {d.id}</div>
                         </div>
 
-                        <div className="shrink-0 flex items-center gap-4">
+                        <div className="shrink-0 flex flex-col gap-2">
                           <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
                             <input
                               type="checkbox"
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || homeVisibleSave.status === 'saving'}
+                              disabled={!connected || homeVisibleSave.status === 'saving' || allowlistSave.status === 'saving' || mainAllowlistLocked}
                               checked={isHome}
                               onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
                             />
                             Home
+                          </label>
+                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                            <input
+                              type="checkbox"
+                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                              disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
+                              checked={isCtrlAllowed}
+                              onChange={(e) => setControlsAllowed(d.id, e.target.checked)}
+                            />
+                            Controls
                           </label>
                         </div>
                       </div>
