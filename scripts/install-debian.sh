@@ -187,9 +187,17 @@ get_directory_entries() {
   local dir="$1"
   local -n result_array="$2"
   
+  # Save current shell options to avoid side effects
+  local old_dotglob old_nullglob
+  old_dotglob=$(shopt -p dotglob || true)
+  old_nullglob=$(shopt -p nullglob || true)
+  
   shopt -s dotglob nullglob
   result_array=("${dir}"/*)
-  shopt -u dotglob nullglob
+  
+  # Restore original shell options
+  eval "${old_dotglob}"
+  eval "${old_nullglob}"
 }
 
 ensure_repo() {
