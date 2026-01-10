@@ -240,10 +240,25 @@ ensure_repo() {
     fi
     
     # Remove any default shell dotfiles that useradd might have created
-    /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" 2>/dev/null || true
+    /usr/bin/rm -f "${APP_DIR}/.bashrc" "${APP_DIR}/.profile" "${APP_DIR}/.bash_logout" || true
     
     # Initialize as git repo and add remote
-    sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git init && git remote add origin '${REPO_URL}' && git fetch origin '${REPO_BRANCH}' && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}'"
+    log "Initializing git repository and fetching ${REPO_BRANCH}…"
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git init"; then
+      die "Failed to initialize git repository in ${APP_DIR}"
+    fi
+    
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git remote add origin '${REPO_URL}'"; then
+      die "Failed to add git remote: ${REPO_URL}"
+    fi
+    
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch origin '${REPO_BRANCH}'"; then
+      die "Failed to fetch branch '${REPO_BRANCH}' from remote"
+    fi
+    
+    if ! sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}'"; then
+      die "Failed to checkout branch '${REPO_BRANCH}'"
+    fi
   fi
 
   if [[ -n "${cfg_backup}" && -f "${cfg_backup}" ]]; then
