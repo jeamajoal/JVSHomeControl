@@ -2461,52 +2461,46 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
 
     setError(null);
     try {
-      const base = homeVisibleDeviceIds
+      // Update homeVisibleDeviceIds
+      const visibleBase = homeVisibleDeviceIds
         ? new Set(Array.from(homeVisibleDeviceIds))
         : new Set(Array.isArray(allDeviceIds) ? allDeviceIds.map((v) => String(v)) : []);
 
-      if (nextVisible) base.add(id);
-      else base.delete(id);
+      if (nextVisible) visibleBase.add(id);
+      else visibleBase.delete(id);
 
       // Empty list means "show all".
-      const nextArr = base.size === (Array.isArray(allDeviceIds) ? allDeviceIds.length : base.size)
+      const nextVisibleArr = visibleBase.size === (Array.isArray(allDeviceIds) ? allDeviceIds.length : visibleBase.size)
         ? []
-        : Array.from(base);
+        : Array.from(visibleBase);
 
-      await homeVisibleSave.run({
-        homeVisibleDeviceIds: nextArr,
-        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-      });
-    } catch (e) {
-      setError(e?.message || String(e));
-    }
-  };
-
-  const setMainAllowed = async (deviceId, nextAllowed) => {
-    const id = String(deviceId || '').trim();
-    if (!id) return;
-
-    setError(null);
-    try {
-      const base = mainAllowedDeviceIds
+      // Update mainAllowedDeviceIds - if shown, also allow control
+      const allowedBase = mainAllowedDeviceIds
         ? new Set(Array.from(mainAllowedDeviceIds))
         : new Set([]);
 
-      if (nextAllowed) base.add(id);
-      else base.delete(id);
+      if (nextVisible) allowedBase.add(id);
+      else allowedBase.delete(id);
 
-      const nextArr = Array.from(base);
+      const nextAllowedArr = Array.from(allowedBase);
 
-      await allowlistSave.run({
-        mainAllowedDeviceIds: nextArr,
-        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-      });
+      // Save both visibility and allowlist
+      await Promise.all([
+        homeVisibleSave.run({
+          homeVisibleDeviceIds: nextVisibleArr,
+          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+        }),
+        allowlistSave.run({
+          mainAllowedDeviceIds: nextAllowedArr,
+          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+        }),
+      ]);
     } catch (e) {
       setError(e?.message || String(e));
     }
   };
 
-  const setCtrlAllowed = async (deviceId, nextAllowed) => {
+  const setControlsAllowed = async (deviceId, nextAllowed) => {
     const id = String(deviceId || '').trim();
     if (!id) return;
 
@@ -2648,7 +2642,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose which devices appear on Home and Controls screens, and which can be controlled.
+              Choose which devices appear on Home and Controls screens.
             </div>
 
             {isPresetSelected ? (
@@ -2671,19 +2665,18 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
             {(mainAllowlistLocked || ctrlAllowlistLocked) ? (
               <div className="mt-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
                 {mainAllowlistLocked && ctrlAllowlistLocked
-                  ? 'Home Control and Controls allowlists are locked by environment variables. Contact your administrator to make changes.'
+                  ? 'Home and Controls allowlists are locked by environment variables. Contact your administrator to make changes.'
                   : mainAllowlistLocked
-                  ? 'Home Control allowlist is locked by environment variables. Contact your administrator to make changes.'
+                  ? 'Home allowlist is locked by environment variables. Contact your administrator to make changes.'
                   : 'Controls allowlist is locked by environment variables. Contact your administrator to make changes.'}
               </div>
             ) : null}
 
             <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60 mb-2">Legend</div>
+              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60 mb-2">Info</div>
               <div className="grid gap-1.5 text-xs text-white/60">
-                <div><span className="font-semibold text-white/80">Home Visible:</span> Show device on Home screen</div>
-                <div><span className="font-semibold text-white/80">Home Control:</span> Allow controlling device from Home screen</div>
-                <div><span className="font-semibold text-white/80">Controls:</span> Allow controlling device from Controls screen</div>
+                <div><span className="font-semibold text-white/80">Home:</span> Show and allow control on Home screen</div>
+                <div><span className="font-semibold text-white/80">Controls:</span> Allow control from Controls screen</div>
               </div>
             </div>
 
@@ -2695,7 +2688,6 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                 allDevices.map((d) => {
                   const allDeviceIds = allDevices.map((x) => String(x.id));
                   const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
-                  const isMainAllowed = mainAllowedDeviceIds ? mainAllowedDeviceIds.has(String(d.id)) : false;
                   const isCtrlAllowed = ctrlAllowedDeviceIds ? ctrlAllowedDeviceIds.has(String(d.id)) : false;
 
                   const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
@@ -2742,21 +2734,11 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                             <input
                               type="checkbox"
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || homeVisibleSave.status === 'saving'}
+                              disabled={!connected || homeVisibleSave.status === 'saving' || allowlistSave.status === 'saving' || mainAllowlistLocked}
                               checked={isHome}
                               onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
                             />
-                            Home Visible
-                          </label>
-                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                            <input
-                              type="checkbox"
-                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || allowlistSave.status === 'saving' || mainAllowlistLocked}
-                              checked={isMainAllowed}
-                              onChange={(e) => setMainAllowed(d.id, e.target.checked)}
-                            />
-                            Home Control
+                            Home
                           </label>
                           <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
                             <input
@@ -2764,7 +2746,7 @@ const ConfigPanel = ({ config: configProp, statuses: statusesProp, connected: co
                               className={`h-5 w-5 ${scheme.checkboxAccent}`}
                               disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
                               checked={isCtrlAllowed}
-                              onChange={(e) => setCtrlAllowed(d.id, e.target.checked)}
+                              onChange={(e) => setControlsAllowed(d.id, e.target.checked)}
                             />
                             Controls
                           </label>
