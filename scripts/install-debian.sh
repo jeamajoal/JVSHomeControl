@@ -181,6 +181,17 @@ ensure_user() {
     "${APP_USER}"
 }
 
+get_directory_entries() {
+  # Helper function to get directory entries including hidden files
+  # Usage: local -a entries; get_directory_entries "/path/to/dir" entries
+  local dir="$1"
+  local -n result_array="$2"
+  
+  shopt -s dotglob nullglob
+  result_array=("${dir}"/*)
+  shopt -u dotglob nullglob
+}
+
 ensure_repo() {
   /usr/bin/mkdir -p "${APP_DIR}"
   /usr/bin/chown -R "${APP_USER}:${APP_GROUP}" "${APP_DIR}"
@@ -231,10 +242,8 @@ ensure_repo() {
     sudo -u "${APP_USER}" -H bash -lc "cd '${APP_DIR}' && git fetch --prune origin && git checkout -B '${REPO_BRANCH}' 'origin/${REPO_BRANCH}' && git reset --hard 'origin/${REPO_BRANCH}' && git clean -fd"
   else
     # Not a valid git repo - check if directory has contents that need to be handled
-    shopt -s dotglob nullglob
     local entries
-    entries=("${APP_DIR}"/*)
-    shopt -u dotglob nullglob
+    get_directory_entries "${APP_DIR}" entries
 
     if (( ${#entries[@]} > 0 )); then
       # Directory is not empty - determine if contents are safe to remove
@@ -269,14 +278,14 @@ ensure_repo() {
         if (( has_git_dir == 1 )); then
           die "Directory '${APP_DIR}' contains a .git directory but is not a valid git repository (possibly corrupted or incomplete).
 Please remove the directory contents manually:
-  sudo rm -rf '${APP_DIR}'/* '${APP_DIR}'/.* 2>/dev/null || true
+  sudo find '${APP_DIR}' -mindepth 1 -delete
   sudo rmdir '${APP_DIR}' 2>/dev/null || true
 Then re-run this script."
         else
           die "Directory '${APP_DIR}' exists but is not a git repository and contains files that cannot be automatically removed.
 Found files/directories: ${entries[*]}
 Please manually move or remove the contents:
-  sudo rm -rf '${APP_DIR}'/* '${APP_DIR}'/.* 2>/dev/null || true
+  sudo find '${APP_DIR}' -mindepth 1 -delete
   sudo rmdir '${APP_DIR}' 2>/dev/null || true
 Then re-run this script."
         fi
@@ -284,9 +293,7 @@ Then re-run this script."
     fi
 
     # Double-check directory is empty before cloning (defensive check)
-    shopt -s dotglob nullglob
-    entries=("${APP_DIR}"/*)
-    shopt -u dotglob nullglob
+    get_directory_entries "${APP_DIR}" entries
     
     if (( ${#entries[@]} > 0 )); then
       die "Directory '${APP_DIR}' is not empty after cleanup. This should not happen.
