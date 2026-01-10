@@ -234,7 +234,7 @@ ensure_repo() {
     log "Initializing git repository in ${APP_DIR}…"
     
     # If there's an invalid .git directory, remove it
-    if [[ -e "${APP_DIR}/.git" ]]; then
+    if [[ -d "${APP_DIR}/.git" ]]; then
       warn "Removing invalid .git directory…"
       /usr/bin/rm -rf "${APP_DIR}/.git" || true
     fi
