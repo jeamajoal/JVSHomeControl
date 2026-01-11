@@ -417,6 +417,10 @@ const RTSP_HLS_DEBUG = (() => {
 
 // ffmpeg error detection keywords
 const FFMPEG_ERROR_KEYWORDS = ['error', 'failed', 'invalid', 'unable', 'cannot', 'refused', 'timeout'];
+// ffmpeg progress line pattern (matches frame=, fps=, speed=, etc. at start or with preceding space)
+const FFMPEG_PROGRESS_LINE_REGEX = /^(frame=|fps=|speed=|size=|time=|bitrate=|dup=|drop=)|\s(fps=|speed=|bitrate=)/;
+// Maximum stderr lines to show in diagnostic logs
+const MAX_STDERR_LINES_TO_LOG = 10;
 
 // Health monitoring and recovery configuration
 const RTSP_HLS_HEALTH_CHECK_INTERVAL_MS = (() => {
@@ -698,9 +702,8 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
             if (!lines.length) return;
             for (const line of lines) {
-                // ffmpeg progress lines typically contain these patterns
-                // Match at start (^) or with preceding whitespace (\s)
-                const isProgressLine = /^(frame=|fps=|speed=|size=|time=|bitrate=|dup=|drop=)|\s(fps=|speed=|bitrate=)/.test(line);
+                // Check if this is an ffmpeg progress line
+                const isProgressLine = FFMPEG_PROGRESS_LINE_REGEX.test(line);
                 
                 // Store all lines in tail for reference
                 state.stderrTail.push(line);
@@ -842,10 +845,10 @@ function attemptRestartHlsStream(cameraId) {
                 state.errorLines.forEach(line => console.error(`  ${line}`));
             } else {
                 // If no specific errors captured, log last stderr lines
-                const stderrCount = Math.min(10, state.stderrTail?.length || 0);
+                const stderrCount = Math.min(MAX_STDERR_LINES_TO_LOG, state.stderrTail?.length || 0);
                 console.error(`HLS stream ${id} no specific errors captured. Recent stderr (last ${stderrCount} lines):`);
                 if (state.stderrTail && state.stderrTail.length > 0) {
-                    const recentLines = state.stderrTail.slice(-10);
+                    const recentLines = state.stderrTail.slice(-MAX_STDERR_LINES_TO_LOG);
                     recentLines.forEach(line => console.error(`  ${line}`));
                 }
             }
