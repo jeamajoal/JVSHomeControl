@@ -695,21 +695,16 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
             if (!lines.length) return;
             for (const line of lines) {
-                // ffmpeg progress lines start with "frame=" or match progress pattern
-                const isProgressLine = /^frame=\s*\d+/.test(line);
+                // ffmpeg progress lines typically contain these patterns (alone or combined)
+                const isProgressLine = /^(frame=|fps=|speed=|size=|time=|bitrate=|dup=|drop=)|\s(fps=|speed=|bitrate=)\s/.test(line);
                 
                 // Store all lines in tail for reference
                 state.stderrTail.push(line);
                 
                 // Separately track actual error/warning messages
                 const lineLower = line.toLowerCase();
-                const isErrorLine = lineLower.includes('error') || 
-                                   lineLower.includes('failed') || 
-                                   lineLower.includes('invalid') ||
-                                   lineLower.includes('unable') ||
-                                   lineLower.includes('cannot') ||
-                                   lineLower.includes('refused') ||
-                                   lineLower.includes('timeout');
+                const errorKeywords = ['error', 'failed', 'invalid', 'unable', 'cannot', 'refused', 'timeout'];
+                const isErrorLine = errorKeywords.some(keyword => lineLower.includes(keyword));
                 
                 if (isErrorLine && !isProgressLine) {
                     state.errorLines.push(line);
