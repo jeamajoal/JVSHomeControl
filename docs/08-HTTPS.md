@@ -91,5 +91,6 @@ Optional tuning env vars:
 - `RTSP_HLS_OUTPUT_FPS` (default `15`, clamp `1..60`) — forces a constant output FPS to avoid HLS stalls from broken RTSP timestamps
 - `RTSP_HLS_STARTUP_TIMEOUT_MS` (default `15000`, clamp `2000..60000`)
 - `RTSP_HLS_CRF` (default `20`, lower = higher quality)
-- `RTSP_HLS_GOP` (default `segmentSeconds * 25`)
 - `RTSP_HLS_RTSP_TRANSPORT` (default: `tcp`, options: `tcp` or `udp`)
+
+**Note:** `RTSP_HLS_GOP` is no longer configurable; the stable ffmpeg command uses a fixed GOP size of 30 frames.

@@ -2340,7 +2340,7 @@ app.get('/api/cameras/:id/hls/ensure', async (req, res) => {
                 return 'The RTSP stream appears to be MJPEG over RTP with invalid/missing JPEG quantization tables (often caused by packet loss on UDP or a camera profile issue). Try RTSP over TCP and/or switch to an H.264 RTSP URL/profile.';
             }
             if (/Could not find codec parameters/i.test(stderrText) || /unspecified size/i.test(stderrText)) {
-                return 'ffmpeg could not determine the video dimensions during probe. Try increasing RTSP_HLS_PROBESIZE/RTSP_HLS_ANALYZEDURATION and prefer RTSP over TCP.';
+                return 'ffmpeg could not determine the video dimensions during probe. Verify the RTSP URL is correct and accessible, and prefer RTSP over TCP.';
             }
             return null;
         })();
