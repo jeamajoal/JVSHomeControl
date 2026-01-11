@@ -678,6 +678,7 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         totalRestarts,
         streamUrl,
         ffmpegPath,
+        maxAttemptsLogged: false, // Track if we've logged the max attempts message
     };
     hlsStreams.set(id, state);
 
@@ -694,7 +695,8 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             for (const line of lines) {
                 state.stderrTail.push(line);
                 // Log ffmpeg errors to journal (filter out common noise)
-                if (RTSP_HLS_DEBUG || line.toLowerCase().includes('error') || line.toLowerCase().includes('failed')) {
+                const lineLower = line.toLowerCase();
+                if (RTSP_HLS_DEBUG || lineLower.includes('error') || lineLower.includes('failed')) {
                     console.error(`HLS ffmpeg stderr (${id}): ${line}`);
                 }
             }
@@ -806,7 +808,7 @@ function attemptRestartHlsStream(cameraId) {
     // Check if we've exceeded max restart attempts
     if (state.restartAttempts >= RTSP_HLS_MAX_RESTART_ATTEMPTS) {
         // Only log once when first reaching the limit
-        if (state.restartAttempts === RTSP_HLS_MAX_RESTART_ATTEMPTS) {
+        if (!state.maxAttemptsLogged) {
             console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
             // Log the last error to help diagnose the issue
             if (state.lastError) {
@@ -817,10 +819,9 @@ function attemptRestartHlsStream(cameraId) {
                 const recentLines = state.stderrTail.slice(-10);
                 recentLines.forEach(line => console.error(`  ${line}`));
             }
+            state.maxAttemptsLogged = true;
         }
         state.healthStatus = 'dead';
-        // Increment to prevent re-logging
-        state.restartAttempts = RTSP_HLS_MAX_RESTART_ATTEMPTS + 1;
         return false;
     }
     
@@ -890,6 +891,7 @@ function performHealthCheck() {
                     state.restartAttempts = 0;
                     state.currentBackoffMs = RTSP_HLS_RESTART_BACKOFF_MS;
                     state.healthStatus = 'healthy';
+                    state.maxAttemptsLogged = false;
                 }
             }
             
