@@ -667,6 +667,8 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         ffmpeg: cp,
         lastError: null,
         stderrTail: [],
+        errorLines: [], // Separate buffer for actual error messages (not progress)
+        exitCode: null,
         startedAtMs: Date.now(),
         ffmpegArgs: args,
         // Enhanced state tracking for health monitoring
@@ -693,10 +695,26 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             const lines = s.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
             if (!lines.length) return;
             for (const line of lines) {
+                // ffmpeg progress lines start with "frame=" or match progress pattern
+                const isProgressLine = /^frame=\s*\d+/.test(line);
+                
+                // Store all lines in tail for reference
                 state.stderrTail.push(line);
-                // Log ffmpeg errors to journal (filter out common noise)
+                
+                // Separately track actual error/warning messages
                 const lineLower = line.toLowerCase();
-                if (RTSP_HLS_DEBUG || lineLower.includes('error') || lineLower.includes('failed')) {
+                const isErrorLine = lineLower.includes('error') || 
+                                   lineLower.includes('failed') || 
+                                   lineLower.includes('invalid') ||
+                                   lineLower.includes('unable') ||
+                                   lineLower.includes('cannot') ||
+                                   lineLower.includes('refused') ||
+                                   lineLower.includes('timeout');
+                
+                if (isErrorLine && !isProgressLine) {
+                    state.errorLines.push(line);
+                    console.error(`HLS ffmpeg stderr (${id}): ${line}`);
+                } else if (RTSP_HLS_DEBUG && !isProgressLine) {
                     console.error(`HLS ffmpeg stderr (${id}): ${line}`);
                 }
             }
@@ -704,9 +722,13 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
             if (state.stderrTail.length > 60) {
                 state.stderrTail = state.stderrTail.slice(-60);
             }
+            if (state.errorLines.length > 30) {
+                state.errorLines = state.errorLines.slice(-30);
+            }
             state.lastError = state.stderrTail[state.stderrTail.length - 1] || null;
         });
         cp.on('exit', (code) => {
+            state.exitCode = code;
             if (code && code !== 0) {
                 console.error(`HLS ffmpeg exited with code ${code} (camera ${id})`);
             }
@@ -810,15 +832,25 @@ function attemptRestartHlsStream(cameraId) {
         // Only log once when first reaching the limit
         if (!state.maxAttemptsLogged) {
             console.error(`HLS stream ${id} exceeded max restart attempts (${RTSP_HLS_MAX_RESTART_ATTEMPTS})`);
-            // Log the last error to help diagnose the issue
-            if (state.lastError) {
-                console.error(`HLS stream ${id} last error: ${state.lastError}`);
+            
+            // Log exit code if available
+            if (state.exitCode !== null && state.exitCode !== 0) {
+                console.error(`HLS stream ${id} ffmpeg exit code: ${state.exitCode}`);
             }
-            if (state.stderrTail && state.stderrTail.length > 0) {
-                console.error(`HLS stream ${id} recent stderr (last 10 lines):`);
-                const recentLines = state.stderrTail.slice(-10);
-                recentLines.forEach(line => console.error(`  ${line}`));
+            
+            // Log actual error messages (not progress output)
+            if (state.errorLines && state.errorLines.length > 0) {
+                console.error(`HLS stream ${id} error messages:`);
+                state.errorLines.forEach(line => console.error(`  ${line}`));
+            } else {
+                // If no specific errors captured, log last stderr lines
+                console.error(`HLS stream ${id} no specific errors captured. Recent stderr (last 10 lines):`);
+                if (state.stderrTail && state.stderrTail.length > 0) {
+                    const recentLines = state.stderrTail.slice(-10);
+                    recentLines.forEach(line => console.error(`  ${line}`));
+                }
             }
+            
             state.maxAttemptsLogged = true;
         }
         state.healthStatus = 'dead';
