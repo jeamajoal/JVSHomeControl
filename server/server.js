@@ -849,7 +849,7 @@ function attemptRestartHlsStream(cameraId) {
                 // If no specific errors captured, log last stderr lines
                 const stderrCount = Math.min(MAX_STDERR_LINES_TO_LOG, state.stderrTail.length);
                 console.error(`HLS stream ${id} no specific errors captured. Recent stderr (last ${stderrCount} lines):`);
-                const recentLines = state.stderrTail.slice(-MAX_STDERR_LINES_TO_LOG);
+                const recentLines = state.stderrTail.slice(-stderrCount);
                 recentLines.forEach(line => console.error(`  ${line}`));
             } else {
                 console.error(`HLS stream ${id} no error information available (stderr empty)`);
