@@ -912,9 +912,9 @@ function performHealthCheck() {
                 
                 // Attempt restart only if not already in terminal 'dead' state with max attempts exceeded
                 // Allow one call at the limit to trigger error logging, then stop if logged
-                const shouldAttemptRestart = state.healthStatus !== 'dead' || 
-                    (state.restartAttempts <= RTSP_HLS_MAX_RESTART_ATTEMPTS && !state.maxAttemptsLogged);
-                if (shouldAttemptRestart) {
+                const isNotDead = state.healthStatus !== 'dead';
+                const canStillAttempt = state.restartAttempts <= RTSP_HLS_MAX_RESTART_ATTEMPTS && !state.maxAttemptsLogged;
+                if (isNotDead || canStillAttempt) {
                     attemptRestartHlsStream(cameraId);
                 }
             }
