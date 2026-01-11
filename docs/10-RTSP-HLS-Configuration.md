@@ -16,12 +16,12 @@ The server includes built-in RTSP-to-HLS transcoding using ffmpeg, which convert
 | `RTSP_HLS_SEGMENT_SECONDS` | `2` | 1-6 | Duration of each HLS segment in seconds |
 | `RTSP_HLS_LIST_SIZE` | `6` | 3-20 | Number of segments to keep in playlist |
 | `RTSP_HLS_OUTPUT_FPS` | `15` | 1-60 | Output framerate (forces constant framerate) |
-| `RTSP_HLS_PROBESIZE` | `10M` | - | Initial probe size for stream analysis |
-| `RTSP_HLS_ANALYZEDURATION` | `10M` | - | Duration to analyze stream parameters |
 | `RTSP_HLS_RTSP_TRANSPORT` | `tcp` | tcp/udp | RTSP transport protocol (TCP is recommended) |
 | `RTSP_HLS_STARTUP_TIMEOUT_MS` | `15000` | 2000-60000 | Timeout for initial stream startup |
 | `RTSP_HLS_DEBUG` | `false` | - | Enable debug output for ffmpeg |
 | `FFMPEG_PATH` | `ffmpeg` | - | Path to ffmpeg binary |
+
+**Note:** `RTSP_HLS_PROBESIZE` and `RTSP_HLS_ANALYZEDURATION` are no longer used in the current stable ffmpeg command but remain available for future use.
 
 ## Health Monitoring & Auto-Recovery
 

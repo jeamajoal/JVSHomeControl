@@ -13,8 +13,6 @@ const {
     RTSP_HLS_SEGMENT_SECONDS,
     RTSP_HLS_LIST_SIZE,
     RTSP_HLS_OUTPUT_FPS,
-    RTSP_HLS_PROBESIZE,
-    RTSP_HLS_ANALYZEDURATION,
     RTSP_HLS_RTSP_TRANSPORT,
     RTSP_HLS_STARTUP_TIMEOUT_MS,
     RTSP_HLS_DEBUG,
@@ -194,19 +192,16 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         };
     }
 
-    // Good defaults for compatibility and quality.
-    // - Generate sane timestamps even if the RTSP source has broken/non-monotonic PTS.
-    // - Transcode to H.264 yuv420p for broad playback support.
-    // - Use small segments/list size to keep latency reasonable.
+    // Stable command for RTSP to HLS transcoding.
+    // - Uses loglevel and stats for better diagnostics.
+    // - Timeout prevents hanging on connection issues.
+    // - vsync cfr ensures constant frame rate for reliable segmentation.
+    // - independent_segments and program_date_time improve HLS compatibility.
     const args = [
-        '-y',
-        // Make RTSP sources with bad/missing timestamps behave.
-        '-fflags', '+genpts+discardcorrupt',
-        '-use_wallclock_as_timestamps', '1',
-        '-avoid_negative_ts', 'make_zero',
-        '-analyzeduration', String(RTSP_HLS_ANALYZEDURATION),
-        '-probesize', String(RTSP_HLS_PROBESIZE),
+        '-loglevel', 'level+info',
+        '-stats',
         '-rtsp_transport', RTSP_HLS_RTSP_TRANSPORT,
+        '-timeout', '5000000',
         '-i', streamUrl,
         '-an',
         '-sn',
@@ -216,17 +211,15 @@ function startHlsStream(cameraId, streamUrl, ffmpegPath) {
         '-preset', 'veryfast',
         '-crf', String(process.env.RTSP_HLS_CRF || '20'),
         '-pix_fmt', 'yuv420p',
-        // Force timestamps to advance consistently for HLS.
         '-r', String(RTSP_HLS_OUTPUT_FPS),
-        '-g', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
-        '-keyint_min', String(process.env.RTSP_HLS_GOP || (RTSP_HLS_SEGMENT_SECONDS * 25)),
+        '-vsync', 'cfr',
+        '-g', '30',
+        '-keyint_min', '30',
         '-sc_threshold', '0',
-        // Force periodic keyframes so HLS segments/playlist appear quickly.
-        '-force_key_frames', `expr:gte(t,n_forced*${RTSP_HLS_SEGMENT_SECONDS})`,
         '-f', 'hls',
         '-hls_time', String(RTSP_HLS_SEGMENT_SECONDS),
         '-hls_list_size', String(RTSP_HLS_LIST_SIZE),
-        '-hls_flags', 'delete_segments+append_list+omit_endlist',
+        '-hls_flags', 'delete_segments+independent_segments+program_date_time+omit_endlist',
         '-hls_segment_filename', segmentPattern,
         playlistPath,
     ];
