@@ -33,6 +33,7 @@ The UI is intentionally conservative about device control.
 	- Built-in preset profiles (e.g., "Neon Glass", "Stealth Slate", etc.) are shipped with the server and automatically available.
 	- User-defined custom profiles can be persisted under `ui.panelProfiles[panelName]`.
 	- The client merges global defaults + the selected panel profile.
+	- Shipped presets (Neon Glass, Stealth Slate, etc.) are built-in and injected at runtime by the server. Set `ui.panelProfiles` to add or override user-defined profiles only.
 - **Visible rooms per panel** (optional):
 	- Persisted key: `ui.visibleRoomIds` (and per panel: `ui.panelProfiles[panelName].visibleRoomIds`)
 	- If the list is empty, it means “show all rooms”.

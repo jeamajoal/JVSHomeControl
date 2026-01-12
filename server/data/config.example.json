@@ -54,6 +54,7 @@
     "deviceLabelOverrides": {},
     "deviceCommandAllowlist": {},
     "panelProfiles": {},
+    "_comment_panelProfiles": "Shipped presets (Neon Glass, Stealth Slate, etc.) are built-in and injected at runtime. Set ui.panelProfiles to add or override user-defined profiles only.",
     "mainAllowedDeviceIds": [],
     "ctrlAllowedDeviceIds": []
   },

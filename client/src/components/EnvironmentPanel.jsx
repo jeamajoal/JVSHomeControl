@@ -984,6 +984,28 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return { enabled: true, url, opacityPct };
   }, [config?.ui?.homeBackground]);
 
+  // Track background image load errors for graceful fallback
+  const [backgroundImageError, setBackgroundImageError] = useState(false);
+
+  // Reset error state and preload image when URL changes
+  useEffect(() => {
+    setBackgroundImageError(false);
+    
+    if (!homeBackground.enabled || !homeBackground.url) return;
+
+    // Preload image and detect errors using Image constructor
+    const img = new Image();
+    img.onerror = () => {
+      setBackgroundImageError(true);
+    };
+    img.src = homeBackground.url;
+
+    return () => {
+      // Clean up by removing event handler
+      img.onerror = null;
+    };
+  }, [homeBackground.enabled, homeBackground.url]);
+
   const cardScalePct = useMemo(() => {
     const raw = Number(config?.ui?.cardScalePct);
     if (!Number.isFinite(raw)) return 100;
@@ -1293,6 +1315,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
           icon={Clock}
           accentClassName="border-white/10"
+          iconWrapClassName="bg-white/5"
           uiScheme={resolvedUiScheme}
           primaryTextColorClassName={primaryTextColorClass}
           secondaryTextClassName={secondaryTextColorClass}
@@ -1358,6 +1381,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           subClassName={`mt-2 text-[13px] jvs-secondary-text ${secondaryTextColorClass}`.trim()}
           icon={Cloud}
           accentClassName="border-white/10"
+          iconWrapClassName="bg-white/5"
           valueClassName={getColorizedValueClass('temperature', outsideTempForValue, climateTolerances, climateToleranceColors, colorizeHomeValues)}
           valueStyle={getColorizeOpacityStyle(colorizeHomeValues, colorizeHomeValuesOpacityPct)}
           uiScheme={resolvedUiScheme}
@@ -1414,6 +1438,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
           }
           subClassName={`mt-1 text-[13px] jvs-secondary-text truncate ${secondaryTextColorClass}`.trim()}
           icon={Activity}
+          iconWrapClassName="bg-white/5"
           accentClassName={
             connected
               ? ((overall.motionActive || overall.doorOpen) ? `${resolvedUiScheme.selectedCard}` : 'border-white/10')
@@ -1463,7 +1488,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
 
   return (
     <div ref={viewportRef} className="relative w-full h-full overflow-auto p-2 md:p-3">
-      {homeBackground.enabled && homeBackground.url ? (
+      {homeBackground.enabled && homeBackground.url && !backgroundImageError ? (
         <div
           className="fixed inset-0 z-0 pointer-events-none"
           style={{
