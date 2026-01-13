@@ -2531,6 +2531,8 @@ const ConfigPanel = ({
     return discoveredDevices || allDevices;
   }, [discoveredDevices, allDevices]);
 
+  const allDeviceIds = useMemo(() => allDevices.map((x) => String(x.id)), [allDevices]);
+
   useEffect(() => {
     if (!selectedDeviceIdForEdit) return;
     if (!allDevices.some((d) => String(d?.id) === String(selectedDeviceIdForEdit))) {
