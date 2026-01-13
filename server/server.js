@@ -421,7 +421,8 @@ function getUiAllowedDeviceIdsUnion() {
 function getAllowedPanelDeviceCommands() {
     const cfg = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
     const cfgExtra = Array.isArray(cfg.extraAllowedPanelDeviceCommands) ? cfg.extraAllowedPanelDeviceCommands : [];
-    const envExtra = parseCommaList(process.env.UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS);
+    const envExtraRaw = parseCommaList(process.env.UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS);
+    const envExtra = envExtraRaw.slice(0, 128);
 
     const cleanedExtra = [...cfgExtra, ...envExtra]
         .map((v) => String(v || '').trim())
