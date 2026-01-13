@@ -55,6 +55,22 @@ async function saveHomeVisibleDeviceIds(homeVisibleDeviceIds, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveCtrlVisibleDeviceIds(ctrlVisibleDeviceIds, panelName) {
+  const res = await fetch(`${API_HOST}/api/ui/ctrl-visible-device-ids`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ctrlVisibleDeviceIds: Array.isArray(ctrlVisibleDeviceIds) ? ctrlVisibleDeviceIds : [],
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Controls visible devices save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveDeviceOverrides(payload) {
   const res = await fetch(`${API_HOST}/api/ui/device-overrides`, {
     method: 'PUT',
@@ -64,6 +80,19 @@ async function saveDeviceOverrides(payload) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Device override save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+async function saveDeviceControlStyles(deviceControlStyles) {
+  const res = await fetch(`${API_HOST}/api/ui/device-control-styles`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceControlStyles: deviceControlStyles || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Device control styles save failed (${res.status})`);
   }
   return res.json().catch(() => ({}));
 }
@@ -105,17 +134,6 @@ async function fetchSoundFiles() {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Sounds fetch failed (${res.status})`);
-  }
-  const data = await res.json().catch(() => ({}));
-  const files = Array.isArray(data?.files) ? data.files : [];
-  return files.map((v) => String(v)).filter(Boolean);
-}
-
-async function fetchBackgroundFiles() {
-  const res = await fetch(`${API_HOST}/api/backgrounds`);
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Backgrounds fetch failed (${res.status})`);
   }
   const data = await res.json().catch(() => ({}));
   const files = Array.isArray(data?.files) ? data.files : [];
@@ -198,22 +216,6 @@ async function saveColorizeHomeValues(payload) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Colorize Home values save failed (${res.status})`);
-  }
-  return res.json().catch(() => ({}));
-}
-
-async function saveHomeBackground(homeBackground, panelName) {
-  const res = await fetch(`${API_HOST}/api/ui/home-background`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      homeBackground: homeBackground || {},
-      ...(panelName ? { panelName } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Home background save failed (${res.status})`);
   }
   return res.json().catch(() => ({}));
 }
@@ -512,62 +514,6 @@ async function saveCameraPreviews(payload, panelName) {
   return res.json().catch(() => ({}));
 }
 
-async function saveVisibleCameraIds(visibleCameraIds, panelName) {
-  const res = await fetch(`${API_HOST}/api/ui/visible-camera-ids`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      visibleCameraIds: Array.isArray(visibleCameraIds) ? visibleCameraIds : [],
-      ...(panelName ? { panelName } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Visible cameras save failed (${res.status})`);
-  }
-  return res.json().catch(() => ({}));
-}
-
-async function saveRoomCameraIds(roomId, cameraIds, panelName) {
-  const res = await fetch(`${API_HOST}/api/ui/room-camera-ids`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      roomId,
-      cameraIds: Array.isArray(cameraIds) ? cameraIds : [],
-      ...(panelName ? { panelName } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Room cameras save failed (${res.status})`);
-  }
-  return res.json().catch(() => ({}));
-}
-
-async function saveTopCameras(cameraIds, size, panelName) {
-  const payload = {
-    ...(Array.isArray(cameraIds) ? { cameraIds } : {}),
-    ...(size ? { size } : {}),
-    ...(panelName ? { panelName } : {}),
-  };
-
-  const res = await fetch(`${API_HOST}/api/ui/top-cameras`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Top cameras save failed (${res.status})`);
-  }
-
-  return res.json();
-}
-
 async function fetchUiCameras() {
   const res = await fetch(`${API_HOST}/api/ui/cameras`);
   if (!res.ok) {
@@ -768,8 +714,6 @@ const ConfigPanel = ({
 
   const [soundFiles, setSoundFiles] = useState([]);
   const [soundFilesError, setSoundFilesError] = useState(null);
-  const [backgroundFiles, setBackgroundFiles] = useState([]);
-  const [backgroundFilesError, setBackgroundFilesError] = useState(null);
   const [openMeteoDraft, setOpenMeteoDraft] = useState(() => ({ lat: '', lon: '', timezone: 'auto' }));
   const [openMeteoDirty, setOpenMeteoDirty] = useState(false);
   const [openMeteoError, setOpenMeteoError] = useState(null);
@@ -797,15 +741,31 @@ const ConfigPanel = ({
 
   const [activeTab, setActiveTab] = useState('display');
 
+  useEffect(() => {
+    // Panel profile selection is only relevant on non-Global tabs.
+    // If no profile is selected, pick the first available profile.
+    if (activeTab === 'display' || activeTab === 'deviceOptions') return;
+    if (selectedPanelName) return;
+    if (!panelNames.length) return;
+    if (ctx?.setPanelName) ctx.setPanelName(panelNames[0]);
+  }, [activeTab, selectedPanelName, panelNames, ctx]);
+
   const TABS = [
-    { id: 'display', label: 'Display' },
-    { id: 'appearance', label: 'Appearance' },
-    { id: 'cameras', label: 'Cameras' },
-    { id: 'sounds', label: 'Sounds' },
+    { id: 'display', label: 'Global Options' },
+    { id: 'deviceOptions', label: 'Device Options' },
+    { id: 'appearance', label: 'Panel Options' },
     { id: 'climate', label: 'Climate' },
-    { id: 'devices', label: 'Devices' },
     { id: 'events', label: 'Events' },
   ];
+
+  useEffect(() => {
+    // Back-compat for older builds that left the settings UI on removed tabs.
+    if (activeTab === 'sounds' || activeTab === 'cameras') {
+      setActiveTab('display');
+    } else if (activeTab === 'devices') {
+      setActiveTab('deviceOptions');
+    }
+  }, [activeTab]);
 
   const accentColorId = String(config?.ui?.accentColorId || 'neon-blue');
   const scheme = getUiScheme(accentColorId);
@@ -814,6 +774,11 @@ const ConfigPanel = ({
     const ids = payload && typeof payload === 'object' ? payload.homeVisibleDeviceIds : [];
     const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
     return saveHomeVisibleDeviceIds(ids, panelName);
+  });
+  const ctrlVisibleSave = useAsyncSave((payload) => {
+    const ids = payload && typeof payload === 'object' ? payload.ctrlVisibleDeviceIds : [];
+    const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
+    return saveCtrlVisibleDeviceIds(ids, panelName);
   });
   const allowlistSave = useAsyncSave((payload) => {
     const main = payload && typeof payload === 'object' && Array.isArray(payload.mainAllowedDeviceIds) 
@@ -844,7 +809,6 @@ const ConfigPanel = ({
   const accentColorSave = useAsyncSave((nextAccentColorId) => saveAccentColorId(nextAccentColorId, selectedPanelName || null));
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
-  const homeBackgroundSave = useAsyncSave((homeBackground) => saveHomeBackground(homeBackground, selectedPanelName || null));
   const cardOpacitySave = useAsyncSave((cardOpacityScalePct) => saveCardOpacityScalePct(cardOpacityScalePct, selectedPanelName || null));
   const blurScaleSave = useAsyncSave((blurScalePct) => saveBlurScalePct(blurScalePct, selectedPanelName || null));
   const secondaryTextOpacitySave = useAsyncSave((secondaryTextOpacityPct) => saveSecondaryTextOpacityPct(secondaryTextOpacityPct, selectedPanelName || null));
@@ -858,16 +822,12 @@ const ConfigPanel = ({
   const iconOpacitySave = useAsyncSave((iconOpacityPct) => saveIconOpacityPct(iconOpacityPct, selectedPanelName || null));
   const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
+  const deviceControlStylesSave = useAsyncSave((deviceControlStyles) => saveDeviceControlStyles(deviceControlStyles));
   const homeTopRowSave = useAsyncSave((payload) => saveHomeTopRow(payload, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const homeRoomMetricColsSave = useAsyncSave((homeRoomMetricColumns) => saveHomeRoomMetricColumns(homeRoomMetricColumns, selectedPanelName || null));
   const homeRoomMetricKeysSave = useAsyncSave((homeRoomMetricKeys) => saveHomeRoomMetricKeys(homeRoomMetricKeys, selectedPanelName || null));
   const cameraPreviewsSave = useAsyncSave((payload) => saveCameraPreviews(payload, selectedPanelName || null));
-  const visibleCamerasSave = useAsyncSave((visibleCameraIds) => saveVisibleCameraIds(visibleCameraIds, selectedPanelName || null));
-  const topCamerasSave = useAsyncSave((payload) => {
-    const next = (payload && typeof payload === 'object') ? payload : {};
-    return saveTopCameras(next.cameraIds, next.size, selectedPanelName || null);
-  });
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -1127,6 +1087,18 @@ const ConfigPanel = ({
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [baseConfig?.ui?.cardScalePct]);
 
+  const globalSwitchControlStyleFromConfig = useMemo(() => {
+    const raw = String(baseConfig?.ui?.deviceControlStyles?.switch?.controlStyle ?? '').trim().toLowerCase();
+    if (raw === 'auto' || raw === 'buttons' || raw === 'switch') return raw;
+    return 'auto';
+  }, [baseConfig?.ui?.deviceControlStyles?.switch?.controlStyle]);
+
+  const globalSwitchAnimationStyleFromConfig = useMemo(() => {
+    const raw = String(baseConfig?.ui?.deviceControlStyles?.switch?.animationStyle ?? '').trim().toLowerCase();
+    if (raw === 'none' || raw === 'pulse') return raw;
+    return 'none';
+  }, [baseConfig?.ui?.deviceControlStyles?.switch?.animationStyle]);
+
   const homeTopRowEnabledFromConfig = config?.ui?.homeTopRowEnabled !== false;
 
   const homeTopRowScaleFromConfig = useMemo(() => {
@@ -1175,27 +1147,6 @@ const ConfigPanel = ({
       : ['temperature', 'humidity', 'illuminance'];
     return Array.from(new Set(raw.map((v) => String(v || '').trim()).filter((v) => allowed.has(v))));
   }, [config?.ui?.homeRoomMetricKeys]);
-
-  const camerasFromConfig = useMemo(
-    () => (Array.isArray(config?.ui?.cameras) ? config.ui.cameras : []),
-    [config?.ui?.cameras],
-  );
-
-  const visibleCameraIdsFromConfig = useMemo(() => {
-    const raw = Array.isArray(config?.ui?.visibleCameraIds) ? config.ui.visibleCameraIds : [];
-    return raw.map((v) => String(v || '').trim()).filter(Boolean);
-  }, [config?.ui?.visibleCameraIds]);
-
-  const topCameraIdsFromConfig = useMemo(() => {
-    const raw = Array.isArray(config?.ui?.topCameraIds) ? config.ui.topCameraIds : [];
-    return raw.map((v) => String(v || '').trim()).filter(Boolean);
-  }, [config?.ui?.topCameraIds]);
-
-  const topCameraSizeFromConfig = useMemo(() => {
-    const raw = String(config?.ui?.topCameraSize ?? '').trim().toLowerCase();
-    if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
-    return 'md';
-  }, [config?.ui?.topCameraSize]);
 
   const homeCameraPreviewsEnabledFromConfig = useMemo(
     () => config?.ui?.homeCameraPreviewsEnabled === true,
@@ -1295,6 +1246,14 @@ const ConfigPanel = ({
   const [globalCardScaleDirty, setGlobalCardScaleDirty] = useState(false);
   const [globalCardScaleError, setGlobalCardScaleError] = useState(null);
 
+  const [globalSwitchControlStyleDraft, setGlobalSwitchControlStyleDraft] = useState(() => 'auto');
+  const [globalSwitchControlStyleDirty, setGlobalSwitchControlStyleDirty] = useState(false);
+  const [globalSwitchControlStyleError, setGlobalSwitchControlStyleError] = useState(null);
+
+  const [globalSwitchAnimationStyleDraft, setGlobalSwitchAnimationStyleDraft] = useState(() => 'none');
+  const [globalSwitchAnimationStyleDirty, setGlobalSwitchAnimationStyleDirty] = useState(false);
+  const [globalSwitchAnimationStyleError, setGlobalSwitchAnimationStyleError] = useState(null);
+
   const [homeTopRowDraft, setHomeTopRowDraft] = useState(() => ({
     enabled: true,
     scalePct: 100,
@@ -1327,29 +1286,6 @@ const ConfigPanel = ({
   const [cameraPreviewsDirty, setCameraPreviewsDirty] = useState(false);
   const [cameraPreviewsError, setCameraPreviewsError] = useState(null);
 
-  const [visibleCameraIdsDraft, setVisibleCameraIdsDraft] = useState(() => ([]));
-  const [visibleCameraIdsDirty, setVisibleCameraIdsDirty] = useState(false);
-  const [visibleCameraIdsError, setVisibleCameraIdsError] = useState(null);
-
-  const homeBackgroundFromConfig = useMemo(() => {
-    const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
-      ? config.ui.homeBackground
-      : {};
-
-    const enabled = raw.enabled === true;
-    const url = (raw.url === null || raw.url === undefined) ? '' : String(raw.url);
-    const opacityRaw = Number(raw.opacityPct);
-    const opacityPct = Number.isFinite(opacityRaw)
-      ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
-      : 35;
-
-    return { enabled, url, opacityPct };
-  }, [config?.ui?.homeBackground]);
-
-  const [homeBackgroundDraft, setHomeBackgroundDraft] = useState(() => ({ enabled: false, url: '', opacityPct: 35 }));
-  const [homeBackgroundDirty, setHomeBackgroundDirty] = useState(false);
-  const [homeBackgroundError, setHomeBackgroundError] = useState(null);
-
   const [sensorColorsDraft, setSensorColorsDraft] = useState(() => ({ motion: 'warning', door: 'neon-red' }));
   const [sensorColorsDirty, setSensorColorsDirty] = useState(false);
   const [sensorColorsError, setSensorColorsError] = useState(null);
@@ -1361,13 +1297,6 @@ const ConfigPanel = ({
     setHomeValueOpacityDraft(homeValueOpacityFromConfig);
   }, [homeValueOpacityDirty, homeValueOpacityFromConfig]);
 
-  // When switching profiles, ensure the Home background editor reflects the selected profile.
-  useEffect(() => {
-    setHomeBackgroundError(null);
-    setHomeBackgroundDirty(false);
-    setHomeBackgroundDraft(homeBackgroundFromConfig);
-  }, [selectedPanelName]);
-
   // When switching profiles, ensure the camera preview editor reflects the selected profile.
   useEffect(() => {
     setCameraPreviewsError(null);
@@ -1377,13 +1306,6 @@ const ConfigPanel = ({
       controlsCameraPreviewsEnabled: controlsCameraPreviewsEnabledFromConfig,
       cameraPreviewRefreshSeconds: cameraPreviewRefreshSecondsFromConfig,
     });
-  }, [selectedPanelName]);
-
-  // When switching profiles, ensure the visible cameras editor reflects the selected profile.
-  useEffect(() => {
-    setVisibleCameraIdsError(null);
-    setVisibleCameraIdsDirty(false);
-    setVisibleCameraIdsDraft(visibleCameraIdsFromConfig);
   }, [selectedPanelName]);
 
   useEffect(() => {
@@ -1502,6 +1424,16 @@ const ConfigPanel = ({
   }, [globalCardScaleDirty, globalCardScaleFromConfig]);
 
   useEffect(() => {
+    if (globalSwitchControlStyleDirty) return;
+    setGlobalSwitchControlStyleDraft(globalSwitchControlStyleFromConfig);
+  }, [globalSwitchControlStyleDirty, globalSwitchControlStyleFromConfig]);
+
+  useEffect(() => {
+    if (globalSwitchAnimationStyleDirty) return;
+    setGlobalSwitchAnimationStyleDraft(globalSwitchAnimationStyleFromConfig);
+  }, [globalSwitchAnimationStyleDirty, globalSwitchAnimationStyleFromConfig]);
+
+  useEffect(() => {
     if (homeTopRowDirty) return;
     setHomeTopRowDraft({
       enabled: homeTopRowEnabledFromConfig,
@@ -1543,16 +1475,6 @@ const ConfigPanel = ({
     controlsCameraPreviewsEnabledFromConfig,
     cameraPreviewRefreshSecondsFromConfig,
   ]);
-
-  useEffect(() => {
-    if (visibleCameraIdsDirty) return;
-    setVisibleCameraIdsDraft(visibleCameraIdsFromConfig);
-  }, [visibleCameraIdsDirty, visibleCameraIdsFromConfig]);
-
-  useEffect(() => {
-    if (homeBackgroundDirty) return;
-    setHomeBackgroundDraft(homeBackgroundFromConfig);
-  }, [homeBackgroundDirty, homeBackgroundFromConfig]);
 
   useEffect(() => {
     if (climateDirty) return;
@@ -1984,6 +1906,39 @@ const ConfigPanel = ({
     return () => clearTimeout(t);
   }, [connected, globalCardScaleDirty, globalCardScaleDraft]);
 
+  // Autosave: Global switch control styles.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalSwitchControlStyleDirty && !globalSwitchAnimationStyleDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalSwitchControlStyleError(null);
+      setGlobalSwitchAnimationStyleError(null);
+      try {
+        await deviceControlStylesSave.run({
+          switch: {
+            controlStyle: globalSwitchControlStyleDraft,
+            animationStyle: globalSwitchAnimationStyleDraft,
+          },
+        });
+        setGlobalSwitchControlStyleDirty(false);
+        setGlobalSwitchAnimationStyleDirty(false);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        setGlobalSwitchControlStyleError(msg);
+        setGlobalSwitchAnimationStyleError(msg);
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [
+    connected,
+    globalSwitchControlStyleDirty,
+    globalSwitchAnimationStyleDirty,
+    globalSwitchControlStyleDraft,
+    globalSwitchAnimationStyleDraft,
+  ]);
+
   // Autosave: Home top row.
   useEffect(() => {
     if (!connected) return;
@@ -2090,42 +2045,6 @@ const ConfigPanel = ({
     return () => clearTimeout(t);
   }, [connected, homeRoomMetricKeysDirty, homeRoomMetricKeysDraft]);
 
-  // Autosave: Home background.
-  useEffect(() => {
-    if (!connected) return;
-    if (!homeBackgroundDirty) return;
-
-    const t = setTimeout(async () => {
-      setHomeBackgroundError(null);
-      try {
-        const trimmedUrl = String(homeBackgroundDraft.url || '').trim();
-        const enabled = homeBackgroundDraft.enabled === true;
-        const opacityRaw = Number(homeBackgroundDraft.opacityPct);
-        const opacityPct = Number.isFinite(opacityRaw)
-          ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
-          : 35;
-
-        // If enabled but missing URL, force-disable to avoid a save loop.
-        if (enabled && !trimmedUrl) {
-          setHomeBackgroundDraft((prev) => ({ ...prev, enabled: false }));
-          setHomeBackgroundError('Enter an image URL before enabling.');
-          setHomeBackgroundDirty(false);
-          return;
-        }
-
-        await homeBackgroundSave.run({
-          enabled,
-          url: trimmedUrl || null,
-          opacityPct,
-        });
-        setHomeBackgroundDirty(false);
-      } catch (e) {
-        setHomeBackgroundError(e?.message || String(e));
-      }
-    }, 700);
-
-    return () => clearTimeout(t);
-  }, [connected, homeBackgroundDirty, homeBackgroundDraft]);
 
   // Autosave: Camera previews.
   useEffect(() => {
@@ -2154,23 +2073,6 @@ const ConfigPanel = ({
     return () => clearTimeout(t);
   }, [connected, cameraPreviewsDirty, cameraPreviewsDraft]);
 
-  // Autosave: Visible cameras.
-  useEffect(() => {
-    if (!connected) return;
-    if (!visibleCameraIdsDirty) return;
-
-    const t = setTimeout(async () => {
-      setVisibleCameraIdsError(null);
-      try {
-        await visibleCamerasSave.run(Array.isArray(visibleCameraIdsDraft) ? visibleCameraIdsDraft : []);
-        setVisibleCameraIdsDirty(false);
-      } catch (e) {
-        setVisibleCameraIdsError(e?.message || String(e));
-      }
-    }, 650);
-
-    return () => clearTimeout(t);
-  }, [connected, visibleCameraIdsDirty, visibleCameraIdsDraft]);
 
   // Autosave: Home sensor indicator colors.
   useEffect(() => {
@@ -2338,24 +2240,6 @@ const ConfigPanel = ({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        setBackgroundFilesError(null);
-        const files = await fetchBackgroundFiles();
-        if (!cancelled) setBackgroundFiles(files);
-      } catch (e) {
-        if (!cancelled) setBackgroundFilesError(e?.message || String(e));
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
@@ -2363,32 +2247,102 @@ const ConfigPanel = ({
   const [deviceOverrideDrafts, setDeviceOverrideDrafts] = useState(() => ({}));
   const [deviceOverrideSaveState, setDeviceOverrideSaveState] = useState(() => ({}));
   const deviceOverrideTimersRef = useRef(new Map());
-  const UI_DEVICE_COMMANDS = useMemo(() => (['on', 'off', 'toggle', 'setLevel', 'refresh', 'push']), []);
+  const [selectedDeviceIdForEdit, setSelectedDeviceIdForEdit] = useState('');
+  // Commands are discovered per-device. Missing per-device allowlist means "allow all".
   const UI_HOME_METRICS = useMemo(() => (['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']), []);
 
   const [labelSaveState, setLabelSaveState] = useState(() => ({}));
   const labelSaveTimersRef = useRef(new Map());
 
   const homeVisibleDeviceIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.homeVisibleDeviceIds) ? config.ui.homeVisibleDeviceIds : [];
+    const uiObj = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const hasKey = Object.prototype.hasOwnProperty.call(uiObj, 'homeVisibleDeviceIds');
+    if (!hasKey) return null;
+    const ids = Array.isArray(uiObj.homeVisibleDeviceIds) ? uiObj.homeVisibleDeviceIds : [];
     const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
-    return cleaned.length ? new Set(cleaned) : null;
-  }, [config?.ui?.homeVisibleDeviceIds]);
+    return new Set(cleaned);
+  }, [config?.ui]);
+
+  const ctrlVisibleDeviceIds = useMemo(() => {
+    const uiObj = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
+    const hasKey = Object.prototype.hasOwnProperty.call(uiObj, 'ctrlVisibleDeviceIds');
+    if (!hasKey) return null;
+    const ids = Array.isArray(uiObj.ctrlVisibleDeviceIds) ? uiObj.ctrlVisibleDeviceIds : [];
+    const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
+    return new Set(cleaned);
+  }, [config?.ui]);
+
+  // Availability is a server-enforced global safety boundary. Even if panel profiles can override UI settings,
+  // the allowlists must always reflect the *global* server config.
+  const allowlistConfig = baseConfig ?? config;
 
   const mainAllowedDeviceIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.mainAllowedDeviceIds) ? config.ui.mainAllowedDeviceIds : [];
+    const ids = Array.isArray(allowlistConfig?.ui?.mainAllowedDeviceIds) ? allowlistConfig.ui.mainAllowedDeviceIds : [];
     const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
-    return cleaned.length ? new Set(cleaned) : null;
-  }, [config?.ui?.mainAllowedDeviceIds]);
+    return new Set(cleaned);
+  }, [allowlistConfig?.ui?.mainAllowedDeviceIds]);
 
   const ctrlAllowedDeviceIds = useMemo(() => {
-    const ids = Array.isArray(config?.ui?.ctrlAllowedDeviceIds) ? config.ui.ctrlAllowedDeviceIds : [];
+    const ids = Array.isArray(allowlistConfig?.ui?.ctrlAllowedDeviceIds) ? allowlistConfig.ui.ctrlAllowedDeviceIds : [];
     const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
-    return cleaned.length ? new Set(cleaned) : null;
-  }, [config?.ui?.ctrlAllowedDeviceIds]);
+    return new Set(cleaned);
+  }, [allowlistConfig?.ui?.ctrlAllowedDeviceIds]);
 
-  const mainAllowlistLocked = Boolean(config?.ui?.mainAllowlistLocked);
-  const ctrlAllowlistLocked = Boolean(config?.ui?.ctrlAllowlistLocked);
+  const [optimisticGlobalAllowedDeviceIds, setOptimisticGlobalAllowedDeviceIds] = useState(null);
+
+  useEffect(() => {
+    if (!(optimisticGlobalAllowedDeviceIds instanceof Set)) return;
+
+    // Clear optimistic overrides once the server-provided allowlists match the optimistic set.
+    // (Avoid clearing on mere reference churn of the merged config.)
+    const serverSet = new Set([
+      ...Array.from(mainAllowedDeviceIds),
+      ...Array.from(ctrlAllowedDeviceIds),
+    ].map((v) => String(v)));
+
+    if (serverSet.size !== optimisticGlobalAllowedDeviceIds.size) return;
+    for (const v of serverSet) {
+      if (!optimisticGlobalAllowedDeviceIds.has(v)) return;
+    }
+
+    setOptimisticGlobalAllowedDeviceIds(null);
+  }, [optimisticGlobalAllowedDeviceIds, mainAllowedDeviceIds, ctrlAllowedDeviceIds]);
+
+  const effectiveGlobalAllowedDeviceIds = useMemo(() => {
+    if (optimisticGlobalAllowedDeviceIds instanceof Set) return optimisticGlobalAllowedDeviceIds;
+    return new Set([
+      ...Array.from(mainAllowedDeviceIds),
+      ...Array.from(ctrlAllowedDeviceIds),
+    ].map((v) => String(v)));
+  }, [optimisticGlobalAllowedDeviceIds, mainAllowedDeviceIds, ctrlAllowedDeviceIds]);
+
+  const mainAllowlistLocked = Boolean(allowlistConfig?.ui?.mainAllowlistLocked);
+  const ctrlAllowlistLocked = Boolean(allowlistConfig?.ui?.ctrlAllowlistLocked);
+  const globalAvailabilityLocked = Boolean(mainAllowlistLocked || ctrlAllowlistLocked);
+
+  const discoveredDevices = useMemo(() => {
+    const raw = Array.isArray(config?.ui?.discoveredDevices) ? config.ui.discoveredDevices : null;
+    if (!raw) return null;
+
+    const devices = raw
+      .map((d) => {
+        const id = String(d?.id || '').trim();
+        if (!id) return null;
+
+        const label = String(d?.label || id);
+        const source = String(d?.source || '').trim();
+
+        return {
+          id,
+          label,
+          source,
+        };
+      })
+      .filter(Boolean);
+
+    devices.sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    return devices;
+  }, [config?.ui?.discoveredDevices]);
 
   const allDevices = useMemo(() => {
     const devices = (config?.sensors || [])
@@ -2399,12 +2353,14 @@ const ConfigPanel = ({
         const st = statuses?.[id] || null;
         const commands = Array.isArray(st?.commands) ? st.commands : [];
         const capabilities = Array.isArray(d?.capabilities) ? d.capabilities.map((c) => String(c || '').trim()).filter(Boolean) : [];
+        const source = String(d?.source || '').trim();
 
         return {
           id,
           label: String(d?.label || st?.label || id),
           commands: Array.from(new Set(commands.map((c) => String(c || '').trim()).filter(Boolean))),
           capabilities,
+          source,
         };
       })
       .filter(Boolean);
@@ -2412,6 +2368,24 @@ const ConfigPanel = ({
     devices.sort((a, b) => String(a.label).localeCompare(String(b.label)));
     return devices;
   }, [config?.sensors, statuses]);
+
+  const allDeviceIds = useMemo(() => {
+    return allDevices.map((x) => String(x.id));
+  }, [allDevices]);
+
+  const availabilityDevices = useMemo(() => {
+    // Prefer full discovered device catalog for Global Availability UI.
+    // Fall back to the currently-available device list if server doesn't provide it.
+    return discoveredDevices || allDevices;
+  }, [discoveredDevices, allDevices]);
+
+  useEffect(() => {
+    if (!selectedDeviceIdForEdit) return;
+    if (!allDevices.some((d) => String(d?.id) === String(selectedDeviceIdForEdit))) {
+      setSelectedDeviceIdForEdit('');
+    }
+  }, [allDevices, selectedDeviceIdForEdit]);
+
 
   const effectiveDeviceLabelOverrides = useMemo(() => {
     const v = config?.ui?.deviceLabelOverrides;
@@ -2438,7 +2412,8 @@ const ConfigPanel = ({
         const existing = next[id];
         const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
         const cmds = effectiveDeviceCommandAllowlist?.[id];
-        const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : [];
+        // Missing allowlist => inherit (allow all). Explicit empty array => allow none.
+        const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
         const hm = effectiveDeviceHomeMetricAllowlist?.[id];
         const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
 
@@ -2477,7 +2452,8 @@ const ConfigPanel = ({
         const hm = effectiveDeviceHomeMetricAllowlist?.[id];
         next[id] = {
           label,
-          commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : [],
+          // Missing allowlist => inherit (allow all). Explicit empty array => allow none.
+          commands: Array.isArray(cmds) ? cmds.map((c) => String(c)) : null,
           homeMetrics: Array.isArray(hm) ? hm.map((c) => String(c)) : null,
         };
       }
@@ -2592,7 +2568,8 @@ const ConfigPanel = ({
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'cameras') return;
+    // Cameras are global settings; load them when Global Options is open.
+    if (activeTab !== 'display') return;
 
     let cancelled = false;
     setUiCamerasError(null);
@@ -2695,22 +2672,33 @@ const ConfigPanel = ({
     if (!id || !cmd) return;
 
     const available = Array.isArray(device?.commands) ? device.commands : [];
-    const availableAllowed = UI_DEVICE_COMMANDS.filter((c) => available.includes(c));
-    if (!availableAllowed.includes(cmd)) return;
+    if (!available.includes(cmd)) return;
 
-    const existingArr = deviceOverrideDrafts?.[id]?.commands;
+    const draft = (deviceOverrideDrafts && deviceOverrideDrafts[id] && typeof deviceOverrideDrafts[id] === 'object')
+      ? deviceOverrideDrafts[id]
+      : {};
+    const hasExplicit = Object.prototype.hasOwnProperty.call(draft, 'commands');
+    const existingArr = hasExplicit ? draft.commands : undefined;
+
+    // Missing allowlist => inherit (allow all commands). Empty array => allow none.
     const baseSet = Array.isArray(existingArr)
       ? new Set(existingArr.map((c) => String(c)))
-      : new Set();
+      : new Set(available.map((c) => String(c)));
 
     if (nextAllowed) baseSet.add(cmd);
     else baseSet.delete(cmd);
 
-    const nextArr = UI_DEVICE_COMMANDS.filter((c) => availableAllowed.includes(c) && baseSet.has(c));
+    const nextArr = available
+      .map((c) => String(c || '').trim())
+      .filter(Boolean)
+      .filter((c) => baseSet.has(c));
+
+    const isAll = nextArr.length === available.length;
+    const payloadCommands = isAll ? null : nextArr;
 
     setDeviceOverrideDrafts((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] || {}), commands: nextArr },
+      [id]: { ...(prev[id] || {}), commands: payloadCommands },
     }));
 
     if (!connected) return;
@@ -2722,7 +2710,7 @@ const ConfigPanel = ({
     try {
       await saveDeviceOverrides({
         deviceId: id,
-        commands: nextArr,
+        commands: payloadCommands,
         ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
       });
       setDeviceOverrideSaveState((prev) => ({
@@ -2804,7 +2792,7 @@ const ConfigPanel = ({
 
     setError(null);
     try {
-      // Update homeVisibleDeviceIds
+      // Update homeVisibleDeviceIds (panel-aware visibility)
       const visibleBase = homeVisibleDeviceIds
         ? new Set(Array.from(homeVisibleDeviceIds))
         : new Set(Array.isArray(allDeviceIds) ? allDeviceIds.map((v) => String(v)) : []);
@@ -2812,57 +2800,69 @@ const ConfigPanel = ({
       if (nextVisible) visibleBase.add(id);
       else visibleBase.delete(id);
 
-      // Empty list means "show all".
-      const nextVisibleArr = visibleBase.size === (Array.isArray(allDeviceIds) ? allDeviceIds.length : visibleBase.size)
-        ? []
-        : Array.from(visibleBase);
+      // Persist exactly what the user selected; empty means "show none".
+      const nextVisibleArr = Array.from(visibleBase);
 
-      // Update mainAllowedDeviceIds - if shown, also allow control
-      const allowedBase = mainAllowedDeviceIds
-        ? new Set(Array.from(mainAllowedDeviceIds))
-        : new Set([]);
-
-      if (nextVisible) allowedBase.add(id);
-      else allowedBase.delete(id);
-
-      const nextAllowedArr = Array.from(allowedBase);
-
-      // Save both visibility and allowlist
-      await Promise.all([
-        homeVisibleSave.run({
-          homeVisibleDeviceIds: nextVisibleArr,
-          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-        }),
-        allowlistSave.run({
-          mainAllowedDeviceIds: nextAllowedArr,
-          ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
-        }),
-      ]);
+      // Save visibility only (availability is global and managed in Display → Global Defaults).
+      await homeVisibleSave.run({
+        homeVisibleDeviceIds: nextVisibleArr,
+        ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
+      });
     } catch (e) {
       setError(e?.message || String(e));
     }
   };
 
-  const setControlsAllowed = async (deviceId, nextAllowed) => {
+  const setCtrlVisible = async (deviceId, nextVisible, allDeviceIds) => {
     const id = String(deviceId || '').trim();
     if (!id) return;
 
     setError(null);
     try {
-      const base = ctrlAllowedDeviceIds
-        ? new Set(Array.from(ctrlAllowedDeviceIds))
-        : new Set([]);
+      const visibleBase = ctrlVisibleDeviceIds
+        ? new Set(Array.from(ctrlVisibleDeviceIds))
+        : new Set(Array.isArray(allDeviceIds) ? allDeviceIds.map((v) => String(v)) : []);
 
-      if (nextAllowed) base.add(id);
-      else base.delete(id);
+      if (nextVisible) visibleBase.add(id);
+      else visibleBase.delete(id);
 
-      const nextArr = Array.from(base);
+      // Persist exactly what the user selected; empty means "show none".
+      const nextVisibleArr = Array.from(visibleBase);
 
-      await allowlistSave.run({
-        ctrlAllowedDeviceIds: nextArr,
+      await ctrlVisibleSave.run({
+        ctrlVisibleDeviceIds: nextVisibleArr,
         ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
       });
     } catch (e) {
+      setError(e?.message || String(e));
+    }
+  };
+
+  const setGlobalAvailable = async (deviceId, nextAllowed) => {
+    const id = String(deviceId || '').trim();
+    if (!id) return;
+    setError(null);
+
+    const previousOverride = optimisticGlobalAllowedDeviceIds instanceof Set
+      ? new Set(Array.from(optimisticGlobalAllowedDeviceIds))
+      : null;
+
+    try {
+      const base = new Set(Array.from(effectiveGlobalAllowedDeviceIds).map((v) => String(v)));
+      if (nextAllowed) base.add(id);
+      else base.delete(id);
+
+      // Optimistically update UI immediately; server will eventually confirm via config_update/refresh.
+      setOptimisticGlobalAllowedDeviceIds(new Set(Array.from(base)));
+
+      const next = Array.from(base);
+      // Global availability should default to allow on both Home + Controls.
+      await allowlistSave.run({ mainAllowedDeviceIds: next, ctrlAllowedDeviceIds: next });
+
+      // Kick a refresh to reduce time-to-consistency when the server doesn't push instantly.
+      if (ctx?.refreshNow) ctx.refreshNow();
+    } catch (e) {
+      setOptimisticGlobalAllowedDeviceIds(previousOverride);
       setError(e?.message || String(e));
     }
   };
@@ -2925,9 +2925,6 @@ const ConfigPanel = ({
                   }}
                   className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
                 >
-                  <optgroup label="Global defaults">
-                    <option value="">Global (not a profile)</option>
-                  </optgroup>
                   <optgroup label="Panel profiles">
                     {panelNames.map((name) => (
                       <option key={name} value={name}>{name}</option>
@@ -2938,7 +2935,7 @@ const ConfigPanel = ({
                   className="mt-1 jvs-secondary-text text-white/60"
                   style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
                 >
-                  {selectedPanelName ? 'Panel-specific overrides enabled.' : 'Editing global defaults.'}
+                  {selectedPanelName ? 'Panel-specific overrides enabled.' : ''}
                 </div>
                 {isPresetSelected ? (
                   <div
@@ -2982,16 +2979,16 @@ const ConfigPanel = ({
           ) : null}
         </div>
 
-        {activeTab === 'devices' ? (
+        {activeTab === 'appearance' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Config
+              Panel Options
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Device Visibility
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Choose which devices appear on Home and Controls screens.
+              Choose which devices appear on the Home and Controls screens for this panel profile. If you uncheck all devices for a screen, none will show.
             </div>
 
             {isPresetSelected ? (
@@ -3008,68 +3005,127 @@ const ConfigPanel = ({
             ) : null}
 
             <div className="mt-2 text-xs text-white/45">
-              {[statusText(homeVisibleSave.status), statusText(allowlistSave.status)].filter(Boolean).join(' · ')}
-            </div>
-
-            {(mainAllowlistLocked || ctrlAllowlistLocked) ? (
-              <div className="mt-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
-                {mainAllowlistLocked && ctrlAllowlistLocked
-                  ? 'Home and Controls allowlists are locked by environment variables. Contact your administrator to make changes.'
-                  : mainAllowlistLocked
-                  ? 'Home allowlist is locked by environment variables. Contact your administrator to make changes.'
-                  : 'Controls allowlist is locked by environment variables. Contact your administrator to make changes.'}
-              </div>
-            ) : null}
-
-            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/60 mb-2">Info</div>
-              <div className="grid gap-1.5 text-xs text-white/60">
-                <div><span className="font-semibold text-white/80">Home:</span> Show and allow control on Home screen</div>
-                <div><span className="font-semibold text-white/80">Controls:</span> Allow control from Controls screen</div>
-              </div>
-            </div>
-
-            <div
-              className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
-              aria-disabled={isPresetSelected ? 'true' : 'false'}
-            >
+              {[statusText(homeVisibleSave.status), statusText(ctrlVisibleSave.status)].filter(Boolean).join(' · ')}
               {allDevices.length ? (
-                allDevices.map((d) => {
-                  const allDeviceIds = allDevices.map((x) => String(x.id));
+                <>
+                  {' · '}Home: {homeVisibleDeviceIds === null ? `All (${allDevices.length})` : `${homeVisibleDeviceIds.size} selected`}
+                  {' · '}Controls: {ctrlVisibleDeviceIds === null ? `All (${allDevices.length})` : `${ctrlVisibleDeviceIds.size} selected`}
+                </>
+              ) : null}
+            </div>
+
+            {!allDevices.length ? (
+              <div className="mt-3 text-sm text-white/45">No devices discovered.</div>
+            ) : (
+              <div className={`mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
+                {allDevices.map((d) => {
                   const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : true;
-                  const isCtrlAllowed = ctrlAllowedDeviceIds ? ctrlAllowedDeviceIds.has(String(d.id)) : false;
-
-                  const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
-                    ? deviceOverrideDrafts[d.id]
-                    : {};
-                  const displayNameDraft = String(draft.label ?? '');
-                  const explicitCommands = Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : [];
-                  const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
-                  const availableAllowedCommands = UI_DEVICE_COMMANDS.filter((c) => Array.isArray(d.commands) && d.commands.includes(c));
-
-                  const attrs = statuses?.[String(d.id)]?.attributes || {};
-                  const availableHomeMetrics = (() => {
-                    const out = new Set();
-                    const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
-                    if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
-                    if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
-                    if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
-                    if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
-                    if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
-                    if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
-                    return Array.from(out);
-                  })();
-
-                  const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
-                  const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
-                  const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
-                  const isInheritHomeMetrics = explicitHomeMetrics === null;
+                  const isCtrl = ctrlVisibleDeviceIds ? ctrlVisibleDeviceIds.has(String(d.id)) : true;
+                  const src = String(d?.source || '').trim();
+                  const display = src ? `${d.label} (${src})` : d.label;
 
                   return (
-                    <div
-                      key={d.id}
-                      className={`rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}
-                    >
+                    <div key={d.id} className={`flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 ${!connected ? 'opacity-50' : ''}`}>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-white/85 truncate">{display}</div>
+                        <div className="mt-1 text-[11px] text-white/45 truncate">ID: {d.id}</div>
+                      </div>
+
+                      <div className="shrink-0 flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                          <input
+                            type="checkbox"
+                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                            disabled={!connected || homeVisibleSave.status === 'saving' || isPresetSelected}
+                            checked={isHome}
+                            onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
+                          />
+                          Home
+                        </label>
+
+                        <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                          <input
+                            type="checkbox"
+                            className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                            disabled={!connected || ctrlVisibleSave.status === 'saving' || isPresetSelected}
+                            checked={isCtrl}
+                            onChange={(e) => setCtrlVisible(d.id, e.target.checked, allDeviceIds)}
+                          />
+                          Controls
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className={`mt-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`} aria-disabled={isPresetSelected ? 'true' : 'false'}>
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+                <label
+                  htmlFor="device-override-select"
+                  className="block text-[10px] font-bold uppercase tracking-widest text-white/40"
+                >
+                  Device
+                </label>
+                <select
+                  id="device-override-select"
+                  value={selectedDeviceIdForEdit}
+                  onChange={(e) => setSelectedDeviceIdForEdit(String(e.target.value || '').trim())}
+                  className="mt-1 menu-select w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-white/85 outline-none focus:outline-none focus:ring-0 jvs-menu-select"
+                >
+                  <option value="">Select a device…</option>
+                  {allDevices.map((d) => (
+                    <option key={d.id} value={d.id}>{d.label}</option>
+                  ))}
+                </select>
+                <div className="mt-1 text-xs text-white/45">
+                  Pick the device you want to edit overrides for.
+                </div>
+              </div>
+
+              {!allDevices.length ? null : !selectedDeviceIdForEdit ? (
+                <div className="mt-3 text-sm text-white/45">Choose a device to edit its overrides.</div>
+              ) : (() => {
+                const d = allDevices.find((x) => String(x.id) === String(selectedDeviceIdForEdit));
+                if (!d) return null;
+
+                const draft = (deviceOverrideDrafts && deviceOverrideDrafts[d.id] && typeof deviceOverrideDrafts[d.id] === 'object')
+                  ? deviceOverrideDrafts[d.id]
+                  : {};
+                const displayNameDraft = String(draft.label ?? '');
+                const hasCommandsOverride = Object.prototype.hasOwnProperty.call(draft, 'commands');
+                const explicitCommands = hasCommandsOverride
+                  ? (draft.commands === null
+                    ? null
+                    : (Array.isArray(draft.commands) ? draft.commands.map((c) => String(c)) : []))
+                  : null;
+                const explicitHomeMetrics = Array.isArray(draft.homeMetrics) ? draft.homeMetrics.map((c) => String(c)) : null;
+                const availableAllowedCommands = Array.isArray(d.commands)
+                  ? Array.from(new Set(d.commands.map((c) => String(c || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+                  : [];
+
+                const attrs = statuses?.[String(d.id)]?.attributes || {};
+                const availableHomeMetrics = (() => {
+                  const out = new Set();
+                  const caps = Array.isArray(d?.capabilities) ? d.capabilities : [];
+                  if (caps.includes('TemperatureMeasurement') || asNumber(attrs.temperature) !== null) out.add('temperature');
+                  if (caps.includes('RelativeHumidityMeasurement') || asNumber(attrs.humidity) !== null) out.add('humidity');
+                  if (caps.includes('IlluminanceMeasurement') || asNumber(attrs.illuminance) !== null) out.add('illuminance');
+                  if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
+                  if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
+                  if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
+                  return Array.from(out);
+                })();
+
+                const labelSave = deviceOverrideSaveState?.[d.id]?.label || null;
+                const cmdSave = deviceOverrideSaveState?.[d.id]?.commands || null;
+                const homeMetricsSave = deviceOverrideSaveState?.[d.id]?.homeMetrics || null;
+                const isInheritHomeMetrics = explicitHomeMetrics === null;
+                const isInheritCommands = explicitCommands === null;
+
+                return (
+                  <div className={`mt-3 rounded-2xl border p-4 bg-white/5 border-white/10 ${!connected ? 'opacity-50' : ''}`}>
                       <div className="flex items-center justify-between gap-4">
                         <div className="min-w-0">
                           <div className="text-[11px] uppercase tracking-[0.2em] font-semibold text-white/80 truncate">
@@ -3078,28 +3134,7 @@ const ConfigPanel = ({
                           <div className="mt-1 text-xs text-white/45 truncate">ID: {d.id}</div>
                         </div>
 
-                        <div className="shrink-0 flex flex-col gap-2">
-                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                            <input
-                              type="checkbox"
-                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || homeVisibleSave.status === 'saving' || allowlistSave.status === 'saving' || mainAllowlistLocked}
-                              checked={isHome}
-                              onChange={(e) => setHomeVisible(d.id, e.target.checked, allDeviceIds)}
-                            />
-                            Home
-                          </label>
-                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
-                            <input
-                              type="checkbox"
-                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
-                              disabled={!connected || allowlistSave.status === 'saving' || ctrlAllowlistLocked}
-                              checked={isCtrlAllowed}
-                              onChange={(e) => setControlsAllowed(d.id, e.target.checked)}
-                            />
-                            Controls
-                          </label>
-                        </div>
+                        <div className="shrink-0" />
                       </div>
 
                       <div className="mt-4 border-t border-white/10 pt-4">
@@ -3235,14 +3270,14 @@ const ConfigPanel = ({
                                   ? 'Saved'
                                   : (cmdSave?.status === 'error'
                                     ? 'Error'
-                                    : (explicitCommands.length ? 'Selected' : 'None')))}
+                                    : (isInheritCommands ? 'All' : (explicitCommands.length ? 'Selected' : 'None'))))}
                             </div>
                           </div>
 
                           {availableAllowedCommands.length ? (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {availableAllowedCommands.map((cmd) => {
-                                const checked = explicitCommands.includes(cmd);
+                                const checked = isInheritCommands ? true : explicitCommands.includes(cmd);
                                 const label = cmd === 'setLevel' ? 'Level' : cmd;
                                 return (
                                   <label key={cmd} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
@@ -3259,11 +3294,11 @@ const ConfigPanel = ({
 
                               <button
                                 type="button"
-                                disabled={!connected || busy || !explicitCommands.length}
+                                disabled={!connected || busy || isInheritCommands}
                                 onClick={async () => {
                                   setDeviceOverrideDrafts((prev) => ({
                                     ...prev,
-                                    [d.id]: { ...(prev[d.id] || {}), commands: [] },
+                                    [d.id]: { ...(prev[d.id] || {}), commands: null },
                                   }));
                                   if (!connected) return;
                                   setDeviceOverrideSaveState((prev) => ({
@@ -3273,7 +3308,7 @@ const ConfigPanel = ({
                                   try {
                                     await saveDeviceOverrides({
                                       deviceId: String(d.id),
-                                      commands: [],
+                                      commands: null,
                                       ...(selectedPanelName ? { panelName: selectedPanelName } : {}),
                                     });
                                     setDeviceOverrideSaveState((prev) => ({
@@ -3287,7 +3322,7 @@ const ConfigPanel = ({
                                     }));
                                   }
                                 }}
-                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || !explicitCommands.length) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy || isInheritCommands) ? 'opacity-50' : 'hover:bg-white/5'}`}
                               >
                                 Reset
                               </button>
@@ -3301,12 +3336,9 @@ const ConfigPanel = ({
                           ) : null}
                         </div>
                       </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="text-sm text-white/45">No devices discovered.</div>
-              )}
+                  </div>
+                );
+              })()}
             </div>
 
             {!connected ? (
@@ -3318,13 +3350,229 @@ const ConfigPanel = ({
         {activeTab === 'display' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Display
+              Global Options
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Global Defaults
+              Global Options
             </div>
             <div className="mt-1 text-xs text-white/45">
               Tune size/spacing for this device. Panel profiles can override these.
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Global Device Availability
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Server-enforced allowlists. If a device is not allowed here, controls will be blocked everywhere.
+              </div>
+
+              {globalAvailabilityLocked ? (
+                <div className="mt-3 rounded-xl border border-warning/20 bg-warning/5 px-3 py-2 text-xs text-warning">
+                  {mainAllowlistLocked && ctrlAllowlistLocked
+                    ? 'Availability is locked by environment variables. Contact your administrator to make changes.'
+                    : mainAllowlistLocked
+                    ? 'Home allowlist is locked by environment variables. Availability edits would need to update Home too, so editing is disabled.'
+                    : 'Controls allowlist is locked by environment variables. Availability edits would need to update Controls too, so editing is disabled.'}
+                </div>
+              ) : null}
+
+              <div className="mt-3 text-xs text-white/45">
+                {statusText(allowlistSave.status)}
+                {availabilityDevices.length ? (
+                  <>
+                    {' · '}
+                    {availabilityDevices.reduce((acc, d) => {
+                      const id = String(d?.id || '').trim();
+                      if (!id) return acc;
+                      return effectiveGlobalAllowedDeviceIds.has(id) ? (acc + 1) : acc;
+                    }, 0)} available
+                  </>
+                ) : null}
+              </div>
+
+              {!availabilityDevices.length ? (
+                <div className="mt-3 text-sm text-white/45">No devices discovered.</div>
+              ) : (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {availabilityDevices.map((d) => {
+                    const isAvailable = effectiveGlobalAllowedDeviceIds.has(String(d.id));
+                    const src = String(d?.source || '').trim();
+                    const display = src ? `${d.label} (${src})` : d.label;
+
+                    return (
+                      <div key={d.id} className={`flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 ${!connected ? 'opacity-50' : ''}`}>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-semibold text-white/85 truncate">{display}</div>
+                          <div className="mt-1 text-[11px] text-white/45 truncate">ID: {d.id}</div>
+                        </div>
+
+                        <div className="shrink-0 flex items-center gap-3">
+                          <label className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 select-none">
+                            <input
+                              type="checkbox"
+                              className={`h-5 w-5 ${scheme.checkboxAccent}`}
+                              disabled={!connected || allowlistSave.status === 'saving' || globalAvailabilityLocked}
+                              checked={isAvailable}
+                              onChange={(e) => setGlobalAvailable(d.id, e.target.checked)}
+                            />
+                            Available
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Activity Alert Sounds
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Pick which server-hosted sound file plays for each Activity event.
+              </div>
+
+              {soundFilesError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Sounds unavailable: {soundFilesError}</div>
+              ) : null}
+
+              {alertSoundsSave.error ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {alertSoundsSave.error}</div>
+              ) : null}
+
+              <div className="mt-2 text-xs text-white/45">
+                {statusText(alertSoundsSave.status)}
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { key: 'motion', label: 'Motion' },
+                  { key: 'doorOpen', label: 'Door Open' },
+                  { key: 'doorClose', label: 'Door Close' },
+                ].map(({ key, label }) => (
+                  <label key={key} className="block">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">{label}</div>
+                    <select
+                      value={alertSounds[key] || ''}
+                      disabled={!connected || busy || alertSoundsSave.status === 'saving'}
+                      onChange={async (e) => {
+                        const value = String(e.target.value || '');
+                        const next = {
+                          ...alertSounds,
+                          [key]: value,
+                        };
+
+                        alertSoundsSave.setError(null);
+                        try {
+                          await alertSoundsSave.run({
+                            motion: next.motion || null,
+                            doorOpen: next.doorOpen || null,
+                            doorClose: next.doorClose || null,
+                          });
+                        } catch {
+                          // handled by controller
+                        }
+                      }}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    >
+                      <option value="">Built-in</option>
+                      {soundFiles.map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </div>
+
+              {!connected ? (
+                <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Weather (Open-Meteo)
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Set the location used for the weather card. Accepts decimal or DMS (e.g. 35°29'44.9"N).
+              </div>
+
+              {(openMeteoEnvOverrides.lat || openMeteoEnvOverrides.lon || openMeteoEnvOverrides.timezone) ? (
+                <div className="mt-2 text-xs text-warning">
+                  Note: OPEN_METEO_* environment variables are set and will override these fields.
+                </div>
+              ) : null}
+
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Latitude</div>
+                  <input
+                    type="text"
+                    value={openMeteoDraft.lat}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      setOpenMeteoDirty(true);
+                      setOpenMeteoDraft((prev) => ({ ...prev, lat: String(e.target.value) }));
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder={'35.4958 or 35°29\'44.9"N'}
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Longitude</div>
+                  <input
+                    type="text"
+                    value={openMeteoDraft.lon}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      setOpenMeteoDirty(true);
+                      setOpenMeteoDraft((prev) => ({ ...prev, lon: String(e.target.value) }));
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder={'-86.0816 or 86°04\'53.8"W'}
+                  />
+                </label>
+
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Timezone</div>
+                  <input
+                    type="text"
+                    value={openMeteoDraft.timezone}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      setOpenMeteoDirty(true);
+                      setOpenMeteoDraft((prev) => ({ ...prev, timezone: String(e.target.value) }));
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    placeholder="auto or America/Chicago"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${openMeteoDraft.lat || ''},${openMeteoDraft.lon || ''}`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs underline text-white/70 hover:text-white"
+                >
+                  Open Google Maps to pick coordinates
+                </a>
+
+                <div className="text-xs text-white/45">
+                  {openMeteoDirty ? 'Pending changes…' : 'Saved'}
+                  {openMeteoSave.status !== 'idle' ? (
+                    <span className="ml-2">({statusText(openMeteoSave.status)})</span>
+                  ) : null}
+                </div>
+              </div>
+
+              {openMeteoError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">{openMeteoError}</div>
+              ) : null}
             </div>
 
             <div className="mt-4 utility-group p-4">
@@ -3905,7 +4153,7 @@ const ConfigPanel = ({
               </div>
             </div>
 
-            <div className="mt-6 border-t border-white/10 pt-5">
+            <div className="mt-4 utility-group p-4">
               <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
                 Global
               </div>
@@ -4124,7 +4372,7 @@ const ConfigPanel = ({
         {activeTab === 'appearance' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Appearance
+              Panel Options
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Home & UI
@@ -5215,11 +5463,8 @@ const ConfigPanel = ({
               </div>
             </div>
 
-            <div className="mt-6 border-t border-white/10 pt-5">
-              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-                Panel Content
-              </div>
-              <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                 Cameras & Sensors
               </div>
               <div className="mt-1 text-xs text-white/45">
@@ -5363,56 +5608,56 @@ const ConfigPanel = ({
                   <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {sensorColorsError}</div>
                 ) : null}
               </div>
+            </div>
 
-              <div
-                className={`mt-4 utility-group p-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
-                aria-disabled={isPresetSelected ? 'true' : 'false'}
-              >
-                <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms</div>
-                <div className="mt-1 text-xs text-white/45">
-                  Choose which rooms appear on this panel. If none are selected, all rooms are shown.
-                </div>
-
-                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {allRoomsForVisibility.map((r) => {
-                    const checked = visibleRoomIds.has(r.id);
-                    return (
-                      <label key={r.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={!connected || busy || visibleRoomsSave.status === 'saving'}
-                          onChange={(e) => toggleVisibleRoom(r.id, Boolean(e.target.checked))}
-                        />
-                        <span className="min-w-0 truncate text-sm font-semibold text-white/85">{r.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div className="text-xs text-white/45">
-                    {visibleRoomIds.size ? `${visibleRoomIds.size} selected` : 'All rooms'}
-                  </div>
-                  <div className="text-xs text-white/45">
-                    {statusText(visibleRoomsSave.status)}
-                  </div>
-                </div>
-
-                {visibleRoomsSave.error ? (
-                  <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {visibleRoomsSave.error}</div>
-                ) : null}
+            <div
+              className={`mt-4 utility-group p-4 ${isPresetSelected ? 'opacity-50 pointer-events-none' : ''}`}
+              aria-disabled={isPresetSelected ? 'true' : 'false'}
+            >
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">Visible Rooms</div>
+              <div className="mt-1 text-xs text-white/45">
+                Choose which rooms appear on this panel. If none are selected, all rooms are shown.
               </div>
+
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+                {allRoomsForVisibility.map((r) => {
+                  const checked = visibleRoomIds.has(r.id);
+                  return (
+                    <label key={r.id} className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!connected || busy || visibleRoomsSave.status === 'saving'}
+                        onChange={(e) => toggleVisibleRoom(r.id, Boolean(e.target.checked))}
+                      />
+                      <span className="min-w-0 truncate text-sm font-semibold text-white/85">{r.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {visibleRoomIds.size ? `${visibleRoomIds.size} selected` : 'All rooms'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(visibleRoomsSave.status)}
+                </div>
+              </div>
+
+              {visibleRoomsSave.error ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {visibleRoomsSave.error}</div>
+              ) : null}
             </div>
 
             </div>
           </div>
         ) : null}
 
-        {activeTab === 'cameras' ? (
+        {activeTab === 'display' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Settings
+              Global Options
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
               Cameras
@@ -5804,73 +6049,80 @@ const ConfigPanel = ({
           </div>
         ) : null}
 
-        {activeTab === 'sounds' ? (
+        {activeTab === 'deviceOptions' ? (
           <div className="mt-4 utility-panel p-4 md:p-6">
             <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
-              Sounds
+              Settings
             </div>
             <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              Activity Alerts
+              Device Options
             </div>
             <div className="mt-1 text-xs text-white/45">
-              Pick which server-hosted sound file plays for each event.
+              Preferences for how device types render controls.
             </div>
 
-            {soundFilesError ? (
-              <div className="mt-2 text-[11px] text-neon-red break-words">Sounds unavailable: {soundFilesError}</div>
-            ) : null}
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Switch controls
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                How switch-type devices render on the Controls screen.
+              </div>
 
-            {alertSoundsSave.error ? (
-              <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {alertSoundsSave.error}</div>
-            ) : null}
-
-            <div className="mt-2 text-xs text-white/45">
-              {statusText(alertSoundsSave.status)}
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-              {[
-                { key: 'motion', label: 'Motion' },
-                { key: 'doorOpen', label: 'Door Open' },
-                { key: 'doorClose', label: 'Door Close' },
-              ].map(({ key, label }) => (
-                <label key={key} className="block">
-                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">{label}</div>
+              <div className="mt-4 grid grid-cols-1 gap-3">
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Control style</div>
                   <select
-                    value={alertSounds[key] || ''}
-                    disabled={!connected || busy || alertSoundsSave.status === 'saving'}
-                    onChange={async (e) => {
-                      const value = String(e.target.value || '');
-                      const next = {
-                        ...alertSounds,
-                        [key]: value,
-                      };
-
-                      alertSoundsSave.setError(null);
-                      try {
-                        await alertSoundsSave.run({
-                          motion: next.motion || null,
-                          doorOpen: next.doorOpen || null,
-                          doorClose: next.doorClose || null,
-                        });
-                      } catch {
-                        // handled by controller
-                      }
+                    value={globalSwitchControlStyleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const next = String(e.target.value || '').trim().toLowerCase();
+                      setGlobalSwitchControlStyleError(null);
+                      setGlobalSwitchControlStyleDirty(true);
+                      setGlobalSwitchControlStyleDraft(next);
                     }}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
                   >
-                    <option value="">Built-in</option>
-                    {soundFiles.map((f) => (
-                      <option key={f} value={f}>{f}</option>
-                    ))}
+                    <option value="auto">Auto</option>
+                    <option value="buttons">Buttons (On/Off)</option>
+                    <option value="switch">Switch (toggle)</option>
                   </select>
                 </label>
-              ))}
-            </div>
 
-            {!connected ? (
-              <div className="mt-3 text-xs text-white/45">Server offline: editing disabled.</div>
-            ) : null}
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Animation</div>
+                  <select
+                    value={globalSwitchAnimationStyleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const next = String(e.target.value || '').trim().toLowerCase();
+                      setGlobalSwitchAnimationStyleError(null);
+                      setGlobalSwitchAnimationStyleDirty(true);
+                      setGlobalSwitchAnimationStyleDraft(next);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  >
+                    <option value="none">None</option>
+                    <option value="pulse">Pulse when on</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {(globalSwitchControlStyleDirty || globalSwitchAnimationStyleDirty) ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(deviceControlStylesSave.status)}
+                </div>
+              </div>
+
+              {(globalSwitchControlStyleError || globalSwitchAnimationStyleError) ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">
+                  Save failed: {globalSwitchControlStyleError || globalSwitchAnimationStyleError}
+                </div>
+              ) : null}
+            </div>
           </div>
         ) : null}
 
@@ -5976,90 +6228,6 @@ const ConfigPanel = ({
 
               {homeValueColorError ? (
                 <div className="mt-2 text-[11px] text-neon-red break-words">Save failed: {homeValueColorError}</div>
-              ) : null}
-            </div>
-
-            <div className="mt-3 utility-group p-4">
-              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
-                Weather (Open-Meteo)
-              </div>
-              <div className="mt-1 text-xs text-white/45">
-                Set the location used for the weather card. Accepts decimal or DMS (e.g. 35°29'44.9"N).
-              </div>
-
-              {(openMeteoEnvOverrides.lat || openMeteoEnvOverrides.lon || openMeteoEnvOverrides.timezone) ? (
-                <div className="mt-2 text-xs text-warning">
-                  Note: OPEN_METEO_* environment variables are set and will override these fields.
-                </div>
-              ) : null}
-
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
-                <label className="block">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Latitude</div>
-                  <input
-                    type="text"
-                    value={openMeteoDraft.lat}
-                    disabled={!connected || busy}
-                    onChange={(e) => {
-                      setOpenMeteoDirty(true);
-                      setOpenMeteoDraft((prev) => ({ ...prev, lat: String(e.target.value) }));
-                    }}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                    placeholder={'35.4958 or 35°29\'44.9"N'}
-                  />
-                </label>
-
-                <label className="block">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Longitude</div>
-                  <input
-                    type="text"
-                    value={openMeteoDraft.lon}
-                    disabled={!connected || busy}
-                    onChange={(e) => {
-                      setOpenMeteoDirty(true);
-                      setOpenMeteoDraft((prev) => ({ ...prev, lon: String(e.target.value) }));
-                    }}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                    placeholder={'-86.0816 or 86°04\'53.8"W'}
-                  />
-                </label>
-
-                <label className="block">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Timezone</div>
-                  <input
-                    type="text"
-                    value={openMeteoDraft.timezone}
-                    disabled={!connected || busy}
-                    onChange={(e) => {
-                      setOpenMeteoDirty(true);
-                      setOpenMeteoDraft((prev) => ({ ...prev, timezone: String(e.target.value) }));
-                    }}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
-                    placeholder="auto or America/Chicago"
-                  />
-                </label>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${openMeteoDraft.lat || ''},${openMeteoDraft.lon || ''}`)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs underline text-white/70 hover:text-white"
-                >
-                  Open Google Maps to pick coordinates
-                </a>
-
-                <div className="text-xs text-white/45">
-                  {openMeteoDirty ? 'Pending changes…' : 'Saved'}
-                  {openMeteoSave.status !== 'idle' ? (
-                    <span className="ml-2">({statusText(openMeteoSave.status)})</span>
-                  ) : null}
-                </div>
-              </div>
-
-              {openMeteoError ? (
-                <div className="mt-2 text-[11px] text-neon-red break-words">{openMeteoError}</div>
               ) : null}
             </div>
 

@@ -218,6 +218,47 @@ let settings = {
     }
 };
 
+function applyWeatherEnvOverrides() {
+    // Env vars override persisted config but are not persisted back to disk.
+    // Supported:
+    // - OPEN_METEO_LAT, OPEN_METEO_LON
+    // - OPEN_METEO_TZ (or OPEN_METEO_TIMEZONE)
+    // - OPEN_METEO_TEMPERATURE_UNIT, OPEN_METEO_WIND_SPEED_UNIT, OPEN_METEO_PRECIPITATION_UNIT
+    try {
+        const weather = (settings.weather && typeof settings.weather === 'object') ? { ...settings.weather } : {};
+        const prevOpen = (weather.openMeteo && typeof weather.openMeteo === 'object') ? { ...weather.openMeteo } : {};
+
+        const nextOpen = { ...prevOpen };
+
+        const latEnv = String(process.env.OPEN_METEO_LAT || '').trim();
+        const lonEnv = String(process.env.OPEN_METEO_LON || '').trim();
+        const tzEnv = String(process.env.OPEN_METEO_TZ || process.env.OPEN_METEO_TIMEZONE || '').trim();
+        const tempUnitEnv = String(process.env.OPEN_METEO_TEMPERATURE_UNIT || '').trim();
+        const windUnitEnv = String(process.env.OPEN_METEO_WIND_SPEED_UNIT || '').trim();
+        const precipUnitEnv = String(process.env.OPEN_METEO_PRECIPITATION_UNIT || '').trim();
+
+        if (latEnv) nextOpen.lat = latEnv;
+        if (lonEnv) nextOpen.lon = lonEnv;
+        if (tzEnv) nextOpen.timezone = tzEnv;
+        if (tempUnitEnv) nextOpen.temperatureUnit = tempUnitEnv;
+        if (windUnitEnv) nextOpen.windSpeedUnit = windUnitEnv;
+        if (precipUnitEnv) nextOpen.precipitationUnit = precipUnitEnv;
+
+        weather.openMeteo = nextOpen;
+        settings.weather = weather;
+
+        const changed = stableStringify(prevOpen) !== stableStringify(nextOpen);
+        if (changed) {
+            // If env overrides changed location/units, the old cache is not valid.
+            lastWeather = null;
+            lastWeatherFetchAt = null;
+            lastWeatherError = null;
+        }
+    } catch {
+        // best-effort only
+    }
+}
+
 app.use(cors());
 // Hubitat Maker API postURL can send JSON as text/plain (and sometimes with log prefixes).
 // Parse /api/events as raw text first, then normalize inside the handler.
@@ -261,6 +302,10 @@ let lastHubitatDevices = [];
 let lastHubitatFetchAt = null;
 let lastHubitatError = null;
 let lastHubitatErrorLoggedAt = 0;
+
+// Safe, minimal device catalog for UI configuration (includes all Hubitat devices).
+// This is intentionally separate from config.sensors (which is used for rendering devices).
+let discoveredDevicesCatalog = [];
 
 // Cached Open-Meteo response
 let lastWeather = null;
@@ -368,38 +413,30 @@ function getUiMainAllowedDeviceIds() {
 function getUiAllowedDeviceIdsUnion() {
     const { ctrl, main } = getUiAllowlistsInfo();
 
-    // Panel profiles can further restrict the UI, but server-side enforcement must allow
-    // any device that *any* panel is configured to control, otherwise the UI can show
-    // a control that the backend rejects.
-    //
-    // Important: environment allowlists remain authoritative/locked.
-    const profiles = (persistedConfig?.ui?.panelProfiles && typeof persistedConfig.ui.panelProfiles === 'object')
-        ? persistedConfig.ui.panelProfiles
-        : {};
+    // Availability is a global safety boundary. Panel profiles should not be able to
+    // expand server-side availability beyond the global allowlists.
+    return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || [])]));
+}
 
-    const profileCtrl = [];
-    const profileMain = [];
-    for (const p of Object.values(profiles)) {
-        if (!p || typeof p !== 'object') continue;
-        if (!ctrl.locked) {
-            const ids = Array.isArray(p.ctrlAllowedDeviceIds)
-                ? p.ctrlAllowedDeviceIds
-                : (Array.isArray(p.allowedDeviceIds) ? p.allowedDeviceIds : []);
-            for (const v of ids) {
-                const s = String(v || '').trim();
-                if (s) profileCtrl.push(s);
-            }
-        }
-        if (!main.locked) {
-            const ids = Array.isArray(p.mainAllowedDeviceIds) ? p.mainAllowedDeviceIds : [];
-            for (const v of ids) {
-                const s = String(v || '').trim();
-                if (s) profileMain.push(s);
-            }
-        }
-    }
+function getAllowedPanelDeviceCommands() {
+    const cfg = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const cfgExtra = Array.isArray(cfg.extraAllowedPanelDeviceCommands) ? cfg.extraAllowedPanelDeviceCommands : [];
+    const envExtraRaw = parseCommaList(process.env.UI_EXTRA_ALLOWED_PANEL_DEVICE_COMMANDS);
+    const envExtra = envExtraRaw.slice(0, 128);
 
-    return Array.from(new Set([...(ctrl.ids || []), ...(main.ids || []), ...profileCtrl, ...profileMain]));
+    const cleanedExtra = [...cfgExtra, ...envExtra]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .filter((s) => s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s));
+
+    return Array.from(new Set([
+        ...Array.from(ALLOWED_PANEL_DEVICE_COMMANDS),
+        ...cleanedExtra,
+    ]));
+}
+
+function getAllowedPanelDeviceCommandsSet() {
+    return new Set(getAllowedPanelDeviceCommands());
 }
 
 function isUiDeviceAllowedForControl(deviceId) {
@@ -507,6 +544,20 @@ function normalizePersistedConfig(raw) {
         .filter(Boolean);
 
     const uiRaw = out.ui && typeof out.ui === 'object' ? out.ui : {};
+
+    const availabilityInitialized = uiRaw.availabilityInitialized === true;
+    const visibilityInitialized = uiRaw.visibilityInitialized === true;
+
+    const extraAllowedPanelDeviceCommands = (() => {
+        const rawArr = Array.isArray(uiRaw.extraAllowedPanelDeviceCommands) ? uiRaw.extraAllowedPanelDeviceCommands : [];
+        const cleaned = rawArr
+            .map((v) => String(v || '').trim())
+            .filter(Boolean)
+            .filter((s) => s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s));
+        return Array.from(new Set(cleaned)).slice(0, 128);
+    })();
+
+    const isSafeCommandToken = (s) => typeof s === 'string' && s.length <= 64 && /^[A-Za-z0-9_]+$/.test(s);
     const legacyAllowed = Array.isArray(uiRaw.allowedDeviceIds)
         ? uiRaw.allowedDeviceIds
         : [];
@@ -518,10 +569,30 @@ function normalizePersistedConfig(raw) {
         : [];
 
     // Home visibility (which devices contribute to Home room cards/metrics).
-    // Empty list means "show all".
-    const homeVisibleDeviceIds = Array.isArray(uiRaw.homeVisibleDeviceIds)
-        ? uiRaw.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
-        : [];
+    // Missing key means "show all"; explicit empty array means "show none".
+    const hasHomeVisibleDeviceIds = Object.prototype.hasOwnProperty.call(uiRaw, 'homeVisibleDeviceIds');
+    const homeVisibleDeviceIds = (() => {
+        if (!hasHomeVisibleDeviceIds) return null;
+        const cleaned = Array.isArray(uiRaw.homeVisibleDeviceIds)
+            ? uiRaw.homeVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+            : [];
+        // Back-compat: older configs used empty array to mean "show all".
+        // Once the user saves visibility explicitly, empty array means "show none".
+        if (!visibilityInitialized && cleaned.length === 0) return null;
+        return cleaned;
+    })();
+
+    // Controls visibility (which devices appear on the Controls screen).
+    // Missing key means "show all"; explicit empty array means "show none".
+    const hasCtrlVisibleDeviceIds = Object.prototype.hasOwnProperty.call(uiRaw, 'ctrlVisibleDeviceIds');
+    const ctrlVisibleDeviceIds = (() => {
+        if (!hasCtrlVisibleDeviceIds) return null;
+        const cleaned = Array.isArray(uiRaw.ctrlVisibleDeviceIds)
+            ? uiRaw.ctrlVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+            : [];
+        if (!visibilityInitialized && cleaned.length === 0) return null;
+        return cleaned;
+    })();
 
     const visibleRoomIds = Array.isArray(uiRaw.visibleRoomIds)
         ? uiRaw.visibleRoomIds.map((v) => String(v || '').trim()).filter(Boolean)
@@ -554,7 +625,7 @@ function normalizePersistedConfig(raw) {
             if (!Array.isArray(v)) continue;
             const cmds = v
                 .map((c) => String(c || '').trim())
-                .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+                .filter((c) => c && isSafeCommandToken(c));
             // Empty array is allowed (meaning: show no commands for this device on this panel).
             outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
         }
@@ -577,6 +648,30 @@ function normalizePersistedConfig(raw) {
             outMap[id] = Array.from(new Set(keys)).slice(0, 16);
         }
         return outMap;
+    })();
+
+    const deviceControlStyles = (() => {
+        const rawStyles = (uiRaw.deviceControlStyles && typeof uiRaw.deviceControlStyles === 'object')
+            ? uiRaw.deviceControlStyles
+            : {};
+
+        const rawSwitch = (rawStyles.switch && typeof rawStyles.switch === 'object') ? rawStyles.switch : {};
+        const rawControlStyle = String(rawSwitch.controlStyle ?? '').trim().toLowerCase();
+        const rawAnimationStyle = String(rawSwitch.animationStyle ?? '').trim().toLowerCase();
+
+        const controlStyle = (rawControlStyle === 'buttons' || rawControlStyle === 'switch' || rawControlStyle === 'auto')
+            ? rawControlStyle
+            : 'auto';
+        const animationStyle = (rawAnimationStyle === 'pulse' || rawAnimationStyle === 'none')
+            ? rawAnimationStyle
+            : 'none';
+
+        return {
+            switch: {
+                controlStyle,
+                animationStyle,
+            },
+        };
     })();
 
     const rawAccent = String(uiRaw.accentColorId || '').trim();
@@ -1083,6 +1178,12 @@ function normalizePersistedConfig(raw) {
                 : [])
             : null;
 
+        const pCtrlVisibleDeviceIds = Object.prototype.hasOwnProperty.call(p, 'ctrlVisibleDeviceIds')
+            ? (Array.isArray(p.ctrlVisibleDeviceIds)
+                ? p.ctrlVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+                : [])
+            : null;
+
         const pCtrlAllowedDeviceIds = (() => {
             if (!Object.prototype.hasOwnProperty.call(p, 'ctrlAllowedDeviceIds') && !Object.prototype.hasOwnProperty.call(p, 'allowedDeviceIds')) {
                 return null;
@@ -1128,7 +1229,7 @@ function normalizePersistedConfig(raw) {
                 if (!Array.isArray(v)) continue;
                 const cmds = v
                     .map((c) => String(c || '').trim())
-                    .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c));
+                    .filter((c) => c && isSafeCommandToken(c));
                 outMap[id] = Array.from(new Set(cmds)).slice(0, 32);
             }
             return outMap;
@@ -1195,6 +1296,7 @@ function normalizePersistedConfig(raw) {
             ...(pIconSizePct !== null ? { iconSizePct: pIconSizePct } : {}),
             ...(pVisibleRoomIds !== null ? { visibleRoomIds: pVisibleRoomIds } : {}),
             ...(pHomeVisibleDeviceIds !== null ? { homeVisibleDeviceIds: pHomeVisibleDeviceIds } : {}),
+            ...(pCtrlVisibleDeviceIds !== null ? { ctrlVisibleDeviceIds: pCtrlVisibleDeviceIds } : {}),
             ...(pCtrlAllowedDeviceIds !== null ? { ctrlAllowedDeviceIds: pCtrlAllowedDeviceIds } : {}),
             ...(pMainAllowedDeviceIds !== null ? { mainAllowedDeviceIds: pMainAllowedDeviceIds } : {}),
             ...(pDeviceLabelOverrides !== null ? { deviceLabelOverrides: pDeviceLabelOverrides } : {}),
@@ -1230,10 +1332,15 @@ function normalizePersistedConfig(raw) {
         ctrlAllowedDeviceIds: ctrlAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         mainAllowedDeviceIds: mainAllowed.map((v) => String(v || '').trim()).filter(Boolean),
         visibleRoomIds,
-        homeVisibleDeviceIds,
+        ...(homeVisibleDeviceIds !== null ? { homeVisibleDeviceIds } : {}),
+        ...(ctrlVisibleDeviceIds !== null ? { ctrlVisibleDeviceIds } : {}),
         deviceLabelOverrides,
         deviceCommandAllowlist,
         deviceHomeMetricAllowlist,
+        deviceControlStyles,
+        extraAllowedPanelDeviceCommands,
+        availabilityInitialized,
+        visibilityInitialized,
         accentColorId,
         colorizeHomeValues,
         colorizeHomeValuesOpacityPct,
@@ -1296,6 +1403,52 @@ function normalizePersistedConfig(raw) {
     return out;
 }
 
+// Update device control style preferences by internal device type.
+// Expected payload: { deviceControlStyles: { switch?: { controlStyle?: 'auto'|'buttons'|'switch', animationStyle?: 'none'|'pulse' } } }
+app.put('/api/ui/device-control-styles', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const incoming = (body.deviceControlStyles && typeof body.deviceControlStyles === 'object') ? body.deviceControlStyles : null;
+    if (!incoming) {
+        return res.status(400).json({ error: 'Missing deviceControlStyles' });
+    }
+
+    const prevUi = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const prevStyles = (prevUi.deviceControlStyles && typeof prevUi.deviceControlStyles === 'object') ? prevUi.deviceControlStyles : {};
+    const prevSwitch = (prevStyles.switch && typeof prevStyles.switch === 'object') ? prevStyles.switch : {};
+
+    const incomingSwitch = (incoming.switch && typeof incoming.switch === 'object') ? incoming.switch : {};
+    const nextStyles = {
+        ...prevStyles,
+        ...incoming,
+        switch: {
+            ...prevSwitch,
+            ...incomingSwitch,
+        },
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...prevUi,
+            deviceControlStyles: nextStyles,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-device-control-styles');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            deviceControlStyles: persistedConfig?.ui?.deviceControlStyles,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
 function ensurePanelProfileExists(panelName) {
     const name = normalizePanelName(panelName);
     if (!name) return null;
@@ -1309,7 +1462,12 @@ function ensurePanelProfileExists(panelName) {
         [name]: {
             // Seed new profiles from current global defaults.
             visibleRoomIds: Array.isArray(ui.visibleRoomIds) ? ui.visibleRoomIds : [],
-            homeVisibleDeviceIds: Array.isArray(ui.homeVisibleDeviceIds) ? ui.homeVisibleDeviceIds : [],
+            ...(Object.prototype.hasOwnProperty.call(ui, 'homeVisibleDeviceIds')
+                ? { homeVisibleDeviceIds: Array.isArray(ui.homeVisibleDeviceIds) ? ui.homeVisibleDeviceIds : [] }
+                : {}),
+            ...(Object.prototype.hasOwnProperty.call(ui, 'ctrlVisibleDeviceIds')
+                ? { ctrlVisibleDeviceIds: Array.isArray(ui.ctrlVisibleDeviceIds) ? ui.ctrlVisibleDeviceIds : [] }
+                : {}),
             ctrlAllowedDeviceIds: Array.isArray(ui.ctrlAllowedDeviceIds)
                 ? ui.ctrlAllowedDeviceIds
                 : (Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : []),
@@ -1347,27 +1505,16 @@ function ensurePanelProfileExists(panelName) {
     };
 
     persistedConfig = normalizePersistedConfig({
-        ...persistedConfig,
+        ...(persistedConfig || {}),
         ui: {
-            ...ui,
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
             panelProfiles: nextProfiles,
         },
     });
 
+    persistConfigToDiskIfChanged('ensure-panel-profile');
+    rebuildRuntimeConfigFromPersisted();
     return name;
-}
-
-function applyWeatherEnvOverrides() {
-    const open = settings.weather?.openMeteo || {};
-    settings.weather.openMeteo = {
-        ...open,
-        lat: process.env.OPEN_METEO_LAT || open.lat,
-        lon: process.env.OPEN_METEO_LON || open.lon,
-        timezone: process.env.OPEN_METEO_TZ || open.timezone,
-        temperatureUnit: process.env.OPEN_METEO_TEMPERATURE_UNIT || open.temperatureUnit,
-        windSpeedUnit: process.env.OPEN_METEO_WIND_SPEED_UNIT || open.windSpeedUnit,
-        precipitationUnit: process.env.OPEN_METEO_PRECIPITATION_UNIT || open.precipitationUnit,
-    };
 }
 
 function loadPersistedConfig() {
@@ -1516,20 +1663,6 @@ rebuildRuntimeConfigFromPersisted();
 
 // --- HUBITAT MAPPER ---
 
-// These capabilities determine whether a device is considered "relevant" and will be imported
-// into config.sensors during syncHubitatDataInner().
-const IMPORT_RELEVANT_CAPS = Object.freeze([
-    'ContactSensor',
-    'MotionSensor',
-    'SmokeDetector',
-    'CarbonMonoxideDetector',
-    'TemperatureMeasurement',
-    'RelativeHumidityMeasurement',
-    'IlluminanceMeasurement',
-    'Switch',
-    'SwitchLevel',
-]);
-
 function mapDeviceType(capabilities, typeName) {
     if (capabilities.includes("SmokeDetector")) return "smoke";
     if (capabilities.includes("CarbonMonoxideDetector")) return "co";
@@ -1540,107 +1673,6 @@ function mapDeviceType(capabilities, typeName) {
     if (capabilities.includes("RelativeHumidityMeasurement")) return "humidity";
     if (capabilities.includes("TemperatureMeasurement")) return "temperature";
     return "unknown";
-}
-
-function analyzeHubitatDeviceForImport(dev) {
-    const caps = Array.isArray(dev?.capabilities) ? dev.capabilities.map((c) => String(c)) : [];
-    const capSet = new Set(caps);
-    const relevantCapsPresent = IMPORT_RELEVANT_CAPS.filter((c) => capSet.has(c));
-    const isRelevant = relevantCapsPresent.length > 0;
-
-    // A broader, "what is it" categorization (used only for analysis output)
-    const kind = (() => {
-        if (capSet.has('Thermostat')) return 'thermostat';
-        if (capSet.has('Lock')) return 'lock';
-        if (capSet.has('GarageDoorControl')) return 'garage';
-        if (capSet.has('WindowShade')) return 'shade';
-        if (capSet.has('FanControl')) return 'fan';
-        if (capSet.has('Valve')) return 'valve';
-        if (capSet.has('WaterSensor')) return 'water';
-        if (capSet.has('PresenceSensor')) return 'presence';
-        if (capSet.has('AccelerationSensor')) return 'acceleration';
-        if (capSet.has('Button') || capSet.has('PushableButton') || capSet.has('HoldableButton') || capSet.has('DoubleTapableButton')) return 'button';
-        if (capSet.has('PowerMeter') || capSet.has('EnergyMeter')) return 'power';
-        if (capSet.has('ContactSensor')) return 'contact';
-        if (capSet.has('MotionSensor')) return 'motion';
-        if (capSet.has('SmokeDetector') || capSet.has('CarbonMonoxideDetector')) return 'safety';
-        if (capSet.has('Switch') || capSet.has('SwitchLevel')) return 'switch';
-        if (capSet.has('TemperatureMeasurement') || capSet.has('RelativeHumidityMeasurement') || capSet.has('IlluminanceMeasurement')) return 'environment';
-        return 'unknown';
-    })();
-
-    const reasons = [];
-    if (!isRelevant) reasons.push('no_relevant_capabilities');
-    if (!Array.isArray(dev?.capabilities) || dev.capabilities.length === 0) reasons.push('missing_capabilities');
-
-    // Mirror the sync pipeline mapping for the devices that WOULD be imported.
-    let mappedType = null;
-    let mappedState = null;
-    if (isRelevant) {
-        try {
-            mappedType = mapDeviceType(caps, dev?.type);
-        } catch {
-            mappedType = 'unknown';
-        }
-        try {
-            mappedState = mapState(dev, mappedType);
-        } catch {
-            mappedState = null;
-        }
-    }
-
-    return {
-        isRelevant,
-        relevantCapsPresent,
-        kind,
-        mappedType,
-        mappedState,
-        reasons,
-    };
-}
-
-function summarizeAdvancedDeviceAnalysis(analyzedDevices) {
-    const out = {
-        total: 0,
-        imported: 0,
-        ignored: 0,
-        byKind: {},
-        ignoredCapabilitiesTop: [],
-    };
-
-    const ignoredCapsCounts = new Map();
-    const bump = (obj, key) => {
-        const k = String(key || 'unknown');
-        obj[k] = (obj[k] || 0) + 1;
-    };
-
-    const devices = Array.isArray(analyzedDevices) ? analyzedDevices : [];
-    out.total = devices.length;
-
-    for (const d of devices) {
-        const analysis = d?.analysis;
-        const isRelevant = Boolean(analysis?.isRelevant);
-        if (isRelevant) out.imported += 1;
-        else out.ignored += 1;
-
-        bump(out.byKind, analysis?.kind);
-
-        if (!isRelevant) {
-            const caps = Array.isArray(d?.capabilities) ? d.capabilities.map((c) => String(c)) : [];
-            for (const c of caps) {
-                if (IMPORT_RELEVANT_CAPS.includes(c)) continue;
-                ignoredCapsCounts.set(c, (ignoredCapsCounts.get(c) || 0) + 1);
-            }
-        }
-    }
-
-    const ignoredTop = Array.from(ignoredCapsCounts.entries())
-        .sort((a, b) => (b[1] || 0) - (a[1] || 0))
-        .slice(0, 30)
-        .map(([capability, count]) => ({ capability, count }));
-    out.ignoredCapabilitiesTop = ignoredTop;
-
-    return out;
 }
 
 function mapState(device, appType) {
@@ -1869,6 +1901,65 @@ async function syncHubitatDataInner() {
     try {
         const devices = await fetchHubitatAllDevices();
 
+        // Build a safe, minimal catalog for the Settings UI (includes ALL Hubitat devices).
+        // Note: this is separate from config.sensors; global availability controls will use this.
+        try {
+            const source = 'hubitat';
+            const sourceId = String(persistedConfig?.hubitat?.name || persistedConfig?.hubitat?.baseUrl || 'hubitat').trim() || 'hubitat';
+            discoveredDevicesCatalog = (Array.isArray(devices) ? devices : [])
+                .map((d) => {
+                    const id = String(d?.id ?? '').trim();
+                    if (!id) return null;
+                    const label = String(d?.label ?? id).trim() || id;
+                    const room = String(d?.room ?? '').trim();
+                    const capabilities = Array.isArray(d?.capabilities) ? d.capabilities.map((c) => String(c)) : [];
+                    const commands = pickCommands(d.commands);
+                    return {
+                        id,
+                        label,
+                        ...(room ? { room } : {}),
+                        source,
+                        sourceId,
+                        capabilities,
+                        commands,
+                    };
+                })
+                .filter(Boolean)
+                .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+        } catch {
+            // ignore
+        }
+
+        // One-time initialization: if availability was never set, default to "all discovered devices available".
+        // This preserves a reasonable out-of-the-box experience while still making availability authoritative.
+        try {
+            const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+            const availabilityInitialized = ui.availabilityInitialized === true;
+            const mainLocked = truthy(process.env.UI_ALLOWED_MAIN_DEVICE_IDS_LOCKED);
+            const ctrlLocked = truthy(process.env.UI_ALLOWED_CTRL_DEVICE_IDS_LOCKED);
+
+            const mainArr = Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [];
+            const ctrlArr = Array.isArray(ui.ctrlAllowedDeviceIds) ? ui.ctrlAllowedDeviceIds : [];
+            const legacyArr = Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : [];
+
+            const hasAnyAllowlist = mainArr.length > 0 || ctrlArr.length > 0 || legacyArr.length > 0;
+            if (!availabilityInitialized && !hasAnyAllowlist && !mainLocked && !ctrlLocked) {
+                const allIds = (Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : []).map((d) => String(d.id));
+                persistedConfig = normalizePersistedConfig({
+                    ...persistedConfig,
+                    ui: {
+                        ...(ui || {}),
+                        availabilityInitialized: true,
+                        mainAllowedDeviceIds: allIds,
+                        ctrlAllowedDeviceIds: allIds,
+                    },
+                });
+                persistConfigToDiskIfChanged('init-availability-all');
+            }
+        } catch {
+            // ignore
+        }
+
         const existingRooms = Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [];
         const existingSensors = Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [];
 
@@ -1916,9 +2007,17 @@ async function syncHubitatDataInner() {
         const newStatuses = {};
         const roomSensorCounts = {};
 
+        const source = 'hubitat';
+        const sourceId = String(persistedConfig?.hubitat?.name || persistedConfig?.hubitat?.baseUrl || 'hubitat').trim() || 'hubitat';
+
         devices.forEach(dev => {
-            const isRelevant = dev.capabilities?.some(c => IMPORT_RELEVANT_CAPS.includes(c));
-            if (!isRelevant) return;
+            const caps = Array.isArray(dev?.capabilities) ? dev.capabilities : [];
+            const attrs = (dev?.attributes && typeof dev.attributes === 'object') ? dev.attributes : {};
+
+            // Import all Hubitat devices. The UI surface is controlled by:
+            // - Global availability allowlists
+            // - Screen visibility allowlists
+            // - Per-device command allowlists
 
             // ROOMS (persisted by id; mapped by Hubitat's room display name)
             const roomName = dev.room || "Unassigned";
@@ -1948,8 +2047,8 @@ async function syncHubitatDataInner() {
             }
 
             // TYPE & STATE
-            const type = mapDeviceType(dev.capabilities, dev.type);
-            const state = mapState(dev, type);
+            const type = mapDeviceType(caps, dev.type);
+            const state = mapState({ ...dev, attributes: attrs }, type);
 
             // SENSOR (persist position in config.json)
             const existingSensor = sensorById.get(String(dev.id));
@@ -1973,23 +2072,27 @@ async function syncHubitatDataInner() {
 
             newSensorsById.set(String(dev.id), {
                 id: dev.id,
+                source,
+                sourceId,
                 roomId: roomId,
                 label: dev.label,
                 type: type,
-                capabilities: dev.capabilities,
-                metadata: { battery: dev.attributes?.battery },
+                capabilities: caps,
+                metadata: { battery: attrs?.battery },
                 position
             });
 
             newStatuses[dev.id] = {
                 id: dev.id,
+                source,
+                sourceId,
                 label: dev.label,
                 roomId,
-                capabilities: dev.capabilities,
+                capabilities: caps,
                 commands: pickCommands(dev.commands),
                 type,
                 state,
-                attributes: pickAttributes(dev.attributes),
+                attributes: pickAttributes(attrs),
                 lastUpdated: new Date().toISOString(),
             };
         });
@@ -2086,7 +2189,7 @@ async function syncHubitatDataInner() {
         });
 
         io.emit('config_update', config);
-        io.emit('device_refresh', sensorStatuses);
+        io.emit('device_refresh', getClientSafeStatuses());
 
     } catch (err) {
         lastHubitatError = describeFetchError(err);
@@ -2242,16 +2345,31 @@ function getPublicCamerasList() {
 function getClientSafeConfig() {
     const allowlists = getUiAllowlistsInfo();
     const publicCameras = getPublicCamerasList();
+
+    const sensorsRaw = Array.isArray(config?.sensors) ? config.sensors : [];
+    const globallyAvailableIds = new Set([
+        ...(Array.isArray(allowlists?.main?.ids) ? allowlists.main.ids : []),
+        ...(Array.isArray(allowlists?.ctrl?.ids) ? allowlists.ctrl.ids : []),
+    ].map((v) => String(v)));
+    // Availability is authoritative: only globally-allowed devices are exposed for panels.
+    const sensors = sensorsRaw.filter((s) => globallyAvailableIds.has(String(s?.id)));
+
     return {
         ...config,
+        sensors,
         ui: {
             ...(config?.ui || {}),
             // Do not leak snapshot URLs or credentials to the browser.
             cameras: publicCameras,
+            // Full discovered catalog for Settings (includes devices not currently available).
+            discoveredDevices: Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [],
             ctrlAllowedDeviceIds: allowlists.ctrl.ids,
             mainAllowedDeviceIds: allowlists.main.ids,
             // Back-compat for older clients
             allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+
+            // Server-validated list of commands that Settings/UI is allowed to surface.
+            allowedPanelDeviceCommands: getAllowedPanelDeviceCommands(),
 
             ctrlAllowlistSource: allowlists.ctrl.source,
             ctrlAllowlistLocked: allowlists.ctrl.locked,
@@ -2259,6 +2377,23 @@ function getClientSafeConfig() {
             mainAllowlistLocked: allowlists.main.locked,
         },
     };
+}
+
+function getClientSafeStatuses() {
+    const allowlists = getUiAllowlistsInfo();
+    const globallyAvailableIds = new Set([
+        ...(Array.isArray(allowlists?.main?.ids) ? allowlists.main.ids : []),
+        ...(Array.isArray(allowlists?.ctrl?.ids) ? allowlists.ctrl.ids : []),
+    ].map((v) => String(v)));
+
+    // Match getClientSafeConfig(): only globally-available devices are exposed.
+
+    const out = {};
+    const src = sensorStatuses && typeof sensorStatuses === 'object' ? sensorStatuses : {};
+    for (const [id, st] of Object.entries(src)) {
+        if (globallyAvailableIds.has(String(id))) out[id] = st;
+    }
+    return out;
 }
 
 // Ensure any socket "config_update" payloads are sanitized.
@@ -2596,7 +2731,7 @@ app.get('/api/config', (req, res) => {
     persistConfigToDiskIfChanged('api-config');
     res.json(getClientSafeConfig());
 });
-app.get('/api/status', (req, res) => res.json(sensorStatuses));
+app.get('/api/status', (req, res) => res.json(getClientSafeStatuses()));
 
 app.get('/api/sounds', (req, res) => {
     try {
@@ -3169,38 +3304,112 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
     const nextCtrlIds = Array.isArray(incomingCtrl) ? normalizeIds(incomingCtrl) : null;
     const nextMainIds = Array.isArray(incomingMain) ? normalizeIds(incomingMain) : null;
 
+    // If a device becomes newly available, default to "no commands allowed" for that scope.
+    // (Missing allowlist means "allow all"; explicit empty array means "allow none".)
+    const computeNewlyAvailableIds = () => {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+
+        if (panelName) {
+            const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+            const p = (profiles[panelName] && typeof profiles[panelName] === 'object') ? profiles[panelName] : {};
+
+            const prevCtrl = Array.isArray(p.ctrlAllowedDeviceIds)
+                ? p.ctrlAllowedDeviceIds
+                : (Array.isArray(p.allowedDeviceIds) ? p.allowedDeviceIds : []);
+            const prevMain = Array.isArray(p.mainAllowedDeviceIds) ? p.mainAllowedDeviceIds : [];
+
+            const prevUnion = new Set([...prevCtrl, ...prevMain].map((v) => String(v || '').trim()).filter(Boolean));
+            const nextCtrl = nextCtrlIds !== null ? nextCtrlIds : prevCtrl.map((v) => String(v || '').trim()).filter(Boolean);
+            const nextMain = nextMainIds !== null ? nextMainIds : prevMain.map((v) => String(v || '').trim()).filter(Boolean);
+            const nextUnion = new Set([...nextCtrl, ...nextMain].map((v) => String(v || '').trim()).filter(Boolean));
+
+            const added = [];
+            for (const id of nextUnion) {
+                if (!prevUnion.has(id)) added.push(id);
+            }
+            return added;
+        }
+
+        const prevCtrl = Array.isArray(ui.ctrlAllowedDeviceIds)
+            ? ui.ctrlAllowedDeviceIds
+            : (Array.isArray(ui.allowedDeviceIds) ? ui.allowedDeviceIds : []);
+        const prevMain = Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [];
+
+        const prevUnion = new Set([...prevCtrl, ...prevMain].map((v) => String(v || '').trim()).filter(Boolean));
+        const nextCtrl = nextCtrlIds !== null ? nextCtrlIds : prevCtrl.map((v) => String(v || '').trim()).filter(Boolean);
+        const nextMain = nextMainIds !== null ? nextMainIds : prevMain.map((v) => String(v || '').trim()).filter(Boolean);
+        const nextUnion = new Set([...nextCtrl, ...nextMain].map((v) => String(v || '').trim()).filter(Boolean));
+
+        const added = [];
+        for (const id of nextUnion) {
+            if (!prevUnion.has(id)) added.push(id);
+        }
+        return added;
+    };
+
+    const newlyAvailableIds = computeNewlyAvailableIds();
+
     if (panelName) {
         const ensured = ensurePanelProfileExists(panelName);
         if (!ensured) {
             return res.status(400).json({ error: 'Invalid panelName' });
         }
 
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const profiles = (ui.panelProfiles && typeof ui.panelProfiles === 'object') ? ui.panelProfiles : {};
+        const prevProfile = (profiles[ensured] && typeof profiles[ensured] === 'object') ? profiles[ensured] : {};
+        const prevCmds = (prevProfile.deviceCommandAllowlist && typeof prevProfile.deviceCommandAllowlist === 'object')
+            ? prevProfile.deviceCommandAllowlist
+            : {};
+
+        const nextCmds = { ...prevCmds };
+        for (const id of newlyAvailableIds) {
+            if (!Object.prototype.hasOwnProperty.call(nextCmds, id)) {
+                nextCmds[id] = [];
+            }
+        }
+
         persistedConfig = normalizePersistedConfig({
             ...(persistedConfig || {}),
             ui: {
                 ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                availabilityInitialized: true,
                 panelProfiles: {
                     ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
                     [ensured]: {
                         ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
-                        ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds } : {}),
-                        ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
+                        ...(nextCtrlIds !== null ? { ctrlAllowedDeviceIds: nextCtrlIds } : {}),
+                        ...(nextMainIds !== null ? { mainAllowedDeviceIds: nextMainIds } : {}),
+                        ...(newlyAvailableIds.length ? { deviceCommandAllowlist: nextCmds } : {}),
                     },
                 },
             },
         });
     } else {
+        const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+        const prevCmds = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {};
+        const nextCmds = { ...prevCmds };
+        for (const id of newlyAvailableIds) {
+            if (!Object.prototype.hasOwnProperty.call(nextCmds, id)) {
+                nextCmds[id] = [];
+            }
+        }
+
         persistedConfig = normalizePersistedConfig({
             ...(persistedConfig || {}),
             ui: {
                 ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
-                ...(nextCtrlIds ? { ctrlAllowedDeviceIds: nextCtrlIds, allowedDeviceIds: nextCtrlIds } : {}),
-                ...(nextMainIds ? { mainAllowedDeviceIds: nextMainIds } : {}),
+                availabilityInitialized: true,
+                ...(nextCtrlIds !== null ? { ctrlAllowedDeviceIds: nextCtrlIds, allowedDeviceIds: nextCtrlIds } : {}),
+                ...(nextMainIds !== null ? { mainAllowedDeviceIds: nextMainIds } : {}),
+                ...(newlyAvailableIds.length ? { deviceCommandAllowlist: nextCmds } : {}),
             },
         });
     }
 
     persistConfigToDiskIfChanged('api-ui');
+
+    rebuildRuntimeConfigFromPersisted();
 
     const nextAllowlists = getUiAllowlistsInfo();
     config = {
@@ -3218,6 +3427,7 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
         },
     };
     io.emit('config_update', config);
+    io.emit('device_refresh', getClientSafeStatuses());
 
     return res.json({
         ok: true,
@@ -3229,7 +3439,7 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
 
 // Update which devices are visible on the Home dashboard (metrics/room cards) for the current panel.
 // Expected payload: { homeVisibleDeviceIds: string[], panelName?: string }
-// Empty list means "show all devices".
+// Empty list means "show no devices".
 app.put('/api/ui/home-visible-device-ids', (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {};
     const homeVisibleDeviceIds = Array.isArray(body.homeVisibleDeviceIds)
@@ -3252,6 +3462,7 @@ app.put('/api/ui/home-visible-device-ids', (req, res) => {
             ...(persistedConfig || {}),
             ui: {
                 ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibilityInitialized: true,
                 panelProfiles: {
                     ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
                     [ensured]: {
@@ -3266,6 +3477,7 @@ app.put('/api/ui/home-visible-device-ids', (req, res) => {
             ...(persistedConfig || {}),
             ui: {
                 ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibilityInitialized: true,
                 homeVisibleDeviceIds,
             },
         });
@@ -3288,6 +3500,84 @@ app.put('/api/ui/home-visible-device-ids', (req, res) => {
             mainAllowlistLocked: nextAllowlists.main.locked,
             // new field
             homeVisibleDeviceIds: persistedConfig?.ui?.homeVisibleDeviceIds,
+            ctrlVisibleDeviceIds: persistedConfig?.ui?.ctrlVisibleDeviceIds,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({
+        ok: true,
+        ui: {
+            ...(config?.ui || {}),
+        },
+    });
+});
+
+// Update which devices are visible on the Controls dashboard for the current panel.
+// Expected payload: { ctrlVisibleDeviceIds: string[], panelName?: string }
+// Empty list means "show no devices".
+app.put('/api/ui/ctrl-visible-device-ids', (req, res) => {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const ctrlVisibleDeviceIds = Array.isArray(body.ctrlVisibleDeviceIds)
+        ? body.ctrlVisibleDeviceIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : null;
+
+    if (!Array.isArray(ctrlVisibleDeviceIds)) {
+        return res.status(400).json({ error: 'Expected { ctrlVisibleDeviceIds: string[] }' });
+    }
+
+    const panelName = normalizePanelName(body.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibilityInitialized: true,
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured]) ? persistedConfig.ui.panelProfiles[ensured] : {})),
+                        ctrlVisibleDeviceIds,
+                    },
+                },
+            },
+        });
+    } else {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                visibilityInitialized: true,
+                ctrlVisibleDeviceIds,
+            },
+        });
+    }
+
+    persistConfigToDiskIfChanged('api-ui-ctrl-visible-device-ids');
+
+    const nextAllowlists = getUiAllowlistsInfo();
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            // carry through allowlist lock/source fields
+            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
+            mainAllowedDeviceIds: nextAllowlists.main.ids,
+            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
+            ctrlAllowlistSource: nextAllowlists.ctrl.source,
+            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
+            mainAllowlistSource: nextAllowlists.main.source,
+            mainAllowlistLocked: nextAllowlists.main.locked,
+            // fields
+            homeVisibleDeviceIds: persistedConfig?.ui?.homeVisibleDeviceIds,
+            ctrlVisibleDeviceIds: persistedConfig?.ui?.ctrlVisibleDeviceIds,
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };
@@ -3633,7 +3923,7 @@ app.put('/api/ui/device-overrides', (req, res) => {
         : (Array.isArray(commandsRaw)
             ? commandsRaw
                 .map((c) => String(c || '').trim())
-                .filter((c) => c && ALLOWED_PANEL_DEVICE_COMMANDS.has(c))
+                .filter((c) => c && c.length <= 64 && /^[A-Za-z0-9_]+$/.test(c))
             : null);
     if (commandsRaw !== undefined && commandsRaw !== null && !Array.isArray(commandsRaw)) {
         return res.status(400).json({ error: 'commands must be an array of strings (or null)' });
@@ -5828,28 +6118,6 @@ app.get('/api/hubitat/devices/all', async (req, res) => {
     }
 });
 
-// Advanced: return all devices + an "import relevance" analysis + summary.
-// This is meant to help decide which currently-ignored device types should be supported next.
-app.get('/api/hubitat/devices/all/advanced', async (req, res) => {
-    try {
-        const devices = await fetchHubitatAllDevices();
-        const analyzed = devices.map((d) => ({
-            ...d,
-            analysis: analyzeHubitatDeviceForImport(d),
-        }));
-
-        const summary = summarizeAdvancedDeviceAnalysis(analyzed);
-        return res.json({
-            fetchedAt: lastHubitatFetchAt,
-            count: devices.length,
-            summary,
-            devices: analyzed,
-        });
-    } catch (err) {
-        return res.status(502).json({ error: err?.message || String(err) });
-    }
-});
-
 // Simple search helper (case-insensitive substring match on name/label/type/room)
 app.get('/api/hubitat/devices/search', (req, res) => {
     const q = String(req.query.q || '').trim().toLowerCase();
@@ -5943,7 +6211,7 @@ app.post('/api/events', (req, res) => {
 
         if (appliedAny) {
             try {
-                io.emit('device_refresh', sensorStatuses);
+                io.emit('device_refresh', getClientSafeStatuses());
             } catch {
                 // ignore
             }
@@ -6109,6 +6377,76 @@ app.get('/api/weather/health', (req, res) => {
 
 // Generic Maker API command passthrough (used for switches)
 // Body: { command: string, args?: (string|number)[] }
+app.get('/api/devices/:id/commands', async (req, res) => {
+    try {
+        if (!HUBITAT_CONFIGURED) {
+            return res.status(503).json({ error: 'Hubitat not configured' });
+        }
+
+        const deviceId = req.params.id;
+        if (!isUiDeviceAllowedForControl(deviceId)) {
+            return res.status(403).json({
+                error: 'Device not allowed',
+                message: 'This device is not in the UI allowlists. Set UI_ALLOWED_MAIN_DEVICE_IDS and/or UI_ALLOWED_CTRL_DEVICE_IDS (or ui.mainAllowedDeviceIds / ui.ctrlAllowedDeviceIds in server/data/config.json).',
+            });
+        }
+
+        // Maker API command metadata pattern:
+        //   /devices/<DEVICE_ID>/commands?access_token=...
+        const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/commands?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
+        const hubRes = await hubitatFetch(url, { method: 'GET' });
+        const text = await hubRes.text().catch(() => '');
+        if (!hubRes.ok) {
+            return res.status(502).json({ error: 'Hubitat commands fetch failed', status: hubRes.status, details: text });
+        }
+
+        const parsed = tryParseJsonFromText(text);
+        const rawCommands = Array.isArray(parsed) ? parsed : [];
+
+        // Normalize to a predictable shape for the UI mapper.
+        // Hubitat typically returns entries like:
+        //   { command: 'setLevel', parameters: [{ name, type }] }
+        const commands = rawCommands
+            .map((c) => {
+                if (!c || typeof c !== 'object') return null;
+                const command = String(c.command || c.name || '').trim();
+                if (!command) return null;
+
+                const paramsRaw = Array.isArray(c.parameters)
+                    ? c.parameters
+                    : (Array.isArray(c.args) ? c.args : []);
+
+                const parameters = Array.isArray(paramsRaw)
+                    ? paramsRaw
+                        .map((p) => {
+                            if (!p || typeof p !== 'object') return null;
+                            const name = String(p.name || '').trim();
+                            const type = String(p.type || '').trim();
+                            if (!name && !type) return null;
+                            return {
+                                ...(name ? { name } : {}),
+                                ...(type ? { type } : {}),
+                            };
+                        })
+                        .filter(Boolean)
+                    : [];
+
+                return {
+                    command,
+                    parameters,
+                    // Preserve raw shape for debugging/future expansion.
+                    _raw: c,
+                };
+            })
+            .filter(Boolean);
+
+        return res.json({ ok: true, deviceId: String(deviceId), commands });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Commands error' });
+    }
+});
+
 app.post('/api/devices/:id/command', async (req, res) => {
     try {
         if (!HUBITAT_CONFIGURED) {
@@ -6307,7 +6645,7 @@ if (HAS_BUILT_CLIENT) {
 io.on('connection', (socket) => {
     console.log('Client connected');
     socket.emit('config_update', config);
-    socket.emit('device_refresh', sensorStatuses);
+    socket.emit('device_refresh', getClientSafeStatuses());
 });
 
 server.listen(PORT, '0.0.0.0', () => {

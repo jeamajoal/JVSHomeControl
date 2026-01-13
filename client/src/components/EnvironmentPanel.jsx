@@ -554,7 +554,7 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
 
   const scaleNumRaw = Number(contentScale);
@@ -567,7 +567,6 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
   );
 
   const supportedActions = useMemo(() => {
-    const allow = new Set(['on', 'off', 'toggle', 'refresh', 'push']);
     return devices
       .map((d) => ({
         id: d.id,
@@ -579,16 +578,36 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       .map((d) => ({
         ...d,
         commands: (() => {
-          const base = d.commands.filter((c) => allow.has(c));
           const perDevice = getDeviceCommandAllowlistForId(deviceCommandAllowlist, d.id);
-          // Home controls only appear when commands are explicitly selected.
-          if (!perDevice || perDevice.length === 0) return [];
+          let base = d.commands;
+
+          // Missing allowlist => allow all commands. Empty array => allow none.
+          if (perDevice === null) return base;
+          if (perDevice.length === 0) return [];
           const set = new Set(perDevice);
-          return base.filter((c) => set.has(c));
+          return base.filter((c) => set.has(String(c)));
         })(),
       }))
       .filter((d) => d.commands.length);
   }, [devices, deviceCommandAllowlist]);
+
+  const formatCommandLabel = (cmd) => {
+    const s = String(cmd || '').trim();
+    if (!s) return '';
+    if (s === 'on') return 'On';
+    if (s === 'off') return 'Off';
+    if (s === 'toggle') return 'Toggle';
+    if (s === 'refresh') return 'Refresh';
+    if (s === 'push') return 'Push';
+    // human-ish label for arbitrary Hubitat commands
+    return s
+      .replace(/_/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2')
+      .trim()
+      .split(/\s+/)
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ''))
+      .join(' ');
+  };
 
   const runAction = async (deviceId, command) => {
     const key = `${deviceId}:${command}`;
@@ -808,71 +827,140 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                   {d.label}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {d.commands.includes('on') ? (
-                    <ActionButton
-                      label="On"
-                      icon={Power}
-                      accent="fixed"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:on`)}
-                      onClick={() => runAction(d.id, 'on')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {d.commands.includes('off') ? (
-                    <ActionButton
-                      label="Off"
-                      icon={Power}
-                      accent="fixed"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:off`)}
-                      onClick={() => runAction(d.id, 'off')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {!d.commands.includes('on') && !d.commands.includes('off') && d.commands.includes('toggle') ? (
-                    <ActionButton
-                      label="Toggle"
-                      icon={Power}
-                      accent="fixed"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:toggle`)}
-                      onClick={() => runAction(d.id, 'toggle')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {d.commands.includes('refresh') ? (
-                    <ActionButton
-                      label="Refresh"
-                      icon={SlidersHorizontal}
-                      accent="blue"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:refresh`)}
-                      onClick={() => runAction(d.id, 'refresh')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
-                  {d.commands.includes('push') ? (
-                    <ActionButton
-                      label="Push"
-                      icon={Activity}
-                      accent="blue"
-                      disabled={!connected}
-                      busy={busyActions.has(`${d.id}:push`)}
-                      onClick={() => runAction(d.id, 'push')}
-                      uiScheme={uiScheme}
-                      scaled
-                      scale={scaleNum}
-                    />
-                  ) : null}
+                  {(() => {
+                    const commands = Array.isArray(d.commands)
+                      ? d.commands.map((v) => String(v || '').trim()).filter(Boolean)
+                      : [];
+
+                    const hasOn = commands.includes('on');
+                    const hasOff = commands.includes('off');
+                    const hasToggle = commands.includes('toggle');
+                    const hasPowerCommands = hasOn || hasOff || hasToggle;
+
+                    const mode = (switchControlStyle === 'buttons' || switchControlStyle === 'switch' || switchControlStyle === 'auto')
+                      ? switchControlStyle
+                      : 'auto';
+
+                    const switchState = typeof d?.attrs?.switch === 'string'
+                      ? String(d.attrs.switch).toLowerCase()
+                      : null;
+                    const isOn = switchState === 'on';
+                    const isOff = switchState === 'off';
+
+                    const busyOn = busyActions.has(`${d.id}:on`);
+                    const busyOff = busyActions.has(`${d.id}:off`);
+                    const busyToggle = busyActions.has(`${d.id}:toggle`);
+                    const anyBusy = busyOn || busyOff || busyToggle;
+
+                    const pulseOn = switchAnimationStyle === 'pulse' && isOn === true && !anyBusy;
+
+                    const runToggle = () => {
+                      if (!connected || anyBusy) return;
+                      if (isOn === true && hasOff) return runAction(d.id, 'off');
+                      if (isOn === false && hasOn) return runAction(d.id, 'on');
+                      if (hasToggle) return runAction(d.id, 'toggle');
+                      if (isOn === true) return runAction(d.id, 'off');
+                      return runAction(d.id, 'on');
+                    };
+
+                    const otherCommands = commands.filter((c) => c !== 'on' && c !== 'off' && c !== 'toggle');
+
+                    return (
+                      <>
+                        {hasPowerCommands && mode === 'switch' ? (
+                          <button
+                            type="button"
+                            disabled={!connected || anyBusy}
+                            onClick={runToggle}
+                            className={`w-full flex items-center justify-between gap-3 rounded-xl border px-3 py-3 transition-colors active:scale-[0.99] ${(!connected || anyBusy) ? 'opacity-50' : 'hover:bg-white/5'} ${
+                              isOn === true
+                                ? (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10')
+                                : 'text-white/70 border-white/10 bg-black/20'
+                            }`}
+                            aria-pressed={isOn === true ? 'true' : 'false'}
+                          >
+                            <div className="text-xs font-bold uppercase tracking-[0.18em]">
+                              {anyBusy ? <Loader2 className="w-4 h-4 animate-spin inline" /> : (isOn === true ? 'On' : 'Off')}
+                            </div>
+
+                            <div
+                              className={`relative w-14 h-8 rounded-full border transition-colors ${
+                                isOn === true
+                                  ? (uiScheme?.actionButton || 'text-neon-blue border-neon-blue/30 bg-neon-blue/10')
+                                  : 'border-white/10 bg-black/30'
+                              } ${pulseOn ? 'animate-pulse' : ''}`}
+                            >
+                              <div
+                                className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white/70 transition-transform ${
+                                  isOn === true ? 'translate-x-6' : 'translate-x-0'
+                                }`}
+                              />
+                            </div>
+                          </button>
+                        ) : null}
+
+                        {hasPowerCommands && mode !== 'switch' && hasOn ? (
+                          <ActionButton
+                            key="power:on"
+                            label="On"
+                            icon={Power}
+                            accent={isOn ? 'green' : 'fixed'}
+                            disabled={!connected}
+                            busy={busyOn}
+                            onClick={() => runAction(d.id, 'on')}
+                            uiScheme={uiScheme}
+                            scaled
+                            scale={scaleNum}
+                          />
+                        ) : null}
+
+                        {hasPowerCommands && mode !== 'switch' && hasOff ? (
+                          <ActionButton
+                            key="power:off"
+                            label="Off"
+                            icon={Power}
+                            accent={isOff ? 'green' : 'fixed'}
+                            disabled={!connected}
+                            busy={busyOff}
+                            onClick={() => runAction(d.id, 'off')}
+                            uiScheme={uiScheme}
+                            scaled
+                            scale={scaleNum}
+                          />
+                        ) : null}
+
+                        {hasPowerCommands && mode !== 'switch' && !hasOn && !hasOff && hasToggle ? (
+                          <ActionButton
+                            key="power:toggle"
+                            label="Toggle"
+                            icon={Power}
+                            accent={isOn ? 'green' : 'fixed'}
+                            disabled={!connected}
+                            busy={busyToggle}
+                            onClick={() => runAction(d.id, 'toggle')}
+                            uiScheme={uiScheme}
+                            scaled
+                            scale={scaleNum}
+                          />
+                        ) : null}
+
+                        {otherCommands.map((cmd) => (
+                          <ActionButton
+                            key={cmd}
+                            label={formatCommandLabel(cmd)}
+                            icon={cmd === 'push' ? Activity : SlidersHorizontal}
+                            accent="blue"
+                            disabled={!connected}
+                            busy={busyActions.has(`${d.id}:${cmd}`)}
+                            onClick={() => runAction(d.id, cmd)}
+                            uiScheme={uiScheme}
+                            scaled
+                            scale={scaleNum}
+                          />
+                        ))}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             ))}
@@ -901,6 +989,18 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     () => uiScheme || getUiScheme(config?.ui?.accentColorId),
     [uiScheme, config?.ui?.accentColorId],
   );
+
+  const switchControlStyle = useMemo(() => {
+    const raw = String(config?.ui?.deviceControlStyles?.switch?.controlStyle ?? '').trim().toLowerCase();
+    if (raw === 'buttons' || raw === 'switch' || raw === 'auto') return raw;
+    return 'auto';
+  }, [config?.ui?.deviceControlStyles?.switch?.controlStyle]);
+
+  const switchAnimationStyle = useMemo(() => {
+    const raw = String(config?.ui?.deviceControlStyles?.switch?.animationStyle ?? '').trim().toLowerCase();
+    if (raw === 'pulse' || raw === 'none') return raw;
+    return 'none';
+  }, [config?.ui?.deviceControlStyles?.switch?.animationStyle]);
 
   const colorizeHomeValues = Boolean(config?.ui?.colorizeHomeValues);
   const colorizeHomeValuesOpacityPct = useMemo(() => {
@@ -1300,7 +1400,7 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     : outsideSensors.temperature;
 
   const topRowCards = useMemo(() => {
-    const selected = homeTopRowCards.length ? homeTopRowCards : HOME_TOP_ROW_CARD_IDS;
+    const selected = homeTopRowCards;
     const selectedSet = new Set(selected);
     const scaled = homeTopRowScalePct !== 100;
     const cards = [];
@@ -1599,6 +1699,8 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
                   colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
                   deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
                   deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                  switchControlStyle={switchControlStyle}
+                  switchAnimationStyle={switchAnimationStyle}
                   homeRoomMetricKeys={homeRoomMetricKeys}
                   homeRoomMetricColumns={homeRoomMetricColumns}
                   homeRoomColumnsXl={homeRoomColumnsXl}
