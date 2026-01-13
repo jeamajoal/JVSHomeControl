@@ -2413,7 +2413,7 @@ const ConfigPanel = ({
     const ids = Array.isArray(uiObj.homeVisibleDeviceIds) ? uiObj.homeVisibleDeviceIds : [];
     const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
     return new Set(cleaned);
-  }, [config?.ui?.homeVisibleDeviceIds]);
+  }, [config?.ui]);
 
   const ctrlVisibleDeviceIds = useMemo(() => {
     const uiObj = (config?.ui && typeof config.ui === 'object') ? config.ui : {};
@@ -2422,7 +2422,7 @@ const ConfigPanel = ({
     const ids = Array.isArray(uiObj.ctrlVisibleDeviceIds) ? uiObj.ctrlVisibleDeviceIds : [];
     const cleaned = ids.map((v) => String(v || '').trim()).filter(Boolean);
     return new Set(cleaned);
-  }, [config?.ui?.ctrlVisibleDeviceIds]);
+  }, [config?.ui]);
 
   // Availability is a server-enforced global safety boundary. Even if panel profiles can override UI settings,
   // the allowlists must always reflect the *global* server config.
