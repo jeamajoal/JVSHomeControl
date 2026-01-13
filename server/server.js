@@ -650,6 +650,30 @@ function normalizePersistedConfig(raw) {
         return outMap;
     })();
 
+    const deviceControlStyles = (() => {
+        const rawStyles = (uiRaw.deviceControlStyles && typeof uiRaw.deviceControlStyles === 'object')
+            ? uiRaw.deviceControlStyles
+            : {};
+
+        const rawSwitch = (rawStyles.switch && typeof rawStyles.switch === 'object') ? rawStyles.switch : {};
+        const rawControlStyle = String(rawSwitch.controlStyle ?? '').trim().toLowerCase();
+        const rawAnimationStyle = String(rawSwitch.animationStyle ?? '').trim().toLowerCase();
+
+        const controlStyle = (rawControlStyle === 'buttons' || rawControlStyle === 'switch' || rawControlStyle === 'auto')
+            ? rawControlStyle
+            : 'auto';
+        const animationStyle = (rawAnimationStyle === 'pulse' || rawAnimationStyle === 'none')
+            ? rawAnimationStyle
+            : 'none';
+
+        return {
+            switch: {
+                controlStyle,
+                animationStyle,
+            },
+        };
+    })();
+
     const rawAccent = String(uiRaw.accentColorId || '').trim();
     const accentColorId = normalizeAccentColorId(rawAccent);
 
@@ -1313,6 +1337,7 @@ function normalizePersistedConfig(raw) {
         deviceLabelOverrides,
         deviceCommandAllowlist,
         deviceHomeMetricAllowlist,
+        deviceControlStyles,
         extraAllowedPanelDeviceCommands,
         availabilityInitialized,
         visibilityInitialized,
@@ -1377,6 +1402,52 @@ function normalizePersistedConfig(raw) {
 
     return out;
 }
+
+// Update device control style preferences by internal device type.
+// Expected payload: { deviceControlStyles: { switch?: { controlStyle?: 'auto'|'buttons'|'switch', animationStyle?: 'none'|'pulse' } } }
+app.put('/api/ui/device-control-styles', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const incoming = (body.deviceControlStyles && typeof body.deviceControlStyles === 'object') ? body.deviceControlStyles : null;
+    if (!incoming) {
+        return res.status(400).json({ error: 'Missing deviceControlStyles' });
+    }
+
+    const prevUi = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const prevStyles = (prevUi.deviceControlStyles && typeof prevUi.deviceControlStyles === 'object') ? prevUi.deviceControlStyles : {};
+    const prevSwitch = (prevStyles.switch && typeof prevStyles.switch === 'object') ? prevStyles.switch : {};
+
+    const incomingSwitch = (incoming.switch && typeof incoming.switch === 'object') ? incoming.switch : {};
+    const nextStyles = {
+        ...prevStyles,
+        ...incoming,
+        switch: {
+            ...prevSwitch,
+            ...incomingSwitch,
+        },
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...prevUi,
+            deviceControlStyles: nextStyles,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-device-control-styles');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            deviceControlStyles: persistedConfig?.ui?.deviceControlStyles,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
 
 function ensurePanelProfileExists(panelName) {
     const name = normalizePanelName(panelName);
@@ -6306,6 +6377,76 @@ app.get('/api/weather/health', (req, res) => {
 
 // Generic Maker API command passthrough (used for switches)
 // Body: { command: string, args?: (string|number)[] }
+app.get('/api/devices/:id/commands', async (req, res) => {
+    try {
+        if (!HUBITAT_CONFIGURED) {
+            return res.status(503).json({ error: 'Hubitat not configured' });
+        }
+
+        const deviceId = req.params.id;
+        if (!isUiDeviceAllowedForControl(deviceId)) {
+            return res.status(403).json({
+                error: 'Device not allowed',
+                message: 'This device is not in the UI allowlists. Set UI_ALLOWED_MAIN_DEVICE_IDS and/or UI_ALLOWED_CTRL_DEVICE_IDS (or ui.mainAllowedDeviceIds / ui.ctrlAllowedDeviceIds in server/data/config.json).',
+            });
+        }
+
+        // Maker API command metadata pattern:
+        //   /devices/<DEVICE_ID>/commands?access_token=...
+        const url = `${HUBITAT_API_BASE}/devices/${encodeURIComponent(deviceId)}/commands?access_token=${encodeURIComponent(HUBITAT_ACCESS_TOKEN)}`;
+        const hubRes = await hubitatFetch(url, { method: 'GET' });
+        const text = await hubRes.text().catch(() => '');
+        if (!hubRes.ok) {
+            return res.status(502).json({ error: 'Hubitat commands fetch failed', status: hubRes.status, details: text });
+        }
+
+        const parsed = tryParseJsonFromText(text);
+        const rawCommands = Array.isArray(parsed) ? parsed : [];
+
+        // Normalize to a predictable shape for the UI mapper.
+        // Hubitat typically returns entries like:
+        //   { command: 'setLevel', parameters: [{ name, type }] }
+        const commands = rawCommands
+            .map((c) => {
+                if (!c || typeof c !== 'object') return null;
+                const command = String(c.command || c.name || '').trim();
+                if (!command) return null;
+
+                const paramsRaw = Array.isArray(c.parameters)
+                    ? c.parameters
+                    : (Array.isArray(c.args) ? c.args : []);
+
+                const parameters = Array.isArray(paramsRaw)
+                    ? paramsRaw
+                        .map((p) => {
+                            if (!p || typeof p !== 'object') return null;
+                            const name = String(p.name || '').trim();
+                            const type = String(p.type || '').trim();
+                            if (!name && !type) return null;
+                            return {
+                                ...(name ? { name } : {}),
+                                ...(type ? { type } : {}),
+                            };
+                        })
+                        .filter(Boolean)
+                    : [];
+
+                return {
+                    command,
+                    parameters,
+                    // Preserve raw shape for debugging/future expansion.
+                    _raw: c,
+                };
+            })
+            .filter(Boolean);
+
+        return res.json({ ok: true, deviceId: String(deviceId), commands });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Commands error' });
+    }
+});
+
 app.post('/api/devices/:id/command', async (req, res) => {
     try {
         if (!HUBITAT_CONFIGURED) {

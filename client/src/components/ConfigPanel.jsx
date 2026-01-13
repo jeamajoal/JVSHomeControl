@@ -84,6 +84,19 @@ async function saveDeviceOverrides(payload) {
   return res.json().catch(() => ({}));
 }
 
+async function saveDeviceControlStyles(deviceControlStyles) {
+  const res = await fetch(`${API_HOST}/api/ui/device-control-styles`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceControlStyles: deviceControlStyles || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Device control styles save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -121,17 +134,6 @@ async function fetchSoundFiles() {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Sounds fetch failed (${res.status})`);
-  }
-  const data = await res.json().catch(() => ({}));
-  const files = Array.isArray(data?.files) ? data.files : [];
-  return files.map((v) => String(v)).filter(Boolean);
-}
-
-async function fetchBackgroundFiles() {
-  const res = await fetch(`${API_HOST}/api/backgrounds`);
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Backgrounds fetch failed (${res.status})`);
   }
   const data = await res.json().catch(() => ({}));
   const files = Array.isArray(data?.files) ? data.files : [];
@@ -214,22 +216,6 @@ async function saveColorizeHomeValues(payload) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(text || `Colorize Home values save failed (${res.status})`);
-  }
-  return res.json().catch(() => ({}));
-}
-
-async function saveHomeBackground(homeBackground, panelName) {
-  const res = await fetch(`${API_HOST}/api/ui/home-background`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      homeBackground: homeBackground || {},
-      ...(panelName ? { panelName } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Home background save failed (${res.status})`);
   }
   return res.json().catch(() => ({}));
 }
@@ -528,62 +514,6 @@ async function saveCameraPreviews(payload, panelName) {
   return res.json().catch(() => ({}));
 }
 
-async function saveVisibleCameraIds(visibleCameraIds, panelName) {
-  const res = await fetch(`${API_HOST}/api/ui/visible-camera-ids`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      visibleCameraIds: Array.isArray(visibleCameraIds) ? visibleCameraIds : [],
-      ...(panelName ? { panelName } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Visible cameras save failed (${res.status})`);
-  }
-  return res.json().catch(() => ({}));
-}
-
-async function saveRoomCameraIds(roomId, cameraIds, panelName) {
-  const res = await fetch(`${API_HOST}/api/ui/room-camera-ids`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      roomId,
-      cameraIds: Array.isArray(cameraIds) ? cameraIds : [],
-      ...(panelName ? { panelName } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Room cameras save failed (${res.status})`);
-  }
-  return res.json().catch(() => ({}));
-}
-
-async function saveTopCameras(cameraIds, size, panelName) {
-  const payload = {
-    ...(Array.isArray(cameraIds) ? { cameraIds } : {}),
-    ...(size ? { size } : {}),
-    ...(panelName ? { panelName } : {}),
-  };
-
-  const res = await fetch(`${API_HOST}/api/ui/top-cameras`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(text || `Top cameras save failed (${res.status})`);
-  }
-
-  return res.json();
-}
-
 async function fetchUiCameras() {
   const res = await fetch(`${API_HOST}/api/ui/cameras`);
   if (!res.ok) {
@@ -784,8 +714,6 @@ const ConfigPanel = ({
 
   const [soundFiles, setSoundFiles] = useState([]);
   const [soundFilesError, setSoundFilesError] = useState(null);
-  const [backgroundFiles, setBackgroundFiles] = useState([]);
-  const [backgroundFilesError, setBackgroundFilesError] = useState(null);
   const [openMeteoDraft, setOpenMeteoDraft] = useState(() => ({ lat: '', lon: '', timezone: 'auto' }));
   const [openMeteoDirty, setOpenMeteoDirty] = useState(false);
   const [openMeteoError, setOpenMeteoError] = useState(null);
@@ -816,7 +744,7 @@ const ConfigPanel = ({
   useEffect(() => {
     // Panel profile selection is only relevant on non-Global tabs.
     // If no profile is selected, pick the first available profile.
-    if (activeTab === 'display') return;
+    if (activeTab === 'display' || activeTab === 'deviceOptions') return;
     if (selectedPanelName) return;
     if (!panelNames.length) return;
     if (ctx?.setPanelName) ctx.setPanelName(panelNames[0]);
@@ -824,6 +752,7 @@ const ConfigPanel = ({
 
   const TABS = [
     { id: 'display', label: 'Global Options' },
+    { id: 'deviceOptions', label: 'Device Options' },
     { id: 'appearance', label: 'Panel Options' },
     { id: 'climate', label: 'Climate' },
     { id: 'events', label: 'Events' },
@@ -834,7 +763,7 @@ const ConfigPanel = ({
     if (activeTab === 'sounds' || activeTab === 'cameras') {
       setActiveTab('display');
     } else if (activeTab === 'devices') {
-      setActiveTab('appearance');
+      setActiveTab('deviceOptions');
     }
   }, [activeTab]);
 
@@ -880,7 +809,6 @@ const ConfigPanel = ({
   const accentColorSave = useAsyncSave((nextAccentColorId) => saveAccentColorId(nextAccentColorId, selectedPanelName || null));
   const alertSoundsSave = useAsyncSave(saveAlertSounds);
   const homeValueSave = useAsyncSave(saveColorizeHomeValues);
-  const homeBackgroundSave = useAsyncSave((homeBackground) => saveHomeBackground(homeBackground, selectedPanelName || null));
   const cardOpacitySave = useAsyncSave((cardOpacityScalePct) => saveCardOpacityScalePct(cardOpacityScalePct, selectedPanelName || null));
   const blurScaleSave = useAsyncSave((blurScalePct) => saveBlurScalePct(blurScalePct, selectedPanelName || null));
   const secondaryTextOpacitySave = useAsyncSave((secondaryTextOpacityPct) => saveSecondaryTextOpacityPct(secondaryTextOpacityPct, selectedPanelName || null));
@@ -894,16 +822,12 @@ const ConfigPanel = ({
   const iconOpacitySave = useAsyncSave((iconOpacityPct) => saveIconOpacityPct(iconOpacityPct, selectedPanelName || null));
   const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
+  const deviceControlStylesSave = useAsyncSave((deviceControlStyles) => saveDeviceControlStyles(deviceControlStyles));
   const homeTopRowSave = useAsyncSave((payload) => saveHomeTopRow(payload, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
   const homeRoomMetricColsSave = useAsyncSave((homeRoomMetricColumns) => saveHomeRoomMetricColumns(homeRoomMetricColumns, selectedPanelName || null));
   const homeRoomMetricKeysSave = useAsyncSave((homeRoomMetricKeys) => saveHomeRoomMetricKeys(homeRoomMetricKeys, selectedPanelName || null));
   const cameraPreviewsSave = useAsyncSave((payload) => saveCameraPreviews(payload, selectedPanelName || null));
-  const visibleCamerasSave = useAsyncSave((visibleCameraIds) => saveVisibleCameraIds(visibleCameraIds, selectedPanelName || null));
-  const topCamerasSave = useAsyncSave((payload) => {
-    const next = (payload && typeof payload === 'object') ? payload : {};
-    return saveTopCameras(next.cameraIds, next.size, selectedPanelName || null);
-  });
   const sensorColorsSave = useAsyncSave(saveSensorIndicatorColors);
   const climateTolSave = useAsyncSave(saveClimateTolerances);
   const climateColorsSave = useAsyncSave(saveClimateToleranceColors);
@@ -1163,6 +1087,18 @@ const ConfigPanel = ({
     return Math.max(50, Math.min(200, Math.round(raw)));
   }, [baseConfig?.ui?.cardScalePct]);
 
+  const globalSwitchControlStyleFromConfig = useMemo(() => {
+    const raw = String(baseConfig?.ui?.deviceControlStyles?.switch?.controlStyle ?? '').trim().toLowerCase();
+    if (raw === 'auto' || raw === 'buttons' || raw === 'switch') return raw;
+    return 'auto';
+  }, [baseConfig?.ui?.deviceControlStyles?.switch?.controlStyle]);
+
+  const globalSwitchAnimationStyleFromConfig = useMemo(() => {
+    const raw = String(baseConfig?.ui?.deviceControlStyles?.switch?.animationStyle ?? '').trim().toLowerCase();
+    if (raw === 'none' || raw === 'pulse') return raw;
+    return 'none';
+  }, [baseConfig?.ui?.deviceControlStyles?.switch?.animationStyle]);
+
   const homeTopRowEnabledFromConfig = config?.ui?.homeTopRowEnabled !== false;
 
   const homeTopRowScaleFromConfig = useMemo(() => {
@@ -1211,27 +1147,6 @@ const ConfigPanel = ({
       : ['temperature', 'humidity', 'illuminance'];
     return Array.from(new Set(raw.map((v) => String(v || '').trim()).filter((v) => allowed.has(v))));
   }, [config?.ui?.homeRoomMetricKeys]);
-
-  const camerasFromConfig = useMemo(
-    () => (Array.isArray(config?.ui?.cameras) ? config.ui.cameras : []),
-    [config?.ui?.cameras],
-  );
-
-  const visibleCameraIdsFromConfig = useMemo(() => {
-    const raw = Array.isArray(config?.ui?.visibleCameraIds) ? config.ui.visibleCameraIds : [];
-    return raw.map((v) => String(v || '').trim()).filter(Boolean);
-  }, [config?.ui?.visibleCameraIds]);
-
-  const topCameraIdsFromConfig = useMemo(() => {
-    const raw = Array.isArray(config?.ui?.topCameraIds) ? config.ui.topCameraIds : [];
-    return raw.map((v) => String(v || '').trim()).filter(Boolean);
-  }, [config?.ui?.topCameraIds]);
-
-  const topCameraSizeFromConfig = useMemo(() => {
-    const raw = String(config?.ui?.topCameraSize ?? '').trim().toLowerCase();
-    if (raw === 'xs' || raw === 'sm' || raw === 'md' || raw === 'lg') return raw;
-    return 'md';
-  }, [config?.ui?.topCameraSize]);
 
   const homeCameraPreviewsEnabledFromConfig = useMemo(
     () => config?.ui?.homeCameraPreviewsEnabled === true,
@@ -1331,6 +1246,14 @@ const ConfigPanel = ({
   const [globalCardScaleDirty, setGlobalCardScaleDirty] = useState(false);
   const [globalCardScaleError, setGlobalCardScaleError] = useState(null);
 
+  const [globalSwitchControlStyleDraft, setGlobalSwitchControlStyleDraft] = useState(() => 'auto');
+  const [globalSwitchControlStyleDirty, setGlobalSwitchControlStyleDirty] = useState(false);
+  const [globalSwitchControlStyleError, setGlobalSwitchControlStyleError] = useState(null);
+
+  const [globalSwitchAnimationStyleDraft, setGlobalSwitchAnimationStyleDraft] = useState(() => 'none');
+  const [globalSwitchAnimationStyleDirty, setGlobalSwitchAnimationStyleDirty] = useState(false);
+  const [globalSwitchAnimationStyleError, setGlobalSwitchAnimationStyleError] = useState(null);
+
   const [homeTopRowDraft, setHomeTopRowDraft] = useState(() => ({
     enabled: true,
     scalePct: 100,
@@ -1363,29 +1286,6 @@ const ConfigPanel = ({
   const [cameraPreviewsDirty, setCameraPreviewsDirty] = useState(false);
   const [cameraPreviewsError, setCameraPreviewsError] = useState(null);
 
-  const [visibleCameraIdsDraft, setVisibleCameraIdsDraft] = useState(() => ([]));
-  const [visibleCameraIdsDirty, setVisibleCameraIdsDirty] = useState(false);
-  const [visibleCameraIdsError, setVisibleCameraIdsError] = useState(null);
-
-  const homeBackgroundFromConfig = useMemo(() => {
-    const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
-      ? config.ui.homeBackground
-      : {};
-
-    const enabled = raw.enabled === true;
-    const url = (raw.url === null || raw.url === undefined) ? '' : String(raw.url);
-    const opacityRaw = Number(raw.opacityPct);
-    const opacityPct = Number.isFinite(opacityRaw)
-      ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
-      : 35;
-
-    return { enabled, url, opacityPct };
-  }, [config?.ui?.homeBackground]);
-
-  const [homeBackgroundDraft, setHomeBackgroundDraft] = useState(() => ({ enabled: false, url: '', opacityPct: 35 }));
-  const [homeBackgroundDirty, setHomeBackgroundDirty] = useState(false);
-  const [homeBackgroundError, setHomeBackgroundError] = useState(null);
-
   const [sensorColorsDraft, setSensorColorsDraft] = useState(() => ({ motion: 'warning', door: 'neon-red' }));
   const [sensorColorsDirty, setSensorColorsDirty] = useState(false);
   const [sensorColorsError, setSensorColorsError] = useState(null);
@@ -1397,13 +1297,6 @@ const ConfigPanel = ({
     setHomeValueOpacityDraft(homeValueOpacityFromConfig);
   }, [homeValueOpacityDirty, homeValueOpacityFromConfig]);
 
-  // When switching profiles, ensure the Home background editor reflects the selected profile.
-  useEffect(() => {
-    setHomeBackgroundError(null);
-    setHomeBackgroundDirty(false);
-    setHomeBackgroundDraft(homeBackgroundFromConfig);
-  }, [selectedPanelName]);
-
   // When switching profiles, ensure the camera preview editor reflects the selected profile.
   useEffect(() => {
     setCameraPreviewsError(null);
@@ -1413,13 +1306,6 @@ const ConfigPanel = ({
       controlsCameraPreviewsEnabled: controlsCameraPreviewsEnabledFromConfig,
       cameraPreviewRefreshSeconds: cameraPreviewRefreshSecondsFromConfig,
     });
-  }, [selectedPanelName]);
-
-  // When switching profiles, ensure the visible cameras editor reflects the selected profile.
-  useEffect(() => {
-    setVisibleCameraIdsError(null);
-    setVisibleCameraIdsDirty(false);
-    setVisibleCameraIdsDraft(visibleCameraIdsFromConfig);
   }, [selectedPanelName]);
 
   useEffect(() => {
@@ -1538,6 +1424,16 @@ const ConfigPanel = ({
   }, [globalCardScaleDirty, globalCardScaleFromConfig]);
 
   useEffect(() => {
+    if (globalSwitchControlStyleDirty) return;
+    setGlobalSwitchControlStyleDraft(globalSwitchControlStyleFromConfig);
+  }, [globalSwitchControlStyleDirty, globalSwitchControlStyleFromConfig]);
+
+  useEffect(() => {
+    if (globalSwitchAnimationStyleDirty) return;
+    setGlobalSwitchAnimationStyleDraft(globalSwitchAnimationStyleFromConfig);
+  }, [globalSwitchAnimationStyleDirty, globalSwitchAnimationStyleFromConfig]);
+
+  useEffect(() => {
     if (homeTopRowDirty) return;
     setHomeTopRowDraft({
       enabled: homeTopRowEnabledFromConfig,
@@ -1579,16 +1475,6 @@ const ConfigPanel = ({
     controlsCameraPreviewsEnabledFromConfig,
     cameraPreviewRefreshSecondsFromConfig,
   ]);
-
-  useEffect(() => {
-    if (visibleCameraIdsDirty) return;
-    setVisibleCameraIdsDraft(visibleCameraIdsFromConfig);
-  }, [visibleCameraIdsDirty, visibleCameraIdsFromConfig]);
-
-  useEffect(() => {
-    if (homeBackgroundDirty) return;
-    setHomeBackgroundDraft(homeBackgroundFromConfig);
-  }, [homeBackgroundDirty, homeBackgroundFromConfig]);
 
   useEffect(() => {
     if (climateDirty) return;
@@ -2020,6 +1906,39 @@ const ConfigPanel = ({
     return () => clearTimeout(t);
   }, [connected, globalCardScaleDirty, globalCardScaleDraft]);
 
+  // Autosave: Global switch control styles.
+  useEffect(() => {
+    if (!connected) return;
+    if (!globalSwitchControlStyleDirty && !globalSwitchAnimationStyleDirty) return;
+
+    const t = setTimeout(async () => {
+      setGlobalSwitchControlStyleError(null);
+      setGlobalSwitchAnimationStyleError(null);
+      try {
+        await deviceControlStylesSave.run({
+          switch: {
+            controlStyle: globalSwitchControlStyleDraft,
+            animationStyle: globalSwitchAnimationStyleDraft,
+          },
+        });
+        setGlobalSwitchControlStyleDirty(false);
+        setGlobalSwitchAnimationStyleDirty(false);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        setGlobalSwitchControlStyleError(msg);
+        setGlobalSwitchAnimationStyleError(msg);
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [
+    connected,
+    globalSwitchControlStyleDirty,
+    globalSwitchAnimationStyleDirty,
+    globalSwitchControlStyleDraft,
+    globalSwitchAnimationStyleDraft,
+  ]);
+
   // Autosave: Home top row.
   useEffect(() => {
     if (!connected) return;
@@ -2126,42 +2045,6 @@ const ConfigPanel = ({
     return () => clearTimeout(t);
   }, [connected, homeRoomMetricKeysDirty, homeRoomMetricKeysDraft]);
 
-  // Autosave: Home background.
-  useEffect(() => {
-    if (!connected) return;
-    if (!homeBackgroundDirty) return;
-
-    const t = setTimeout(async () => {
-      setHomeBackgroundError(null);
-      try {
-        const trimmedUrl = String(homeBackgroundDraft.url || '').trim();
-        const enabled = homeBackgroundDraft.enabled === true;
-        const opacityRaw = Number(homeBackgroundDraft.opacityPct);
-        const opacityPct = Number.isFinite(opacityRaw)
-          ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
-          : 35;
-
-        // If enabled but missing URL, force-disable to avoid a save loop.
-        if (enabled && !trimmedUrl) {
-          setHomeBackgroundDraft((prev) => ({ ...prev, enabled: false }));
-          setHomeBackgroundError('Enter an image URL before enabling.');
-          setHomeBackgroundDirty(false);
-          return;
-        }
-
-        await homeBackgroundSave.run({
-          enabled,
-          url: trimmedUrl || null,
-          opacityPct,
-        });
-        setHomeBackgroundDirty(false);
-      } catch (e) {
-        setHomeBackgroundError(e?.message || String(e));
-      }
-    }, 700);
-
-    return () => clearTimeout(t);
-  }, [connected, homeBackgroundDirty, homeBackgroundDraft]);
 
   // Autosave: Camera previews.
   useEffect(() => {
@@ -2190,23 +2073,6 @@ const ConfigPanel = ({
     return () => clearTimeout(t);
   }, [connected, cameraPreviewsDirty, cameraPreviewsDraft]);
 
-  // Autosave: Visible cameras.
-  useEffect(() => {
-    if (!connected) return;
-    if (!visibleCameraIdsDirty) return;
-
-    const t = setTimeout(async () => {
-      setVisibleCameraIdsError(null);
-      try {
-        await visibleCamerasSave.run(Array.isArray(visibleCameraIdsDraft) ? visibleCameraIdsDraft : []);
-        setVisibleCameraIdsDirty(false);
-      } catch (e) {
-        setVisibleCameraIdsError(e?.message || String(e));
-      }
-    }, 650);
-
-    return () => clearTimeout(t);
-  }, [connected, visibleCameraIdsDirty, visibleCameraIdsDraft]);
 
   // Autosave: Home sensor indicator colors.
   useEffect(() => {
@@ -2374,24 +2240,6 @@ const ConfigPanel = ({
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        setBackgroundFilesError(null);
-        const files = await fetchBackgroundFiles();
-        if (!cancelled) setBackgroundFiles(files);
-      } catch (e) {
-        if (!cancelled) setBackgroundFilesError(e?.message || String(e));
-      }
-    };
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const [newRoomName, setNewRoomName] = useState('');
   const [labelDrafts, setLabelDrafts] = useState(() => ({}));
@@ -2530,8 +2378,6 @@ const ConfigPanel = ({
     // Fall back to the currently-available device list if server doesn't provide it.
     return discoveredDevices || allDevices;
   }, [discoveredDevices, allDevices]);
-
-  const allDeviceIds = useMemo(() => allDevices.map((x) => String(x.id)), [allDevices]);
 
   useEffect(() => {
     if (!selectedDeviceIdForEdit) return;
@@ -6199,6 +6045,83 @@ const ConfigPanel = ({
                   No cameras registered yet.
                 </div>
               )}
+            </div>
+          </div>
+        ) : null}
+
+        {activeTab === 'deviceOptions' ? (
+          <div className="mt-4 utility-panel p-4 md:p-6">
+            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+              Settings
+            </div>
+            <div className="mt-1 text-2xl md:text-3xl font-extrabold tracking-tight text-white">
+              Device Options
+            </div>
+            <div className="mt-1 text-xs text-white/45">
+              Preferences for how device types render controls.
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Switch controls
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                How switch-type devices render on the Controls screen.
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-3">
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Control style</div>
+                  <select
+                    value={globalSwitchControlStyleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const next = String(e.target.value || '').trim().toLowerCase();
+                      setGlobalSwitchControlStyleError(null);
+                      setGlobalSwitchControlStyleDirty(true);
+                      setGlobalSwitchControlStyleDraft(next);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  >
+                    <option value="auto">Auto</option>
+                    <option value="buttons">Buttons (On/Off)</option>
+                    <option value="switch">Switch (toggle)</option>
+                  </select>
+                </label>
+
+                <label className="block">
+                  <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">Animation</div>
+                  <select
+                    value={globalSwitchAnimationStyleDraft}
+                    disabled={!connected || busy}
+                    onChange={(e) => {
+                      const next = String(e.target.value || '').trim().toLowerCase();
+                      setGlobalSwitchAnimationStyleError(null);
+                      setGlobalSwitchAnimationStyleDirty(true);
+                      setGlobalSwitchAnimationStyleDraft(next);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                  >
+                    <option value="none">None</option>
+                    <option value="pulse">Pulse when on</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="text-xs text-white/45">
+                  {(globalSwitchControlStyleDirty || globalSwitchAnimationStyleDirty) ? 'Pending changes…' : 'Saved'}
+                </div>
+                <div className="text-xs text-white/45">
+                  {statusText(deviceControlStylesSave.status)}
+                </div>
+              </div>
+
+              {(globalSwitchControlStyleError || globalSwitchAnimationStyleError) ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">
+                  Save failed: {globalSwitchControlStyleError || globalSwitchAnimationStyleError}
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}
