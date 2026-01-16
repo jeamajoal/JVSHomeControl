@@ -1,43 +1,116 @@
 # Troubleshooting
 
-## The dashboard loads but no data appears
+Quick fixes for common issues.
 
-- Check the backend: `http(s)://<host>:3000/api/config`
-- Confirm Hubitat env vars are set: `HUBITAT_HOST`, `HUBITAT_APP_ID`, `HUBITAT_ACCESS_TOKEN`
+---
 
-## Mixed content errors (HTTPS page trying to call HTTP)
+## Dashboard Loads But No Data
 
-This should be fixed in current builds by using a protocol-aware API base.
+**Check 1: Hubitat connection**
+```bash
+curl -s http://localhost:3000/api/hubitat/health
+```
 
-If you still see it:
+**Check 2: Environment variables**
+```bash
+cat /etc/jvshomecontrol.env | grep HUBITAT
+```
 
-- Ensure you’re on the latest build
-- Confirm the browser URL scheme matches what you intend (http vs https)
+Make sure `HUBITAT_HOST`, `HUBITAT_APP_ID`, and `HUBITAT_ACCESS_TOKEN` are set.
 
-## RTSP cameras
+**Check 3: Service status**
+```bash
+sudo systemctl status jvshomecontrol
+```
 
-RTSP cameras play via server-side HLS (served from the same origin as the dashboard).
+---
 
-If an RTSP feed won’t play:
+## Service Won't Start
 
-- Ensure `ffmpeg` is installed on the server.
-- See `docs/08-HTTPS.md` for HLS endpoints and tuning.
+**View logs:**
+```bash
+sudo journalctl -u jvshomecontrol -n 50
+```
 
-## Hubitat HTTPS errors
+**Common causes:**
+- Missing environment variables
+- Port 3000 already in use
+- Permission issues on data directory
 
-If Hubitat is `https://...` with a self-signed cert:
+---
 
-- Set `HUBITAT_TLS_INSECURE=1`
-- Restart the service
+## HTTPS Not Working
 
-## Maker API postURL fails
+**Check if certs exist:**
+```bash
+ls -la /opt/jvshomecontrol/server/data/certs/
+```
 
-If the panel is HTTPS with a self-signed cert:
+**Regenerate certs:**
+```bash
+cd /opt/jvshomecontrol/server
+sudo -u jvshome node scripts/https-setup.js
+sudo systemctl restart jvshomecontrol
+```
 
-- Trust the cert on the device you’re using
-- If Hubitat posts to the panel via HTTPS, Hubitat must trust the cert or ignore TLS warnings (if supported)
+---
 
-## Where config lives
+## Cameras Not Loading
 
-- `server/data/config.json`
-- Backups: `server/data/backups/`
+**Check if ffmpeg is installed:**
+```bash
+which ffmpeg
+```
+
+**Check HLS health:**
+```bash
+curl -s http://localhost:3000/api/hls/health
+```
+
+**Common issues:**
+- Camera RTSP URL is wrong
+- Camera requires authentication (add to URL)
+- Network firewall blocking RTSP port
+
+---
+
+## Mixed Content Errors
+
+If you see "blocked loading mixed active content":
+- Make sure you're accessing via HTTPS (not HTTP)
+- Or force HTTP only: `HTTP_ONLY=1`
+
+---
+
+## Config File Location
+
+```bash
+# Main config (UI settings, rooms, devices)
+/opt/jvshomecontrol/server/data/config.json
+
+# Backups
+/opt/jvshomecontrol/server/data/backups/
+```
+
+---
+
+## Reset to Defaults
+
+**Warning: This erases your configuration!**
+
+```bash
+sudo systemctl stop jvshomecontrol
+sudo rm /opt/jvshomecontrol/server/data/config.json
+sudo systemctl start jvshomecontrol
+```
+
+---
+
+## Still Stuck?
+
+Check the logs:
+```bash
+sudo journalctl -u jvshomecontrol -f
+```
+
+Or open an issue on GitHub.

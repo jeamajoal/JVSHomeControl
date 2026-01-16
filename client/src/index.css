@@ -176,6 +176,34 @@ select option:active {
 .jvs-home-rooms-grid {
   display: grid;
   grid-template-columns: repeat(1, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+/* Home: auto-fit mode (optional) uses min tile width and packs spans densely. */
+.jvs-home-rooms-grid.jvs-home-rooms-grid--autofit {
+  grid-template-columns: repeat(auto-fit, minmax(var(--jvs-home-room-min-width, 360px), 1fr));
+  grid-auto-flow: dense;
+}
+
+/* Home: masonry mode (optional) uses fixed auto-rows + per-tile row spans. */
+.jvs-home-rooms-grid.jvs-home-rooms-grid--masonry {
+  align-items: start;
+  grid-auto-flow: dense;
+  grid-auto-rows: var(--jvs-home-room-row-height, 10px);
+}
+
+/* Controls: masonry grid (always-on) uses auto-fit columns + fixed auto-rows + per-tile row spans. */
+.jvs-controls-grid {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, var(--jvs-controls-min-width, 360px)), 1fr)
+  );
+}
+
+.jvs-controls-grid.jvs-controls-grid--masonry {
+  align-items: start;
+  grid-auto-flow: dense;
+  grid-auto-rows: var(--jvs-controls-row-height, 10px);
 }
 
 @media (min-width: 1024px) {

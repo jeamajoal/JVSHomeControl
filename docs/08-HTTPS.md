@@ -1,96 +1,100 @@
-# HTTPS & Certificates
+# HTTPS Setup
 
-The server can run as HTTP or HTTPS.
+The installer creates HTTPS certificates automatically. This doc covers manual setup and troubleshooting.
 
-## Automatic behavior
+---
 
-- If a certificate exists, the server will automatically use HTTPS.
-- If a certificate does not exist, the server will run as HTTP (even if HTTPS is requested) and log a warning.
+## How It Works
 
-Note: If you start the server as a systemd service, it runs non-interactively, so you will not see an interactive prompt. In that case, run the helper once in a terminal to generate a cert:
+- If certificates exist in `server/data/certs/`, the server uses HTTPS
+- If no certificates exist, it falls back to HTTP
 
-```bash
-cd server
-node scripts/https-setup.js
-```
+---
 
-If you start the server via `npm start`, the server package runs the HTTPS helper as a `prestart` step. That helper will prompt only in an interactive terminal.
+## Certificate Locations
 
-## Recommended (Debian/Ubuntu)
+| File | Path |
+|------|------|
+| Certificate | `/opt/jvshomecontrol/server/data/certs/localhost.crt` |
+| Private Key | `/opt/jvshomecontrol/server/data/certs/localhost.key` |
 
-For most users on Debian/Ubuntu, the easiest path is the guided installer:
+---
 
-- [scripts/install-debian.sh](../scripts/install-debian.sh)
+## Create/Recreate Certificates
 
-It handles install/update and can create or recreate the HTTPS certificate during the prompts.
-
-Default certificate paths:
-
-- `server/data/certs/localhost.crt`
-- `server/data/certs/localhost.key`
-
-Override paths with:
-
-- `HTTPS_CERT_PATH`
-- `HTTPS_KEY_PATH`
-
-## Important: trust the self-signed cert
-
-If you create a self-signed cert:
-
-- You must trust it in the browser/device that loads the panel.
-- Otherwise the browser will warn, and you may see repeated security prompts/errors.
-
-## Maker API and HTTPS
-
-If Hubitat Maker API `postURL` is configured to post to `https://<panel>/api/events`:
-
-- Hubitat must trust the panel cert (or ignore certificate warnings if supported)
-- Otherwise it may fail to post events
-
-If your Hubitat host itself is `https://...` with a self-signed cert, set:
-
-- `HUBITAT_TLS_INSECURE=1`
-
-## Switching http ↔ https
-
-If you decide to switch schemes:
-
-- Update any relevant env vars (example: `HUBITAT_HOST=http://...` → `https://...`)
-- Restart the service
-
-Example:
+Run the installer again - it will prompt you:
 
 ```bash
-sudo systemctl restart jvshomecontrol
+curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scripts/install-debian.sh | sudo bash
 ```
 
-## HLS (recommended for HTTPS)
+Or manually:
 
-For customer-friendly RTSP playback under HTTPS, the server can also expose RTSP cameras as HLS over the same origin (`https://...`), avoiding the browser restriction on `ws://`.
+```bash
+cd /opt/jvshomecontrol/server
+sudo -u jvshome node scripts/https-setup.js
+```
 
-How it works:
+---
 
-- Server spawns `ffmpeg` to read RTSP and write an HLS playlist (`.m3u8`) plus segment files (`.ts`).
-- UI plays the HLS stream using native HLS when available (Safari/iOS), otherwise via `hls.js`.
+## Trust the Certificate
 
-Endpoints:
+Self-signed certificates show browser warnings. To avoid them:
 
-- `GET /api/cameras/:id/hls/ensure` → returns `{ playlistUrl }`
-- `GET /api/cameras/:id/hls/playlist.m3u8`
-- `GET /api/cameras/:id/hls/seg_#.ts`
+### Desktop Browsers
+1. Open `https://your-server:3000`
+2. Click "Advanced" > "Proceed anyway"
+3. Some browsers let you install the cert permanently
 
-Requirements:
+### iOS
+1. Open the URL in Safari
+2. Accept the warning
+3. Go to Settings > General > About > Certificate Trust Settings
+4. Enable the certificate
 
-- `ffmpeg` must be installed and available on the server.
+### Android
+1. Download the `.crt` file
+2. Go to Settings > Security > Install certificates
 
-Optional tuning env vars:
+---
 
-- `RTSP_HLS_SEGMENT_SECONDS` (default `2`, clamp `1..6`)
-- `RTSP_HLS_LIST_SIZE` (default `6`, clamp `3..20`)
-- `RTSP_HLS_OUTPUT_FPS` (default `15`, clamp `1..60`) — forces a constant output FPS to avoid HLS stalls from broken RTSP timestamps
-- `RTSP_HLS_STARTUP_TIMEOUT_MS` (default `15000`, clamp `2000..60000`)
-- `RTSP_HLS_CRF` (default `20`, lower = higher quality)
-- `RTSP_HLS_RTSP_TRANSPORT` (default: `tcp`, options: `tcp` or `udp`)
+## Maker API postURL with HTTPS
 
-**Note:** `RTSP_HLS_GOP` is no longer configurable; the stable ffmpeg command uses a fixed GOP size of 30 frames.
+If your dashboard uses HTTPS, configure Maker API to post to:
+```
+https://your-server:3000/api/events
+```
+
+**Note:** Hubitat may not trust self-signed certs. You may need to fall back to HTTP for the postURL.
+
+---
+
+## Hubitat HTTPS
+
+If your Hubitat uses HTTPS with a self-signed cert:
+
+```bash
+# In /etc/jvshomecontrol.env:
+HUBITAT_TLS_INSECURE=1
+```
+
+Then restart: `sudo systemctl restart jvshomecontrol`
+
+---
+
+## Custom Certificate Paths
+
+```bash
+# In /etc/jvshomecontrol.env:
+HTTPS_CERT_PATH=/path/to/cert.crt
+HTTPS_KEY_PATH=/path/to/cert.key
+```
+
+---
+
+## Force HTTP Only
+
+```bash
+# In /etc/jvshomecontrol.env:
+HTTP_ONLY=1
+```

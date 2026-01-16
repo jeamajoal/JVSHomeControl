@@ -291,13 +291,16 @@ ensure_env_file() {
 # JVSHomeControl environment
 
 # Hubitat Maker API (required to enable polling/commands)
-HUBITAT_HOST=http://192.168.1.50
+# SECURITY: Use HTTPS even on your local network to protect your access token
+HUBITAT_HOST=https://192.168.1.50
 HUBITAT_APP_ID=30
 HUBITAT_ACCESS_TOKEN=REPLACE_ME
 
-# Optional: If your HUBITAT_HOST uses https:// and Hubitat presents a self-signed
-# cert, set this to disable TLS verification for Hubitat requests.
-# HUBITAT_TLS_INSECURE=1
+# Required if Hubitat uses a self-signed certificate (recommended setup)
+HUBITAT_TLS_INSECURE=1
+
+# Optional: Server port (default: 3000)
+# PORT=3000
 
 # Optional: Poll interval for Maker API full refresh (milliseconds)
 # Default is 2000. Example: poll once per minute:
@@ -306,8 +309,6 @@ HUBITAT_ACCESS_TOKEN=REPLACE_ME
 # Optional: Dashboard device allowlists (comma-separated Hubitat device IDs)
 # UI_ALLOWED_MAIN_DEVICE_IDS=24,25
 # UI_ALLOWED_CTRL_DEVICE_IDS=24,25,26
-# Legacy (treated as CTRL list):
-# UI_ALLOWED_DEVICE_IDS=24
 
 # Optional: Maker postURL ingest protection
 # EVENTS_INGEST_TOKEN=REPLACE_ME

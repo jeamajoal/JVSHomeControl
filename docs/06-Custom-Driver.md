@@ -1,39 +1,70 @@
-# Custom Switch Driver (Hubitat)
+# Custom Hubitat Driver
 
-This repo includes a Hubitat driver that supports the “virtual switch → HTTP call” approach.
+A virtual switch that makes HTTP calls when toggled.
 
-- Driver source: [hubitat/driver/virtual-web-request-switch.groovy](../hubitat/driver/virtual-web-request-switch.groovy)
+---
 
-## What the driver typically does
+## What It Does
 
-- Defines a virtual switch (or dimmer) in Hubitat
-- On `on()` / `off()`, calls your GAR endpoint (or another local bridge)
-- Optionally syncs state back into Hubitat
+This driver creates a switch in Hubitat that:
+- Calls a URL when turned **ON**
+- Calls a different URL when turned **OFF**
 
-## Why this is useful
+Perfect for triggering Google Assistant Relay or any HTTP-based service.
 
-Once the Google-linked device is represented as a Hubitat device, it becomes controllable via:
+---
 
-- Hubitat automations
-- Hubitat dashboards
-- Maker API
-- This panel
+## Installation
 
-## Recommended documentation
+### Step 1: Add the driver code
 
-## Install in Hubitat
+1. In Hubitat, go to **Drivers Code**
+2. Click **New Driver**
+3. Paste the contents of:
+   ```
+   hubitat/driver/virtual-web-request-switch.groovy
+   ```
+4. Click **Save**
 
-1. In Hubitat, go to **Drivers Code** → **New Driver**.
-2. Copy/paste the contents of the driver file into the editor.
-3. Click **Save**.
-4. Create a device: **Devices** → **Add Device** → **Virtual**.
-5. Set the device **Type** to **Virtual Web Request Switch**.
-6. Configure the device preferences (URLs/methods/headers/body) for your ON/OFF actions.
+### Step 2: Create a device
 
-## Optional: use the built-in import URL
+1. Go to **Devices** > **Add Device** > **Virtual**
+2. Set **Type** to **Virtual Web Request Switch**
+3. Click **Save Device**
 
-The driver metadata includes an `importUrl`, which can be used with Hubitat’s driver import flow (when available):
+### Step 3: Configure the device
 
-- https://raw.githubusercontent.com/jeamajoal/jvshomecontrol/main/hubitat/driver/virtual-web-request-switch.groovy
+In the device preferences, set:
+- **ON URL** - the endpoint to call when switched on
+- **OFF URL** - the endpoint to call when switched off
+- **Method** - GET or POST
+- **Headers** (optional) - e.g., `Content-Type: application/json`
+- **Body** (optional) - request payload
 
-After install, confirm the device responds by toggling the switch in Hubitat and watching for the expected web request on your GAR server (or other endpoint).
+---
+
+## Example: Google Assistant Relay
+
+| Setting | Value |
+|---------|-------|
+| ON URL | `http://gar-server:3000/assistant` |
+| Method | POST |
+| Headers | `Content-Type: application/json` |
+| Body | `{"command": "turn on living room lights"}` |
+
+---
+
+## Import URL
+
+You can also import directly in Hubitat using:
+```
+https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/hubitat/driver/virtual-web-request-switch.groovy
+```
+
+---
+
+## Test It
+
+1. Go to the device in Hubitat
+2. Click **ON** or **OFF**
+3. Check that your target endpoint receives the request

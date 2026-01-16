@@ -1,49 +1,95 @@
-# Hubitat (C‑8) + Maker API
+# Hubitat Setup
 
-## Required environment variables
+JVSHomeControl connects to your Hubitat hub via the Maker API.
 
-Set these before starting the server:
+---
 
-- `HUBITAT_HOST` (example: `https://192.168.1.50`)
-- `HUBITAT_APP_ID`
-- `HUBITAT_ACCESS_TOKEN`
+## Step 1: Enable Maker API
 
-If you decide to use HTTPS for Hubitat:
+1. In Hubitat, go to **Apps** > **Add Built-In App**
+2. Select **Maker API**
+3. Select the devices you want to control
+4. Note down:
+   - **App ID** (in the URL after `/apps/api/`)
+   - **Access Token** (shown on the page)
 
-- Set `HUBITAT_HOST=https://...`
-- If Hubitat uses a self-signed cert, also set `HUBITAT_TLS_INSECURE=1`
-- Restart your service after env var changes
+---
 
-Note: If you provide `HUBITAT_HOST` as just an IP/hostname (no scheme), the server will assume `https://`.
+## Step 2: Enable HTTPS on Hubitat (Recommended)
 
-## Polling + event callbacks (how updates work)
+Even on your local network, I recommend encrypting Maker API traffic:
 
-This project uses a **hybrid** approach:
+1. In Hubitat, go to **Settings** > **Hub Details**
+2. Enable HTTPS if available
+3. Note: Hubitat uses a self-signed certificate by default
 
-- On service startup, the server does an **initial poll** of Maker API (devices list).
-- It then continues polling on a fixed interval.
-- If you configure Maker API `postURL`, the server will also accept callbacks and apply them to the cached device state for faster updates.
+---
 
-Polling remains the source of truth (it repairs missed callbacks and refreshes metadata), while callbacks provide lower-latency state changes.
+## Step 3: Configure JVSHomeControl
 
-### Poll interval
+Edit your environment file:
+```bash
+sudo nano /etc/jvshomecontrol.env
+```
 
-Configure the poll interval (milliseconds):
+Add:
+```bash
+HUBITAT_HOST=https://192.168.1.50
+HUBITAT_APP_ID=30
+HUBITAT_ACCESS_TOKEN=your-token-here
 
-- `HUBITAT_POLL_INTERVAL_MS` (default: `2000`)
+# Required for self-signed Hubitat certificates
+HUBITAT_TLS_INSECURE=1
+```
 
-Example (poll once per minute):
+> **Why HTTPS?** Your Maker API access token is sent with every request. Even on a local network, unencrypted traffic can be intercepted. Always use HTTPS.
 
-- `HUBITAT_POLL_INTERVAL_MS=60000`
+Restart:
+```bash
+sudo systemctl restart jvshomecontrol
+```
 
-## Maker event callback (postURL)
+---
 
-This server accepts Maker callbacks at:
+## Optional: Enable Instant Updates (postURL)
 
-- `POST /api/events`
+By default, JVSHomeControl polls Hubitat every 2 seconds. For instant updates:
 
-If you use HTTPS for the panel and a self-signed cert, Hubitat/Maker must trust it (or ignore certificate warnings), otherwise it may fail to post events.
+1. In Hubitat Maker API settings, set **postURL** to:
+   ```
+   https://your-server-ip:3000/api/events
+   ```
 
-## More details
+2. Now device changes appear instantly on the dashboard
 
-- Maker endpoint patterns and notes: [server/MAKER_API.md](../server/MAKER_API.md)
+> **Note:** If both sides use self-signed certs, Hubitat may not trust the dashboard cert. You can use HTTP for postURL if needed (the event data is less sensitive than the access token).
+
+---
+
+## Adjust Poll Interval
+
+Default is 2000ms (2 seconds). To poll less frequently:
+
+```bash
+# In /etc/jvshomecontrol.env:
+HUBITAT_POLL_INTERVAL_MS=60000  # Once per minute
+```
+
+---
+
+## Troubleshooting
+
+**Dashboard loads but no devices appear:**
+```bash
+# Check Hubitat connection
+curl -sk https://localhost:3000/api/hubitat/health
+```
+
+**Connection refused or timeout:**
+- Verify the Hubitat IP address is correct
+- Ensure devices are selected in Maker API settings
+- Check that your access token is valid
+
+**TLS/SSL errors:**
+- Make sure `HUBITAT_TLS_INSECURE=1` is set for self-signed certs
+- Restart the service after changing env vars
