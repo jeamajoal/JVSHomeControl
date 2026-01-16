@@ -1,34 +1,62 @@
-# Google Assistant Relay (GAR)
+# Google Assistant Relay (Optional)
 
-This repo does not include a GAR server implementation, but it can integrate with one.
+Control Google-only devices through your Hubitat and this dashboard.
 
-## Stability note (Gemini / monetization)
+---
 
-GAR relies on Google Assistant / Google Home behaviors that can change over time.
+## What Is This For?
 
-As Google rolls out **Gemini** and evolves (or monetizes) “smarter” Home/Assistant features, it’s unclear when/if existing GAR-style endpoints may change, degrade, or stop working.
+Some cheap smart devices only work with Google Home and don't integrate with Hubitat directly. Google Assistant Relay (GAR) lets you trigger Google Assistant commands via HTTP.
 
-If GAR is important to your setup, plan for possible breakage and keep your core automations/local control in Hubitat where possible.
+**Example flow:**
+```
+Dashboard -> Hubitat Switch -> GAR Server -> Google Assistant -> Smart Device
+```
 
-## Why GAR
+---
 
-Some “works with Google” / cloud-only devices are cheap and convenient, but don’t expose a clean local API and may not integrate with Hubitat directly.
+## Stability Warning
 
-A GAR server can:
+GAR relies on unofficial Google APIs. As Google rolls out Gemini and changes their ecosystem, GAR may stop working without notice. Keep your critical automations in Hubitat whenever possible.
 
-- Run locally on your network
-- Expose simple HTTP endpoints
-- Trigger Google Assistant actions (devices, routines)
+---
 
-## Common integration flow
+## Setup Overview
 
-- Hubitat has a virtual switch representing a Google action.
-- The driver turns switch `on/off` into an HTTP call to GAR.
-- Hubitat then exposes that device via Maker API.
-- This panel controls the Hubitat device (which indirectly controls the Google device).
+1. **Install GAR** on a machine on your network
+   - [GAR Installation Guide](https://greghesp.github.io/assistant-relay/docs/getting-started/installation/)
 
-## garsSetup link
+2. **Create a virtual switch in Hubitat** that calls GAR
+   - See [06-Custom-Driver.md](06-Custom-Driver.md)
 
-Setup guide:
+3. **Add the device to Maker API**
 
-- `garsSetup`: https://greghesp.github.io/assistant-relay/docs/getting-started/installation/
+4. **Control it from this dashboard**
+
+---
+
+## How It Works
+
+| Step | What Happens |
+|------|--------------|
+| 1 | You tap a button on the dashboard |
+| 2 | Dashboard sends command to Hubitat |
+| 3 | Hubitat virtual switch calls GAR endpoint |
+| 4 | GAR triggers Google Assistant |
+| 5 | Google controls the device |
+
+---
+
+## Example GAR Endpoint
+
+```bash
+curl -X POST http://gar-server:3000/assistant \
+  -H "Content-Type: application/json" \
+  -d '{"command": "turn on living room lights"}'
+```
+
+---
+
+## Next Step
+
+Set up the Hubitat driver: [06-Custom-Driver.md](06-Custom-Driver.md)

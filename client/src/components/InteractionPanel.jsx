@@ -5,8 +5,13 @@ import { getUiScheme } from '../uiScheme';
 import { API_HOST } from '../apiHost';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getCtrlVisibleDeviceIdSet, getDeviceCommandAllowlist } from '../deviceSelectors';
-import { filterCommandSchemasByAllowlist, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
+import { filterCommandSchemasByAllowlist, inferInternalDeviceType, mapDeviceToControls, normalizeCommandSchemas } from '../deviceMapping';
+import { getDeviceTypeIconSrc } from '../deviceIcons';
+import InlineSvg from './InlineSvg';
 import HlsPlayer from './HlsPlayer';
+
+const CONTROLS_MASONRY_MIN_WIDTH_PX_DEFAULT = 360;
+const CONTROLS_MASONRY_ROW_HEIGHT_PX_DEFAULT = 10;
 
 const asNumber = (value) => {
   const num = typeof value === 'number' ? value : parseFloat(String(value));
@@ -85,6 +90,7 @@ async function sendDeviceCommand(deviceId, command, args = []) {
 
 const SwitchTile = ({
   label,
+  iconSrc,
   isOn,
   disabled,
   busyOn,
@@ -114,24 +120,70 @@ const SwitchTile = ({
 
   const subtitle = (typeof isOn === 'boolean') ? (isOn ? 'On' : 'Off') : 'Command only';
 
+  const hasInteractiveSvg = Boolean(iconSrc);
+
+  const handleSvgCommand = (rawCmd, args) => {
+    const cmd = String(rawCmd || '').trim();
+    if (!cmd) return;
+    const lower = cmd.toLowerCase();
+    if (lower === 'on' && canOn) return onOn();
+    if (lower === 'off' && canOff) return onOff();
+    if (lower === 'toggle' && canToggle) return onToggle();
+    // For switch tiles, only allow standard power commands from SVG hotspots.
+  };
+
   return (
-    <div className={`w-full rounded-2xl border p-4 md:p-5 bg-white/5 border-white/10 ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`w-full glass-panel border-0 shadow-none p-2 md:p-3 ${disabled ? 'opacity-50' : ''}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0 text-left">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">{label}</div>
-          <div className="mt-1 text-xs text-white/45">{subtitle}</div>
+          <div
+            className="uppercase tracking-[0.2em] jvs-secondary-text-strong text-white font-semibold"
+            style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+          >
+            <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+              <span className="truncate">{label}</span>
+            </span>
+          </div>
+          <div
+            className="mt-1 jvs-secondary-text text-white"
+            style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
+          >
+            {subtitle}
+          </div>
         </div>
-        <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
-          {anyBusy ? (
-            <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
-          ) : (
-            <Power className={`w-6 h-6 md:w-7 md:h-7 text-white/60 ${pulseOn ? 'animate-pulse' : ''}`} />
-          )}
-        </div>
+        {hasInteractiveSvg ? null : (
+          <div className="shrink-0 w-12 h-12 md:w-14 md:h-14 rounded-2xl border border-white/10 bg-black/30 flex items-center justify-center">
+            {anyBusy ? (
+              <Loader2 className={`w-6 h-6 md:w-7 md:h-7 animate-spin jvs-icon ${uiScheme?.metricIcon || 'text-neon-blue'}`} />
+            ) : (
+              <Power className={`w-6 h-6 md:w-7 md:h-7 text-white/60 ${pulseOn ? 'animate-pulse' : ''}`} />
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {mode === 'switch' ? (
+      <div className="mt-3 flex flex-wrap gap-2">
+        {hasInteractiveSvg ? (
+          <button
+            type="button"
+            disabled={disabled || anyBusy}
+            onClick={handleToggle}
+            className="w-fit mx-auto inline-flex items-center justify-center bg-transparent p-0 active:scale-[0.99] disabled:opacity-100"
+            aria-pressed={isOn === true ? 'true' : 'false'}
+          >
+            <InlineSvg
+              src={iconSrc}
+              rootClassName={isOn === true ? 'is-on' : ''}
+              onCommand={handleSvgCommand}
+              className="mx-auto w-[92px] h-[92px]"
+              style={{ display: 'block' }}
+              role="img"
+              ariaLabel={`${label} ${isOn ? 'on' : 'off'}`}
+            />
+          </button>
+        ) : null}
+
+        {!hasInteractiveSvg && mode === 'switch' ? (
           <button
             type="button"
             disabled={disabled || anyBusy}
@@ -163,7 +215,7 @@ const SwitchTile = ({
           </button>
         ) : null}
 
-        {mode !== 'switch' && canOn ? (
+        {!hasInteractiveSvg && mode !== 'switch' && canOn ? (
           <button
             type="button"
             disabled={disabled || busyOn}
@@ -174,7 +226,7 @@ const SwitchTile = ({
           </button>
         ) : null}
 
-        {mode !== 'switch' && canOff ? (
+        {!hasInteractiveSvg && mode !== 'switch' && canOff ? (
           <button
             type="button"
             disabled={disabled || busyOff}
@@ -185,7 +237,7 @@ const SwitchTile = ({
           </button>
         ) : null}
 
-        {mode !== 'switch' && !canOn && !canOff && canToggle ? (
+        {!hasInteractiveSvg && mode !== 'switch' && !canOn && !canOff && canToggle ? (
           <button
             type="button"
             disabled={disabled || busyToggle}
@@ -200,7 +252,7 @@ const SwitchTile = ({
   );
 };
 
-const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel, uiScheme }) => {
+const LevelTile = ({ label, iconSrc, isOn, level, disabled, busy, onToggle, onSetLevel, uiScheme }) => {
   const levelNum = asNumber(level);
   const displayLevel = levelNum === null ? 0 : Math.max(0, Math.min(100, Math.round(levelNum)));
   const [draft, setDraft] = useState(displayLevel);
@@ -210,17 +262,28 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel, u
   }, [displayLevel]);
 
   return (
-    <div className={`w-full rounded-2xl border p-4 md:p-5 bg-white/5 border-white/10 ${disabled ? 'opacity-50' : ''}`}>
+    <div className={`w-full glass-panel border-0 shadow-none p-2 md:p-3 ${disabled ? 'opacity-50' : ''}`}>
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
+          <div
+            className="uppercase tracking-[0.2em] jvs-secondary-text-strong text-white font-semibold truncate"
+            style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+          >
             {label}
           </div>
           <div className="mt-1 flex items-baseline gap-3">
-            <div className={`text-2xl md:text-3xl font-extrabold tracking-tight ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white/70'}`}>
+            <div
+              className={`font-extrabold tracking-tight jvs-primary-text-strong ${isOn ? (uiScheme?.selectedText || 'text-neon-blue') : 'text-white'}`}
+              style={{ fontSize: 'calc(24px * var(--jvs-primary-text-size-scale, 1))' }}
+            >
               {isOn ? 'ON' : 'OFF'}
             </div>
-            <div className="text-sm text-white/55 font-bold">{displayLevel}%</div>
+            <div
+              className="jvs-secondary-text-strong text-white font-bold"
+              style={{ fontSize: 'calc(14px * var(--jvs-secondary-text-size-scale, 1))' }}
+            >
+              {displayLevel}%
+            </div>
           </div>
         </div>
 
@@ -236,6 +299,33 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel, u
         </button>
       </div>
 
+      {iconSrc ? (
+        <button
+          type="button"
+          disabled={disabled || busy}
+          onClick={onToggle}
+          className="mt-3 w-fit mx-auto inline-flex items-center justify-center bg-transparent p-0 active:scale-[0.99] disabled:opacity-100"
+          aria-pressed={isOn === true ? 'true' : 'false'}
+        >
+          <InlineSvg
+            src={iconSrc}
+            rootClassName={isOn === true ? 'is-on' : ''}
+            onCommand={(rawCmd, args) => {
+              const cmd = String(rawCmd || '').trim();
+              if (!cmd) return;
+              const lower = cmd.toLowerCase();
+              if (lower === 'toggle') return onToggle();
+              // Dimmer SVG hotspots can optionally target toggle.
+              // Level-specific actions (setLevel) remain via slider/command UI.
+            }}
+            className="mx-auto w-[92px] h-[92px]"
+            style={{ display: 'block' }}
+            role="img"
+            ariaLabel={`${label} ${isOn ? 'on' : 'off'}`}
+          />
+        </button>
+      ) : null}
+
       <div className="mt-4">
         <input
           type="range"
@@ -249,7 +339,12 @@ const LevelTile = ({ label, isOn, level, disabled, busy, onToggle, onSetLevel, u
           onTouchEnd={() => onSetLevel(draft)}
           className="w-full"
         />
-        <div className="mt-2 text-[10px] uppercase tracking-[0.2em] text-white/40">Slide and release to set level</div>
+        <div
+          className="mt-2 uppercase tracking-[0.2em] jvs-secondary-text text-white"
+          style={{ fontSize: 'calc(10px * var(--jvs-secondary-text-size-scale, 1))' }}
+        >
+          Slide and release to set level
+        </div>
       </div>
     </div>
   );
@@ -285,6 +380,136 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
   const rooms = useMemo(() => {
     return buildRoomsWithStatuses(config, statuses, { ignoreVisibleRooms: true, deviceIdSet: ctrlVisibleDeviceIds });
   }, [config, statuses, ctrlVisibleDeviceIds]);
+
+  const cardScalePct = useMemo(() => {
+    const raw = Number(config?.ui?.cardScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.cardScalePct]);
+
+  const contentScale = useMemo(() => {
+    const raw = Number(cardScalePct);
+    if (!Number.isFinite(raw)) return 1;
+    return Math.max(0.5, Math.min(2, raw / 100));
+  }, [cardScalePct]);
+
+  const controlsMinWidthPx = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMinWidthPx);
+    if (!Number.isFinite(raw) || raw <= 0) return CONTROLS_MASONRY_MIN_WIDTH_PX_DEFAULT;
+    return Math.max(240, Math.min(1200, Math.round(raw)));
+  }, [config?.ui?.homeRoomMinWidthPx]);
+
+  const controlsRowHeightPx = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMasonryRowHeightPx);
+    if (!Number.isFinite(raw)) return CONTROLS_MASONRY_ROW_HEIGHT_PX_DEFAULT;
+    return Math.max(4, Math.min(40, Math.round(raw)));
+  }, [config?.ui?.homeRoomMasonryRowHeightPx]);
+
+  const controlsBackground = useMemo(() => {
+    const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
+      ? config.ui.homeBackground
+      : {};
+
+    const enabled = raw.enabled === true;
+    const url = (raw.url === null || raw.url === undefined) ? null : String(raw.url).trim();
+    const opacityRaw = Number(raw.opacityPct);
+    const opacityPct = Number.isFinite(opacityRaw)
+      ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
+      : 35;
+
+    if (!enabled || !url) return { enabled: false, url: null, opacityPct };
+    return { enabled: true, url, opacityPct };
+  }, [config?.ui?.homeBackground]);
+
+  const [controlsBackgroundImageError, setControlsBackgroundImageError] = useState(false);
+
+  useEffect(() => {
+    setControlsBackgroundImageError(false);
+    if (!controlsBackground.enabled || !controlsBackground.url) return;
+
+    const img = new Image();
+    img.onerror = () => {
+      setControlsBackgroundImageError(true);
+    };
+    img.src = controlsBackground.url;
+
+    return () => {
+      img.onerror = null;
+    };
+  }, [controlsBackground.enabled, controlsBackground.url]);
+
+  const controlsGridRef = useRef(null);
+  const controlsTileElsByIdRef = useRef({});
+  const [controlsRowSpansById, setControlsRowSpansById] = useState(() => ({}));
+
+  useEffect(() => {
+    const gridEl = controlsGridRef.current;
+    if (!gridEl) return;
+
+    const getGapPx = () => {
+      const styles = window.getComputedStyle(gridEl);
+      const raw = parseFloat(styles.rowGap || styles.gap || '0');
+      return Number.isFinite(raw) ? raw : 0;
+    };
+
+    let rafId = 0;
+
+    const compute = () => {
+      const gapPx = getGapPx();
+      const rowUnit = controlsRowHeightPx + gapPx;
+
+      const next = {};
+      const keys = Array.isArray(rooms) && rooms.length
+        ? rooms.map((r) => String(r?.room?.id ?? '')).filter(Boolean)
+        : ['__empty__'];
+
+      for (const key of keys) {
+        const el = controlsTileElsByIdRef.current[key];
+        if (!el) continue;
+        const h = el.offsetHeight || 0;
+        const span = rowUnit > 0
+          ? Math.max(1, Math.ceil((h + gapPx) / rowUnit))
+          : 1;
+        next[key] = span;
+      }
+
+      setControlsRowSpansById((prev) => {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(next);
+        if (prevKeys.length !== nextKeys.length) return next;
+        for (const k of nextKeys) {
+          if (prev[k] !== next[k]) return next;
+        }
+        return prev;
+      });
+    };
+
+    const schedule = () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(compute);
+    };
+
+    schedule();
+
+    const ro = new ResizeObserver(schedule);
+    ro.observe(gridEl);
+
+    const keys = Array.isArray(rooms) && rooms.length
+      ? rooms.map((r) => String(r?.room?.id ?? '')).filter(Boolean)
+      : ['__empty__'];
+    for (const key of keys) {
+      const el = controlsTileElsByIdRef.current[key];
+      if (el) ro.observe(el);
+    }
+
+    window.addEventListener('resize', schedule);
+
+    return () => {
+      window.removeEventListener('resize', schedule);
+      if (rafId) cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [rooms, controlsRowHeightPx]);
 
   const controlsCameraPreviewsEnabled = useMemo(
     () => config?.ui?.controlsCameraPreviewsEnabled === true,
@@ -429,18 +654,6 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     return 'grid-cols-1 md:grid-cols-2';
   }, [topCameraSize]);
 
-  const noArgUiCommands = useMemo(() => new Set([
-    // Common “safe” commands that typically take no args
-    'on', 'off', 'toggle',
-    'open', 'close',
-    'lock', 'unlock',
-    'start', 'stop', 'pause', 'play',
-    'refresh', 'poll',
-    'push',
-    // Common alarm/camera-ish actions
-    'siren', 'strobe', 'both',
-  ]), []);
-
   const [busy, setBusy] = useState(() => new Set());
 
   const run = async (deviceId, command, args = []) => {
@@ -457,12 +670,31 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
     }
   };
 
+  const finalScale = useMemo(() => {
+    const s = Number(scale);
+    const c = Number(contentScale);
+    if (!Number.isFinite(s) || !Number.isFinite(c)) return 1;
+    return s * c;
+  }, [scale, contentScale]);
+
   return (
-    <div ref={viewportRef} className="w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">
+    <div ref={viewportRef} className="relative w-full h-full overflow-auto md:overflow-hidden p-4 md:p-6">
+      {controlsBackground.enabled && controlsBackground.url && !controlsBackgroundImageError ? (
+        <div
+          className="fixed inset-0 z-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${JSON.stringify(String(controlsBackground.url))})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: controlsBackground.opacityPct / 100,
+          }}
+        />
+      ) : null}
+
       <div
-        className="w-full h-full"
+        className="relative z-10 w-full h-full"
         style={{
-          transform: `scale(${scale})`,
+          transform: `scale(${finalScale})`,
           transformOrigin: 'top left',
         }}
       >
@@ -470,13 +702,22 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
           <div className="glass-panel border border-white/10 p-4 md:p-5">
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                <div
+                  className="uppercase tracking-[0.2em] jvs-secondary-text-strong text-white font-semibold"
+                  style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+                >
                   Interactions
                 </div>
-                <div className="mt-1 text-xl md:text-2xl font-extrabold tracking-tight text-white">
+                <div
+                  className="mt-1 font-extrabold tracking-tight jvs-primary-text-strong text-white"
+                  style={{ fontSize: 'calc(22px * var(--jvs-primary-text-size-scale, 1))' }}
+                >
                   Device Controls
                 </div>
-                <div className="mt-1 text-xs text-white/45">
+                <div
+                  className="mt-1 jvs-secondary-text text-white"
+                  style={{ fontSize: 'calc(12px * var(--jvs-secondary-text-size-scale, 1))' }}
+                >
                   Controls render based on device capabilities (switch / dimmer / commands).
                 </div>
               </div>
@@ -550,7 +791,14 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
             </div>
           ) : null}
 
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div
+            ref={controlsGridRef}
+            className="mt-4 grid jvs-controls-grid jvs-controls-grid--masonry gap-4"
+            style={{
+              '--jvs-controls-min-width': `${controlsMinWidthPx}px`,
+              '--jvs-controls-row-height': `${controlsRowHeightPx}px`,
+            }}
+          >
             {rooms.length ? (
               rooms.map(({ room, devices }) => {
                 const controllables = devices
@@ -580,6 +828,14 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       commandSchemas: schemas,
                     });
 
+                    const internalType = inferInternalDeviceType({
+                      hubitatType: d.type,
+                      capabilities: d.status?.capabilities,
+                      attributes: attrs,
+                      state: d.status?.state,
+                      commandSchemas: schemas,
+                    });
+
                     return {
                       id: d.id,
                       label: d.label,
@@ -588,6 +844,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       commandSchemas: schemas,
                       controls,
                       state: d.status?.state,
+                      internalType,
                     };
                   })
                   // IMPORTANT: include all devices that report any commands.
@@ -598,18 +855,38 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                 if (!controllables.length) return null;
 
                 return (
-                  <section key={room.id} className="glass-panel p-4 md:p-5 border border-white/10">
-                    <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                  <section
+                    key={room.id}
+                    ref={(el) => {
+                      const key = String(room.id);
+                      if (!key) return;
+                      if (el) controlsTileElsByIdRef.current[key] = el;
+                      else delete controlsTileElsByIdRef.current[key];
+                    }}
+                    style={{
+                      gridRowEnd: `span ${controlsRowSpansById[String(room.id)] || 1}`,
+                    }}
+                    className="glass-panel border-0 shadow-none p-2 md:p-3"
+                  >
+                    <div
+                      className="uppercase tracking-[0.2em] jvs-secondary-text-strong text-white font-semibold"
+                      style={{ fontSize: 'calc(11px * var(--jvs-secondary-text-size-scale, 1))' }}
+                    >
                       Room
                     </div>
-                    <h2 className="mt-1 text-base md:text-lg font-extrabold tracking-wide text-white truncate">
+                    <h2
+                      className="mt-1 font-extrabold tracking-wide jvs-primary-text-strong text-white truncate"
+                      style={{ fontSize: 'calc(16px * var(--jvs-primary-text-size-scale, 1))' }}
+                    >
                       {room.name}
                     </h2>
 
-                    <div className="mt-4 grid grid-cols-1 gap-3">
+                    <div className="mt-3 grid grid-cols-1 gap-2">
                       {controllables.map((d) => {
                         const level = d.attrs.level;
                         const hasLevel = d.commands.includes('setLevel') || asNumber(level) !== null;
+
+                        const iconSrc = getDeviceTypeIconSrc(config, d.internalType);
 
                         const switchControl = Array.isArray(d.controls)
                           ? d.controls.find((c) => c && c.kind === 'switch')
@@ -625,6 +902,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                             <LevelTile
                               key={d.id}
                               label={d.label}
+                              iconSrc={iconSrc}
                               isOn={isOn}
                               level={level}
                               disabled={!connected}
@@ -656,6 +934,7 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                             <SwitchTile
                               key={d.id}
                               label={d.label}
+                              iconSrc={iconSrc}
                               isOn={isOn}
                               disabled={!connected}
                               busyOn={busy.has(`${d.id}:on`)}
@@ -681,9 +960,14 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         const schemaList = Array.isArray(d.commandSchemas) ? d.commandSchemas : [];
                         if (!schemaList.length) {
                           return (
-                            <div key={d.id} className="rounded-2xl border border-white/10 bg-black/20 p-4 md:p-5 opacity-80">
-                              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
-                                {d.label}
+                            <div key={d.id} className="opacity-80">
+                              <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                                <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                                  {iconSrc ? (
+                                    <img src={iconSrc} alt="" aria-hidden="true" className="w-4 h-4 shrink-0" />
+                                  ) : null}
+                                  <span className="truncate">{d.label}</span>
+                                </span>
                               </div>
                               <div className="mt-2 text-xs text-white/45">No commands available.</div>
                             </div>
@@ -691,12 +975,17 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                         }
 
                         return (
-                          <div key={d.id} className="rounded-2xl border border-white/10 bg-black/20 p-4 md:p-5">
-                            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold truncate">
-                              {d.label}
+                          <div key={d.id}>
+                            <div className="text-[11px] md:text-xs uppercase tracking-[0.2em] text-white/55 font-semibold">
+                              <span className="inline-flex items-center gap-2 min-w-0 max-w-full">
+                                {iconSrc ? (
+                                  <img src={iconSrc} alt="" aria-hidden="true" className="w-4 h-4 shrink-0" />
+                                ) : null}
+                                <span className="truncate">{d.label}</span>
+                              </span>
                             </div>
 
-                            <div className="mt-3 flex flex-col gap-2">
+                            <div className="mt-2 flex flex-col gap-2">
                               {schemaList.map((schema) => {
                                 const cmd = String(schema?.command || '').trim();
                                 if (!cmd) return null;
@@ -798,7 +1087,16 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                 );
               })
             ) : (
-              <div className="glass-panel p-8 border border-white/10 text-center text-white/50 lg:col-span-2 xl:col-span-3">
+              <div
+                ref={(el) => {
+                  if (el) controlsTileElsByIdRef.current.__empty__ = el;
+                  else delete controlsTileElsByIdRef.current.__empty__;
+                }}
+                style={{
+                  gridRowEnd: `span ${controlsRowSpansById.__empty__ || 1}`,
+                }}
+                className="glass-panel p-8 border border-white/10 text-center text-white/50"
+              >
                 <div className="text-sm uppercase tracking-[0.2em]">No data</div>
                 <div className="mt-2 text-xl font-extrabold text-white">Waiting for devices…</div>
               </div>

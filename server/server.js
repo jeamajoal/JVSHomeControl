@@ -18,6 +18,7 @@ const {
     BACKUP_DIR,
     SOUNDS_DIR,
     BACKGROUNDS_DIR,
+    DEVICE_ICONS_DIR,
     CLIENT_DIST_DIR,
     CLIENT_INDEX_HTML,
     CERT_DIR_DEFAULT,
@@ -287,6 +288,19 @@ app.use('/backgrounds', express.static(BACKGROUNDS_DIR, {
     },
 }));
 
+// Serve custom device icons from the server-managed device icons directory.
+// Files placed in server/data/device-icons/<deviceType>/ will be reachable at:
+//   /device-icons/<deviceType>/<file>
+app.use('/device-icons', express.static(DEVICE_ICONS_DIR, {
+    dotfiles: 'ignore',
+    fallthrough: false,
+    setHeaders(res) {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        // These are user-edited drop-in assets; avoid stale client caches.
+        res.setHeader('Cache-Control', 'no-store');
+    },
+}));
+
 // State
 let persistedConfig = { weather: settings.weather, rooms: [], sensors: [] }; // Stored in server/data/config.json
 let lastPersistedSerialized = '';
@@ -452,6 +466,49 @@ function ensureDataDirs() {
     if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR);
     if (!fs.existsSync(SOUNDS_DIR)) fs.mkdirSync(SOUNDS_DIR);
     if (!fs.existsSync(BACKGROUNDS_DIR)) fs.mkdirSync(BACKGROUNDS_DIR);
+    if (!fs.existsSync(DEVICE_ICONS_DIR)) fs.mkdirSync(DEVICE_ICONS_DIR);
+}
+
+function normalizeDeviceIconTypeToken(value) {
+    const s = String(value || '').trim().toLowerCase();
+    if (!s) return null;
+    if (s.length > 64) return null;
+    if (!/^[a-z0-9][a-z0-9_-]*$/.test(s)) return null;
+    return s;
+}
+
+function ensureDeviceIconsTypeDir(deviceType) {
+    ensureDataDirs();
+    const t = normalizeDeviceIconTypeToken(deviceType);
+    if (!t) return null;
+    const dir = path.join(DEVICE_ICONS_DIR, t);
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        return dir;
+    } catch {
+        return null;
+    }
+}
+
+function listDeviceIconFilesForType(deviceType) {
+    const dir = ensureDeviceIconsTypeDir(deviceType);
+    if (!dir) return [];
+    const safeNameRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.svg$/;
+    try {
+        return fs.readdirSync(dir, { withFileTypes: true })
+            .filter((d) => d.isFile())
+            .map((d) => d.name)
+            .filter((name) => {
+                if (!name || typeof name !== 'string') return false;
+                if (name !== path.basename(name)) return false;
+                if (!safeNameRe.test(name)) return false;
+                if (name.includes('..') || name.includes('/') || name.includes('\\')) return false;
+                return path.extname(name).toLowerCase() === '.svg';
+            })
+            .sort((a, b) => a.localeCompare(b));
+    } catch {
+        return [];
+    }
 }
 
 // Note: stableStringify is imported from ./utils
@@ -674,6 +731,44 @@ function normalizePersistedConfig(raw) {
         };
     })();
 
+    const normalizeDeviceTypeToken = (value) => {
+        const s = String(value || '').trim().toLowerCase();
+        // Keep strict: this token becomes a folder name under server/data/device-icons.
+        if (!s) return null;
+        if (s.length > 64) return null;
+        if (!/^[a-z0-9][a-z0-9_-]*$/.test(s)) return null;
+        return s;
+    };
+
+    const isSafeIconFileName = (value) => {
+        const s = String(value || '').trim();
+        if (!s) return false;
+        if (s !== path.basename(s)) return false;
+        if (s.length > 128) return false;
+        if (s.includes('..') || s.includes('/') || s.includes('\\')) return false;
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(s)) return false;
+        return path.extname(s).toLowerCase() === '.svg';
+    };
+
+    const deviceTypeIcons = (() => {
+        const rawMap = (uiRaw.deviceTypeIcons && typeof uiRaw.deviceTypeIcons === 'object')
+            ? uiRaw.deviceTypeIcons
+            : {};
+        const outMap = {};
+        for (const [k, v] of Object.entries(rawMap)) {
+            const deviceType = normalizeDeviceTypeToken(k);
+            if (!deviceType) continue;
+            const file = String(v ?? '').trim();
+            if (!file) {
+                outMap[deviceType] = null;
+                continue;
+            }
+            if (!isSafeIconFileName(file)) continue;
+            outMap[deviceType] = file;
+        }
+        return outMap;
+    })();
+
     const rawAccent = String(uiRaw.accentColorId || '').trim();
     const accentColorId = normalizeAccentColorId(rawAccent);
 
@@ -846,6 +941,57 @@ function normalizePersistedConfig(raw) {
         UI_HOME_ROOM_COLUMNS_XL_RANGE.max,
         UI_HOME_ROOM_COLUMNS_XL_RANGE.def,
     );
+
+    // Home room layout mode.
+    // - grid: standard CSS grid behavior
+    // - masonry: fixed auto rows + per-tile row spans
+    const homeRoomLayoutModeRaw = String(uiRaw.homeRoomLayoutMode ?? '').trim().toLowerCase();
+    const homeRoomLayoutMode = homeRoomLayoutModeRaw === 'masonry' ? 'masonry' : 'grid';
+
+    // Masonry row height (px). Only used when homeRoomLayoutMode === 'masonry'.
+    const homeRoomMasonryRowHeightPx = clampInt(uiRaw.homeRoomMasonryRowHeightPx, 4, 40, 10);
+
+    // Home room auto-fit layout (optional).
+    // 0 disables (use fixed columns behavior), otherwise treated as min tile width in px.
+    const homeRoomMinWidthPx = clampInt(uiRaw.homeRoomMinWidthPx, 0, 1200, 0);
+
+    // Per-room overrides for Home tiles.
+    // Shape: { [roomId]: { span?: number(1-6), order?: number(-999..999), rowSpan?: number(1-999) } }
+    const homeRoomTiles = (() => {
+        const rawMap = (uiRaw.homeRoomTiles && typeof uiRaw.homeRoomTiles === 'object') ? uiRaw.homeRoomTiles : {};
+        const outMap = {};
+
+        for (const [ridRaw, vRaw] of Object.entries(rawMap)) {
+            const rid = String(ridRaw || '').trim();
+            if (!rid) continue;
+            const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
+
+            const hasSpan = Object.prototype.hasOwnProperty.call(v, 'span');
+            const hasOrder = Object.prototype.hasOwnProperty.call(v, 'order');
+            const hasRowSpan = Object.prototype.hasOwnProperty.call(v, 'rowSpan');
+
+            const spanNum = hasSpan ? (typeof v.span === 'number' ? v.span : Number(v.span)) : null;
+            const orderNum = hasOrder ? (typeof v.order === 'number' ? v.order : Number(v.order)) : null;
+            const rowSpanNum = hasRowSpan ? (typeof v.rowSpan === 'number' ? v.rowSpan : Number(v.rowSpan)) : null;
+
+            const entry = {};
+            if (hasSpan && Number.isFinite(spanNum)) {
+                entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
+            }
+            if (hasOrder && Number.isFinite(orderNum)) {
+                entry.order = Math.max(-999, Math.min(999, Math.round(orderNum)));
+            }
+            if (hasRowSpan && Number.isFinite(rowSpanNum)) {
+                entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
+            }
+
+            if (Object.keys(entry).length) {
+                outMap[rid] = entry;
+            }
+        }
+
+        return outMap;
+    })();
 
     // Home room metric grid columns (sub-cards inside each room panel).
     // 0 = auto (derived from room columns), 1-3 = forced columns.
@@ -1083,6 +1229,61 @@ function normalizePersistedConfig(raw) {
             ? clampInt(p.homeRoomColumnsXl, UI_HOME_ROOM_COLUMNS_XL_RANGE.min, UI_HOME_ROOM_COLUMNS_XL_RANGE.max, homeRoomColumnsXl)
             : null;
 
+        const pHomeRoomLayoutMode = Object.prototype.hasOwnProperty.call(p, 'homeRoomLayoutMode')
+            ? (() => {
+                const raw = String(p.homeRoomLayoutMode ?? '').trim().toLowerCase();
+                if (raw === 'masonry') return 'masonry';
+                if (raw === 'grid') return 'grid';
+                return null;
+            })()
+            : null;
+
+        const pHomeRoomMasonryRowHeightPx = Object.prototype.hasOwnProperty.call(p, 'homeRoomMasonryRowHeightPx')
+            ? clampInt(p.homeRoomMasonryRowHeightPx, 4, 40, homeRoomMasonryRowHeightPx)
+            : null;
+
+        const pHomeRoomMinWidthPx = Object.prototype.hasOwnProperty.call(p, 'homeRoomMinWidthPx')
+            ? clampInt(p.homeRoomMinWidthPx, 0, 1200, homeRoomMinWidthPx)
+            : null;
+
+        const pHomeRoomTiles = Object.prototype.hasOwnProperty.call(p, 'homeRoomTiles')
+            ? (() => {
+                const rawMap = (p.homeRoomTiles && typeof p.homeRoomTiles === 'object') ? p.homeRoomTiles : {};
+                const outMap = {};
+
+                for (const [ridRaw, vRaw] of Object.entries(rawMap)) {
+                    const rid = String(ridRaw || '').trim();
+                    if (!rid) continue;
+                    const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
+
+                    const hasSpan = Object.prototype.hasOwnProperty.call(v, 'span');
+                    const hasOrder = Object.prototype.hasOwnProperty.call(v, 'order');
+                    const hasRowSpan = Object.prototype.hasOwnProperty.call(v, 'rowSpan');
+
+                    const spanNum = hasSpan ? (typeof v.span === 'number' ? v.span : Number(v.span)) : null;
+                    const orderNum = hasOrder ? (typeof v.order === 'number' ? v.order : Number(v.order)) : null;
+                    const rowSpanNum = hasRowSpan ? (typeof v.rowSpan === 'number' ? v.rowSpan : Number(v.rowSpan)) : null;
+
+                    const entry = {};
+                    if (hasSpan && Number.isFinite(spanNum)) {
+                        entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
+                    }
+                    if (hasOrder && Number.isFinite(orderNum)) {
+                        entry.order = Math.max(-999, Math.min(999, Math.round(orderNum)));
+                    }
+                    if (hasRowSpan && Number.isFinite(rowSpanNum)) {
+                        entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
+                    }
+
+                    if (Object.keys(entry).length) {
+                        outMap[rid] = entry;
+                    }
+                }
+
+                return outMap;
+            })()
+            : null;
+
         const pHomeRoomMetricColumns = Object.prototype.hasOwnProperty.call(p, 'homeRoomMetricColumns')
             ? clampInt(p.homeRoomMetricColumns, 0, 3, homeRoomMetricColumns)
             : null;
@@ -1281,6 +1482,10 @@ function normalizePersistedConfig(raw) {
             ...(pHomeTopRowScalePct !== null ? { homeTopRowScalePct: pHomeTopRowScalePct } : {}),
             ...(pHomeTopRowCards !== null ? { homeTopRowCards: pHomeTopRowCards } : {}),
             ...(pHomeRoomColumnsXl !== null ? { homeRoomColumnsXl: pHomeRoomColumnsXl } : {}),
+            ...(pHomeRoomLayoutMode !== null ? { homeRoomLayoutMode: pHomeRoomLayoutMode } : {}),
+            ...(pHomeRoomMasonryRowHeightPx !== null ? { homeRoomMasonryRowHeightPx: pHomeRoomMasonryRowHeightPx } : {}),
+            ...(pHomeRoomMinWidthPx !== null ? { homeRoomMinWidthPx: pHomeRoomMinWidthPx } : {}),
+            ...(pHomeRoomTiles !== null ? { homeRoomTiles: pHomeRoomTiles } : {}),
             ...(pHomeRoomMetricColumns !== null ? { homeRoomMetricColumns: pHomeRoomMetricColumns } : {}),
             ...(pHomeRoomMetricKeys !== null ? { homeRoomMetricKeys: pHomeRoomMetricKeys } : {}),
             ...(pHomeCameraPreviewsEnabled !== null ? { homeCameraPreviewsEnabled: pHomeCameraPreviewsEnabled } : {}),
@@ -1338,6 +1543,7 @@ function normalizePersistedConfig(raw) {
         deviceCommandAllowlist,
         deviceHomeMetricAllowlist,
         deviceControlStyles,
+        deviceTypeIcons,
         extraAllowedPanelDeviceCommands,
         availabilityInitialized,
         visibilityInitialized,
@@ -1378,6 +1584,16 @@ function normalizePersistedConfig(raw) {
         homeTopRowCards,
         // Home room columns at XL breakpoint.
         homeRoomColumnsXl,
+        // Home room layout.
+        // - homeRoomLayoutMode: 'grid' | 'masonry'
+        // - homeRoomMasonryRowHeightPx: px used by masonry mode
+        // - homeRoomMinWidthPx: 0 disables auto-fit
+        // - homeRoomTiles: per-room overrides
+        homeRoomLayoutMode,
+        homeRoomMasonryRowHeightPx,
+        // Home room auto-fit layout (optional).
+        homeRoomMinWidthPx,
+        homeRoomTiles,
         // Home room metric sub-card columns (0=auto).
         homeRoomMetricColumns,
         // Home room metric cards to show.
@@ -1449,6 +1665,51 @@ app.put('/api/ui/device-control-styles', (req, res) => {
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
 });
 
+// Update device icon filename mapping by internal device type.
+// Expected payload: { deviceTypeIcons: { [deviceType: string]: string|null } }
+app.put('/api/ui/device-type-icons', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const incoming = (body.deviceTypeIcons && typeof body.deviceTypeIcons === 'object') ? body.deviceTypeIcons : null;
+    if (!incoming) {
+        return res.status(400).json({ error: 'Missing deviceTypeIcons' });
+    }
+
+    const prevUi = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+    const prevMap = (prevUi.deviceTypeIcons && typeof prevUi.deviceTypeIcons === 'object') ? prevUi.deviceTypeIcons : {};
+
+    const nextMap = { ...prevMap };
+    for (const [k, v] of Object.entries(incoming)) {
+        const t = normalizeDeviceIconTypeToken(k);
+        if (!t) continue;
+        const file = (v === null || v === undefined) ? '' : String(v).trim();
+        nextMap[t] = file || null;
+        // Ensure folder exists even if no icon file is chosen yet.
+        ensureDeviceIconsTypeDir(t);
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...prevUi,
+            deviceTypeIcons: nextMap,
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-device-type-icons');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            deviceTypeIcons: persistedConfig?.ui?.deviceTypeIcons,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
 function ensurePanelProfileExists(panelName) {
     const name = normalizePanelName(panelName);
     if (!name) return null;
@@ -1490,6 +1751,12 @@ function ensurePanelProfileExists(panelName) {
             homeTopRowScalePct: ui.homeTopRowScalePct,
             homeTopRowCards: Array.isArray(ui.homeTopRowCards) ? ui.homeTopRowCards : HOME_TOP_ROW_CARD_IDS,
             homeRoomColumnsXl: ui.homeRoomColumnsXl,
+            homeRoomLayoutMode: String(ui.homeRoomLayoutMode ?? 'grid').trim() || 'grid',
+            homeRoomMasonryRowHeightPx: clampInt(ui.homeRoomMasonryRowHeightPx, 4, 40, 10),
+            homeRoomMinWidthPx: clampInt(ui.homeRoomMinWidthPx, 0, 1200, 0),
+            homeRoomTiles: (ui.homeRoomTiles && typeof ui.homeRoomTiles === 'object') ? ui.homeRoomTiles : {},
+            homeRoomMetricColumns: clampInt(ui.homeRoomMetricColumns, 0, 3, 0),
+            homeRoomMetricKeys: Array.isArray(ui.homeRoomMetricKeys) ? ui.homeRoomMetricKeys : ['temperature', 'humidity', 'illuminance'],
             homeCameraPreviewsEnabled: ui.homeCameraPreviewsEnabled,
             controlsCameraPreviewsEnabled: ui.controlsCameraPreviewsEnabled,
             cameraPreviewRefreshSeconds: ui.cameraPreviewRefreshSeconds,
@@ -1549,6 +1816,22 @@ function loadPersistedConfig() {
             const hadIconOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconOpacityPct'));
             const hadIconSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconSizePct'));
             persistedConfig = normalizePersistedConfig(raw);
+
+            // Ensure device icon folder structure exists at startup.
+            try {
+                ensureDeviceIconsTypeDir('switch');
+                ensureDeviceIconsTypeDir('dimmer');
+                ensureDeviceIconsTypeDir('media_player');
+                ensureDeviceIconsTypeDir('button');
+                ensureDeviceIconsTypeDir('sensor');
+                ensureDeviceIconsTypeDir('unknown');
+                const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+                const types = (ui.deviceTypeIcons && typeof ui.deviceTypeIcons === 'object') ? Object.keys(ui.deviceTypeIcons) : [];
+                for (const t of types) ensureDeviceIconsTypeDir(t);
+            } catch {
+                // ignore
+            }
+
             // If we added new fields for back-compat, write them back once.
             if (!hadAlertSounds || !hadClimateTolerances || !hadColorizeHomeValues || !hadColorizeHomeValuesOpacityPct || !hadClimateToleranceColors || !hadSensorIndicatorColors || !hadHomeBackground || !hadCardOpacityScalePct || !hadBlurScalePct || !hadSecondaryTextOpacityPct || !hadSecondaryTextSizePct || !hadSecondaryTextColorId || !hadPrimaryTextOpacityPct || !hadPrimaryTextSizePct || !hadPrimaryTextColorId || !hadCardScalePct || !hadHomeTopRowEnabled || !hadHomeTopRowScalePct || !hadHomeTopRowCards || !hadHomeRoomColumnsXl || !hadHomeRoomMetricColumns || !hadHomeRoomMetricKeys || !hadGlowColorId || !hadIconColorId || !hadIconOpacityPct || !hadIconSizePct) {
                 lastPersistedSerialized = stableStringify(raw);
@@ -1582,6 +1865,18 @@ function loadPersistedConfig() {
             }
         } else {
             persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
+
+            // Ensure device icon folder structure exists at startup.
+            try {
+                ensureDeviceIconsTypeDir('switch');
+                ensureDeviceIconsTypeDir('dimmer');
+                ensureDeviceIconsTypeDir('media_player');
+                ensureDeviceIconsTypeDir('button');
+                ensureDeviceIconsTypeDir('sensor');
+                ensureDeviceIconsTypeDir('unknown');
+            } catch {
+                // ignore
+            }
         }
 
         // Derive runtime settings from persisted config
@@ -2767,6 +3062,54 @@ app.get('/api/backgrounds', (req, res) => {
             .sort((a, b) => a.localeCompare(b));
 
         res.json({ ok: true, files });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
+app.get('/api/device-icons', (req, res) => {
+    try {
+        ensureDataDirs();
+
+        // Seed common internal types so the folder structure appears even before icons exist.
+        const seededTypes = new Set([
+            'switch',
+            'dimmer',
+            'media_player',
+            'button',
+            'sensor',
+            'unknown',
+            ...Object.keys((config?.ui?.deviceTypeIcons && typeof config.ui.deviceTypeIcons === 'object') ? config.ui.deviceTypeIcons : {}),
+        ].map((t) => normalizeDeviceIconTypeToken(t)).filter(Boolean));
+
+        for (const t of seededTypes) ensureDeviceIconsTypeDir(t);
+
+        const typesOnDisk = fs.readdirSync(DEVICE_ICONS_DIR, { withFileTypes: true })
+            .filter((d) => d.isDirectory())
+            .map((d) => d.name)
+            .map((t) => normalizeDeviceIconTypeToken(t))
+            .filter(Boolean);
+
+        const allTypes = Array.from(new Set([...Array.from(seededTypes), ...typesOnDisk]))
+            .sort((a, b) => a.localeCompare(b));
+
+        const byType = {};
+        for (const t of allTypes) {
+            byType[t] = listDeviceIconFilesForType(t);
+        }
+
+        res.json({ ok: true, rootUrl: '/device-icons', byType });
+    } catch (err) {
+        res.status(500).json({ ok: false, error: err?.message || String(err) });
+    }
+});
+
+app.get('/api/device-icons/:deviceType', (req, res) => {
+    try {
+        const t = normalizeDeviceIconTypeToken(req.params.deviceType);
+        if (!t) return res.status(400).json({ ok: false, error: 'invalid_device_type' });
+        const files = listDeviceIconFilesForType(t);
+        res.json({ ok: true, deviceType: t, rootUrl: '/device-icons', files });
     } catch (err) {
         res.status(500).json({ ok: false, error: err?.message || String(err) });
     }
@@ -4142,6 +4485,10 @@ app.post('/api/ui/panels', (req, res) => {
         primaryTextColorId: effectiveUi.primaryTextColorId,
         cardScalePct: effectiveUi.cardScalePct,
         homeRoomColumnsXl: effectiveUi.homeRoomColumnsXl,
+        homeRoomLayoutMode: String(effectiveUi.homeRoomLayoutMode ?? 'grid').trim() || 'grid',
+        homeRoomMasonryRowHeightPx: clampInt(effectiveUi.homeRoomMasonryRowHeightPx, 4, 40, 10),
+        homeRoomMinWidthPx: clampInt(effectiveUi.homeRoomMinWidthPx, 0, 1200, 0),
+        homeRoomTiles: (effectiveUi.homeRoomTiles && typeof effectiveUi.homeRoomTiles === 'object') ? effectiveUi.homeRoomTiles : {},
         homeRoomMetricColumns: effectiveUi.homeRoomMetricColumns,
         homeRoomMetricKeys: Array.isArray(effectiveUi.homeRoomMetricKeys) ? effectiveUi.homeRoomMetricKeys : ['temperature', 'humidity', 'illuminance'],
         glowColorId: effectiveUi.glowColorId,
@@ -5535,6 +5882,162 @@ app.put('/api/ui/home-room-columns-xl', (req, res) => {
         ui: {
             ...(config?.ui || {}),
             homeRoomColumnsXl: persistedConfig?.ui?.homeRoomColumnsXl,
+            panelProfiles: persistedConfig?.ui?.panelProfiles,
+        },
+    };
+    io.emit('config_update', config);
+
+    return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Update Home room layout options.
+// Expected payload:
+// {
+//   homeRoomLayoutMode?: 'grid'|'masonry'
+//   homeRoomMasonryRowHeightPx?: number(4-40)
+//   homeRoomMinWidthPx?: number(0-1200)  // 0 disables auto-fit
+//   homeRoomTiles?: { [roomId]: { span?: number(1-6), order?: number(-999..999), rowSpan?: number(1-999) } }
+//   panelName?: string
+// }
+app.put('/api/ui/home-room-layout', (req, res) => {
+    const hasLayoutMode = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeRoomLayoutMode');
+    const hasRowHeight = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeRoomMasonryRowHeightPx');
+    const hasMinWidth = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeRoomMinWidthPx');
+    const hasTiles = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeRoomTiles');
+
+    if (!hasLayoutMode && !hasRowHeight && !hasMinWidth && !hasTiles) {
+        return res.status(400).json({ error: 'Missing homeRoomLayoutMode, homeRoomMasonryRowHeightPx, homeRoomMinWidthPx and/or homeRoomTiles' });
+    }
+
+    let homeRoomLayoutMode = null;
+    if (hasLayoutMode) {
+        const raw = String(req.body?.homeRoomLayoutMode ?? '').trim().toLowerCase();
+        if (raw !== 'grid' && raw !== 'masonry') {
+            return res.status(400).json({ error: "Invalid homeRoomLayoutMode ('grid'|'masonry')" });
+        }
+        homeRoomLayoutMode = raw;
+    }
+
+    let homeRoomMasonryRowHeightPx = null;
+    if (hasRowHeight) {
+        const raw = req.body?.homeRoomMasonryRowHeightPx;
+        const num = (typeof raw === 'number') ? raw : Number(raw);
+        if (!Number.isFinite(num)) {
+            return res.status(400).json({ error: 'Invalid homeRoomMasonryRowHeightPx (4-40)' });
+        }
+        homeRoomMasonryRowHeightPx = Math.max(4, Math.min(40, Math.round(num)));
+    }
+
+    let homeRoomMinWidthPx = null;
+    if (hasMinWidth) {
+        const raw = req.body?.homeRoomMinWidthPx;
+        const num = (typeof raw === 'number') ? raw : Number(raw);
+        if (!Number.isFinite(num)) {
+            return res.status(400).json({ error: 'Invalid homeRoomMinWidthPx (0-1200)' });
+        }
+        homeRoomMinWidthPx = Math.max(0, Math.min(1200, Math.round(num)));
+    }
+
+    let homeRoomTiles = null;
+    if (hasTiles) {
+        const rawMap = (req.body?.homeRoomTiles && typeof req.body.homeRoomTiles === 'object') ? req.body.homeRoomTiles : {};
+        const outMap = {};
+
+        for (const [ridRaw, vRaw] of Object.entries(rawMap)) {
+            const rid = String(ridRaw || '').trim();
+            if (!rid) continue;
+            const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
+
+            const hasSpan = Object.prototype.hasOwnProperty.call(v, 'span');
+            const hasOrder = Object.prototype.hasOwnProperty.call(v, 'order');
+            const hasRowSpan = Object.prototype.hasOwnProperty.call(v, 'rowSpan');
+
+            const spanNum = hasSpan ? (typeof v.span === 'number' ? v.span : Number(v.span)) : null;
+            const orderNum = hasOrder ? (typeof v.order === 'number' ? v.order : Number(v.order)) : null;
+            const rowSpanNum = hasRowSpan ? (typeof v.rowSpan === 'number' ? v.rowSpan : Number(v.rowSpan)) : null;
+
+            const entry = {};
+            if (hasSpan && Number.isFinite(spanNum)) {
+                entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
+            }
+            if (hasOrder && Number.isFinite(orderNum)) {
+                entry.order = Math.max(-999, Math.min(999, Math.round(orderNum)));
+            }
+            if (hasRowSpan && Number.isFinite(rowSpanNum)) {
+                entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
+            }
+
+            if (Object.keys(entry).length) {
+                outMap[rid] = entry;
+            }
+        }
+
+        homeRoomTiles = outMap;
+    }
+
+    const panelName = normalizePanelName(req.body?.panelName);
+    if (panelName) {
+        if (rejectIfPresetPanelProfile(panelName, res)) return;
+        const ensured = ensurePanelProfileExists(panelName);
+        if (!ensured) {
+            return res.status(400).json({ error: 'Invalid panelName' });
+        }
+
+        const prevProfile = ((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles && persistedConfig.ui.panelProfiles[ensured])
+            ? persistedConfig.ui.panelProfiles[ensured]
+            : {});
+
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                panelProfiles: {
+                    ...(((persistedConfig && persistedConfig.ui && persistedConfig.ui.panelProfiles) ? persistedConfig.ui.panelProfiles : {})),
+                    [ensured]: {
+                        ...prevProfile,
+                        ...(homeRoomLayoutMode !== null ? { homeRoomLayoutMode } : {}),
+                        ...(homeRoomMasonryRowHeightPx !== null ? { homeRoomMasonryRowHeightPx } : {}),
+                        ...(homeRoomMinWidthPx !== null ? { homeRoomMinWidthPx } : {}),
+                        ...(homeRoomTiles !== null ? { homeRoomTiles } : {}),
+                    },
+                },
+            },
+        });
+
+        persistConfigToDiskIfChanged('api-ui-home-room-layout-panel');
+
+        config = {
+            ...config,
+            ui: {
+                ...(config?.ui || {}),
+                panelProfiles: persistedConfig?.ui?.panelProfiles,
+            },
+        };
+        io.emit('config_update', config);
+        return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+    }
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        ui: {
+            ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+            ...(homeRoomLayoutMode !== null ? { homeRoomLayoutMode } : {}),
+            ...(homeRoomMasonryRowHeightPx !== null ? { homeRoomMasonryRowHeightPx } : {}),
+            ...(homeRoomMinWidthPx !== null ? { homeRoomMinWidthPx } : {}),
+            ...(homeRoomTiles !== null ? { homeRoomTiles } : {}),
+        },
+    });
+
+    persistConfigToDiskIfChanged('api-ui-home-room-layout');
+
+    config = {
+        ...config,
+        ui: {
+            ...(config?.ui || {}),
+            ...(homeRoomLayoutMode !== null ? { homeRoomLayoutMode: persistedConfig?.ui?.homeRoomLayoutMode } : {}),
+            ...(homeRoomMasonryRowHeightPx !== null ? { homeRoomMasonryRowHeightPx: persistedConfig?.ui?.homeRoomMasonryRowHeightPx } : {}),
+            ...(homeRoomMinWidthPx !== null ? { homeRoomMinWidthPx: persistedConfig?.ui?.homeRoomMinWidthPx } : {}),
+            ...(homeRoomTiles !== null ? { homeRoomTiles: persistedConfig?.ui?.homeRoomTiles } : {}),
             panelProfiles: persistedConfig?.ui?.panelProfiles,
         },
     };

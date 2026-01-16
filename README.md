@@ -1,111 +1,171 @@
 # JVSHomeControl
 
-Local-first home automation dashboard (UI + backend) designed for a wall tablet / kiosk.
+**A beautiful, local-first smart home dashboard.**
 
-## At a glance
-- ## What does it look like!?!? ![Examples](https://github.com/<owner>/<repo>/releases/download/screenshots-v1/)
-- **What is this?** A Hubitat-backed control panel: UI (React) + backend (Node/Express) with realtime updates.
-- **Who wrote it?** Jeremy Henderson from **JVS Automation** (this repo is a personal/demo project written for a spare 1080p tablet).
-- **JVS Automation**: Facebook **JVS_Automation** · Instagram **@jvs_automation**
-- **Why?** To get a fast, always-on “single pane of glass” that stays usable even when cloud integrations are flaky.
+> Turn any browser into a sleek home control panel — no cloud required.
 
-## What it does
+---
 
-- Pulls devices from **Hubitat Maker API**, normalizes them into `rooms` + `sensors`, and keeps state refreshed.
-- Renders a kiosk-friendly dashboard:
-	- Home (environment summary)
-	- Climate (heatmap for temperature/humidity/illuminance)
-	- Weather (built-in Open‑Meteo)
-	- Activity + basic controls
-- Supports a common “bridge” approach for cheap Google-linked devices:
-	- Google Assistant Relay (GAR) + a Hubitat virtual switch driver → control Google devices *through Hubitat* → controllable by this panel.
-	- Note: GAR reliability may change over time as Google rolls out Gemini; see: [docs/05-Google-Assistant-Relay.md](docs/05-Google-Assistant-Relay.md)
+## See It In Action
 
-## Start here
+[![See examples and screenshots](https://img.shields.io/badge/Screenshots_and_Demo-jvsautomate.com-blue?style=for-the-badge)](https://jvsautomate.com/jvshomecontrol)
 
-- Overview: [docs/01-Overview.md](docs/01-Overview.md)
-- Components used (Hubitat C‑8, Maker API, GAR server, custom driver): [docs/02-Components.md](docs/02-Components.md)
-- Installation (dev + production + service): [docs/03-Installation.md](docs/03-Installation.md)
-- Hubitat setup (Maker API + postURL): [docs/04-Hubitat.md](docs/04-Hubitat.md)
-- Google Assistant Relay flow + `garsSetup` link: [docs/05-Google-Assistant-Relay.md](docs/05-Google-Assistant-Relay.md)
-- Custom switch driver notes: [docs/06-Custom-Driver.md](docs/06-Custom-Driver.md)
-- Security & hardening: [docs/07-Security.md](docs/07-Security.md)
-- HTTPS & certificates: [docs/08-HTTPS.md](docs/08-HTTPS.md)
-- Troubleshooting: [docs/09-Troubleshooting.md](docs/09-Troubleshooting.md)
-- RTSP/HLS camera streaming configuration: [docs/10-RTSP-HLS-Configuration.md](docs/10-RTSP-HLS-Configuration.md)
+---
 
-## Repo layout
-
-- `client/` — React + Vite UI
-- `server/` — Express + Socket.IO backend
-- `server/data/config.json` — persisted, installation-specific config (rooms/sensors mapping + layout + UI settings)
-
-## Built-in Weather
-
-Weather is built in via **Open‑Meteo** (fetched/cached by the backend and shown in the Weather page).
-
-## Quick start (standard install)
-
-This project is typically run as **one service** on **port 3000** (backend + built frontend served together).
-
-Build the client (`client/dist`) and start the backend:
+## One-Command Install (Debian/Ubuntu)
 
 ```bash
-cd client
-npm install
-npm run build
-
-cd ../server
-npm install
-npm start
+curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scripts/install-debian.sh | sudo bash
 ```
 
-Note: `npm start` runs the HTTPS helper as a `prestart` step. It will only prompt to generate a cert when run in an interactive terminal; systemd runs non-interactively.
+That's it. The script handles everything:
+- Installs Node.js, git, ffmpeg
+- Downloads and builds the app
+- Creates HTTPS certificates
+- Sets up a systemd service (auto-starts on boot)
+- Preserves your settings on updates
 
-Browse to `http(s)://<host>:3000/`.
-
-## What you’ll need to build something similar
-
-- **Hubitat hub** (tested/targeted: C‑8) with **Maker API** enabled
-- A machine to run the server (mini PC, Raspberry Pi, home server)
-- A device to display the UI (wall tablet/kiosk) on your LAN
-- Optional (for Google-only devices): a **Google Assistant Relay** server + a **Hubitat virtual switch driver** that calls it
-
-If you’re trying to replicate the full “Google Home → Hubitat → panel” path, start with:
-
-- Components overview: [docs/02-Components.md](docs/02-Components.md)
-- GAR setup link: [docs/05-Google-Assistant-Relay.md](docs/05-Google-Assistant-Relay.md)
-
-## Optional: local development (two processes)
-
-If you’re actively developing the UI, you can run Vite separately.
-
-Terminal 1 (server):
-
+**After install:** [Enable Maker API on your Hubitat](docs/04-Hubitat.md), then edit `/etc/jvshomecontrol.env` with your Maker API credentials and restart:
 ```bash
-cd server
-npm install
-npm run dev
+sudo systemctl restart jvshomecontrol
 ```
 
-Terminal 2 (client):
+Open `https://your-server-ip:3000` in your browser (or your [custom port](docs/07-Security.md#changing-the-server-port) if configured).
 
+---
+
+## What Is This?
+
+JVSHomeControl is a **browser-based dashboard** for your smart home. Control devices, view cameras, and create **focused room panels** with backgrounds and themes that match each room's natural mood.
+
+| Feature | Description |
+|---------|-------------|
+| **Home** | Designed around multisensors — a beautiful view of temp, humidity, motion, and doors with visual alerts when someone moves or opens a door |
+| **Climate** | See how your home breathes — a room map showing how the fireplace, dryer, or an open window affects the rooms around it |
+| **Weather** | Built-in forecast via Open-Meteo API — no API key needed ([set your location](docs/03-Installation.md#weather-location)) |
+| **Activity** | Minimal view for small screens or phones — motion and door events with optional configurable sound alerts |
+| **Controls** | Densely packed device control — keep your home decluttered while having fingertip access to every switch, light, and device |
+| **Cameras** | Integrate different camera types via RTSP → HLS conversion *(beta — needs work)* |
+
+**Works with:** Hubitat (tested on C-8) · Home Assistant support coming soon
+
+---
+
+## Why I Built This
+
+I wanted a **fast, beautiful, always-on control panel** that:
+
+- Works even when the internet is down
+- Doesn't depend on cloud services
+- Looks good enough to leave on a wall 24/7
+- Lets my family control the house without an app
+
+If you've been frustrated by slow cloud dashboards or ugly DIY solutions, this is for you.
+
+---
+
+## Requirements
+
+| You Need | Notes |
+|----------|-------|
+| **Hubitat hub** | Tested on C-8. Enable Maker API. |
+| **A server** | Raspberry Pi, mini PC, or home server (Debian/Ubuntu) |
+| **A display** | Wall tablet, spare phone, or browser on your network |
+
+---
+
+## Documentation
+
+| Topic | Link |
+|-------|------|
+| Full Setup Guide | [docs/03-Installation.md](docs/03-Installation.md) |
+| Hubitat Configuration | [docs/04-Hubitat.md](docs/04-Hubitat.md) |
+| Security and HTTPS | [docs/07-Security.md](docs/07-Security.md) |
+| Camera Setup (RTSP/HLS) | [docs/10-RTSP-HLS-Configuration.md](docs/10-RTSP-HLS-Configuration.md) |
+| Troubleshooting | [docs/09-Troubleshooting.md](docs/09-Troubleshooting.md) |
+| Google Assistant Relay | [docs/05-Google-Assistant-Relay.md](docs/05-Google-Assistant-Relay.md) |
+
+---
+
+## Roadmap
+
+- [ ] Home Assistant integration
+- [ ] Improved camera support (more protocols, better reliability)
+- [ ] More animated SVG icons for controls
+
+---
+
+## About the Author
+
+**Jeremy Henderson** - JVS Automation
+
+I'm an IT engineer and integrator who loves making things work together that people didn't think could.
+
+- [jvsautomate.com](https://jvsautomate.com)
+- [Facebook: JVS_Automation](https://facebook.com/61585421825308)
+- [Instagram: @jvs_automation](https://instagram.com/jvs_automation)
+
+**Looking for help with your smart home, network, or IT infrastructure?** I help small businesses and homeowners build reliable, automated systems from the ground up.
+
+---
+
+## For Developers
+
+<details>
+<summary>Click to expand technical details</summary>
+
+### Tech Stack
+- **Frontend:** React + Vite + TailwindCSS
+- **Backend:** Node.js + Express + Socket.IO
+- **Data:** Hubitat Maker API polling + event callbacks
+
+### Project Structure
+```
+client/          # React UI
+server/          # Express backend
+server/data/     # Config, certs, backgrounds, sounds
+hubitat/driver/  # Custom Hubitat driver
+scripts/         # Install scripts
+docs/            # Documentation
+```
+
+### Manual Install (Advanced)
 ```bash
-cd client
-npm install
-npm run dev
+# Build the UI
+cd client && npm install && npm run build
+
+# Start the server
+cd ../server && npm install && npm start
 ```
 
-In this mode, the UI is served by Vite (commonly on `http://localhost:5173`) and the API is still on port 3000.
+### Development Mode
+```bash
+# Terminal 1: Backend
+cd server && npm run dev
 
-- **Rooms**: names, IDs, floors, and grid/layout positions are specific to one floorplan.
-- **Sensors**: Hubitat device IDs and the room mapping are installation-specific.
+# Terminal 2: Frontend (hot reload)
+cd client && npm run dev
+```
 
-## Notes
+### Environment Variables
+See `/etc/jvshomecontrol.env` (Debian) or set before running:
+- `HUBITAT_HOST` - e.g., `https://192.168.1.50`
+- `HUBITAT_APP_ID` - from Maker API
+- `HUBITAT_ACCESS_TOKEN` - from Maker API
 
-- The server auto-backs up `server/data/config.json` into `server/data/backups/` on writes and keeps only the most recent 200 backup files by default (override with `BACKUP_MAX_FILES`). Consider excluding backups from source control for long-term use.
-- See `server/MAKER_API.md` for Maker API endpoint patterns.
+Full list: [docs/03-Installation.md](docs/03-Installation.md)
 
-## Ideas
+</details>
 
-- **Weather “data hub” microservice**: build a small app that pulls **Open‑Meteo** on a schedule, stores the latest values (and optionally history) in something simple like SQLite/JSON, and exposes them via a tiny HTTP API (or MQTT) so other apps can consume one consistent local weather feed.
+---
+
+## License
+
+MIT - use it, modify it, share it.
+
+---
+
+<p align="center">
+  <strong>Built by <a href="https://jvsautomate.com">JVS Automation</a></strong><br>
+  <em>Making smart homes actually smart.</em>
+</p>

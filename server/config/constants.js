@@ -11,12 +11,17 @@ const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const SOUNDS_DIR = path.join(DATA_DIR, 'sounds');
 const BACKGROUNDS_DIR = path.join(DATA_DIR, 'backgrounds');
+const DEVICE_ICONS_DIR = path.join(DATA_DIR, 'device-icons');
 const CLIENT_DIST_DIR = path.join(__dirname, '..', '..', 'client', 'dist');
 const CLIENT_INDEX_HTML = path.join(CLIENT_DIST_DIR, 'index.html');
 const CERT_DIR_DEFAULT = path.join(DATA_DIR, 'certs');
 
 // --- Server Configuration ---
-const PORT = 3000;
+const PORT = (() => {
+    const raw = process.env.PORT;
+    const parsed = raw ? Number(raw) : 3000;
+    return Number.isFinite(parsed) && parsed > 0 && parsed <= 65535 ? Math.floor(parsed) : 3000;
+})();
 
 const MAX_BACKUP_FILES = (() => {
     const raw = process.env.BACKUP_MAX_FILES;
@@ -459,6 +464,7 @@ module.exports = {
     BACKUP_DIR,
     SOUNDS_DIR,
     BACKGROUNDS_DIR,
+    DEVICE_ICONS_DIR,
     CLIENT_DIST_DIR,
     CLIENT_INDEX_HTML,
     CERT_DIR_DEFAULT,

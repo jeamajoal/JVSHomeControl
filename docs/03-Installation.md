@@ -1,118 +1,144 @@
 # Installation
 
-This doc covers local development and a production install.
-
-## Standard install (recommended)
-
-This project is typically deployed as a **single service** on **port 3000** (backend + built frontend).
+## Recommended: One-Command Install (Debian/Ubuntu)
 
 ```bash
-cd client
-npm install
-npm run build
-
-cd ../server
-npm install
-npm start
+curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scripts/install-debian.sh | sudo bash
 ```
 
-Browse to `http(s)://<host>:3000/`.
+The script will:
+- Install Node.js 22, git, and ffmpeg
+- Clone the repo to `/opt/jvshomecontrol`
+- Build the UI
+- Create HTTPS certificates (prompts you)
+- Set up a systemd service
+- Preserve your config on future updates
 
-## Local development (optional)
+---
 
-Prereqs:
+## After Install
 
-- Node.js 20+ (recommended: latest LTS; the Debian installer targets Node 22)
+### 1. Configure Hubitat credentials
 
-Terminal 1 (server):
-
+Edit the environment file:
 ```bash
-cd server
-npm install
-npm run dev
+sudo nano /etc/jvshomecontrol.env
 ```
 
-Terminal 2 (client):
-
+Set these values (get them from Hubitat > Apps > Maker API):
 ```bash
-cd client
-npm install
-npm run dev
+# Recommended: Use HTTPS for Hubitat (even on local network)
+HUBITAT_HOST=https://192.168.1.50
+HUBITAT_APP_ID=30
+HUBITAT_ACCESS_TOKEN=your-token-here
+
+# Required if Hubitat uses a self-signed certificate
+HUBITAT_TLS_INSECURE=1
 ```
 
-In this dev mode, the UI is served by Vite (commonly on `http://localhost:5173`) and the API is on port 3000.
+> **Security Note:** I recommend using HTTPS for both the dashboard AND Hubitat, even on your local network. The Maker API access token should always be encrypted in transit.
 
-## Notes
-
-- Production/default is port 3000 for both UI + API.
-- Vite (`:5173`) is only used during active UI development.
-
-## Running as a service (Debian / systemd)
-
-There are two ways:
-
-- Use the step-by-step approach in the root README
-- Or use the helper script:
-
-- [scripts/install-debian.sh](../scripts/install-debian.sh)
-
-If you're on Debian/Ubuntu and just want the easiest setup/update experience, use the helper script above.
-It is intended to be a one-stop flow for:
-
-- Install
-- Update
-- Create a HTTPS certificate the first time
-- Recreate/replace the HTTPS certificate later
-
-It updates the repo by overwriting tracked files (a clean checkout), while preserving your installation-specific data:
-
-- `server/data/config.json`
-- `server/data/certs/`
-
-Important: during install/update, the Debian installer may create temporary backups in `/tmp` (for example `jvshomecontrol.config.<timestamp>.json` and `jvshomecontrol.certs.<timestamp>/`).
-After the install completes and you've confirmed your settings are correct and the service is healthy, remove those backups from `/tmp`.
-
-The Debian installer is split into two files:
-
-- `scripts/install-debian.sh` (bootstrap): updates/clones the repo, then runs the repo version installer.
-- `scripts/install-debian-run.sh` (runner): the actual install logic executed from the updated checkout.
-
-#### Installing a non-main branch
-
-By default, the Debian installer uses the `main` branch. To install a different branch:
-
-- Env var: `REPO_BRANCH=your-branch`
-- Or pass `--branch your-branch`
-
-Example:
-
-```bash
-sudo REPO_BRANCH=develop bash scripts/install-debian.sh
-```
-
-Note: The Debian install script runs the HTTPS setup helper during install/update and guides you through the prompts.
-In normal interactive use, there is no need to run the certificate helper separately.
-
-If you're running non-interactively (for example via systemd or an SSH session with no TTY), prompts are skipped; in that case you can generate/recreate the cert later from an interactive terminal.
-
-If you change environment variables (for example switching `http://` to `https://`), you must restart the service:
+### 2. Restart the service
 
 ```bash
 sudo systemctl restart jvshomecontrol
 ```
 
-### systemd environment (Debian installer)
+### 3. Open the dashboard
 
-If you used the Debian installer, the systemd service reads environment variables from:
+Browse to `https://your-server-ip:3000`
 
-- `/etc/jvshomecontrol.env`
+---
 
-That’s where you should set Hubitat variables like `HUBITAT_HOST`, and optional tuning like the polling interval:
+## Updating
 
-- `HUBITAT_POLL_INTERVAL_MS=60000` (poll once per minute)
+Run the same install command - it will update in place and preserve your config:
 
-## Configuration files
+```bash
+curl -fsSL https://raw.githubusercontent.com/jeamajoal/JVSHomeControl/main/scripts/install-debian.sh | sudo bash
+```
 
-- Persisted config: `server/data/config.json`
-- Sounds: `server/data/sounds/`
-- HTTPS certs (optional): `server/data/certs/`
+---
+
+## Check Status
+
+```bash
+# View logs
+sudo journalctl -u jvshomecontrol -f
+
+# Check health
+curl -sk https://localhost:3000/api/hubitat/health
+```
+
+---
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `HUBITAT_HOST` | Yes | Hubitat URL (e.g., `https://192.168.1.50`) |
+| `HUBITAT_APP_ID` | Yes | Maker API app ID |
+| `HUBITAT_ACCESS_TOKEN` | Yes | Maker API token |
+| `HUBITAT_TLS_INSECURE` | Recommended | Set to `1` for self-signed Hubitat HTTPS |
+| `HUBITAT_POLL_INTERVAL_MS` | No | Poll interval in ms (default: 2000) |
+| `PORT` | No | Server port (default: 3000) |
+
+---
+
+## Changing the Server Port
+
+To run on a different port:
+
+```bash
+# In /etc/jvshomecontrol.env:
+PORT=8443
+```
+
+Then restart: `sudo systemctl restart jvshomecontrol`
+
+---
+
+## Weather Location
+
+Weather uses [Open-Meteo](https://open-meteo.com/) (free, no API key needed). By default it auto-detects your location from IP. To set a specific location:
+
+```bash
+# In /etc/jvshomecontrol.env:
+OPEN_METEO_LAT=35.2271
+OPEN_METEO_LON=-80.8431
+```
+
+Then restart: `sudo systemctl restart jvshomecontrol`
+
+---
+
+## Installing a Different Branch
+
+```bash
+sudo REPO_BRANCH=develop bash scripts/install-debian.sh
+```
+
+---
+
+## Manual Install (Advanced)
+
+If you prefer not to use the script:
+
+```bash
+# Build the UI
+cd client && npm install && npm run build
+
+# Start the server
+cd ../server && npm install && npm start
+```
+
+---
+
+## File Locations
+
+| File | Purpose |
+|------|---------|
+| `/opt/jvshomecontrol/` | Application files |
+| `/etc/jvshomecontrol.env` | Environment variables |
+| `/opt/jvshomecontrol/server/data/config.json` | UI settings |
+| `/opt/jvshomecontrol/server/data/certs/` | HTTPS certificates |

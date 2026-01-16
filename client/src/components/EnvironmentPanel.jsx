@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Thermometer,
   Droplets,
@@ -18,6 +18,9 @@ import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
 import { buildRoomsWithStatuses, getHomeVisibleDeviceIdSet } from '../deviceSelectors';
 import { API_HOST } from '../apiHost';
+import { inferInternalDeviceType } from '../deviceMapping';
+import { getDeviceTypeIconSrc } from '../deviceIcons';
+import InlineSvg from './InlineSvg';
 import HlsPlayer from './HlsPlayer';
 import {
   normalizeToleranceColorId,
@@ -554,8 +557,9 @@ const getDeviceCommandAllowlistForId = (deviceCommandAllowlist, deviceId) => {
   return arr.map((v) => String(v || '').trim()).filter(Boolean);
 };
 
-const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1 }) => {
+const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, climateToleranceColors, colorizeHomeValues, colorizeHomeValuesOpacityPct, deviceCommandAllowlist, deviceHomeMetricAllowlist, deviceTypeIcons, switchControlStyle = 'auto', switchAnimationStyle = 'none', homeRoomMetricKeys = [], homeRoomMetricColumns = 0, homeRoomColumnsXl = 3, primaryTextColorClassName = '', secondaryTextColorClassName = '', contentScale = 1, fillHeight = false }) => {
   const [busyActions, setBusyActions] = useState(() => new Set());
+  const [svgHotspotsByDeviceId, setSvgHotspotsByDeviceId] = useState(() => ({}));
 
   const scaleNumRaw = Number(contentScale);
   const scaleNum = Number.isFinite(scaleNumRaw) ? Math.max(0.5, Math.min(2, scaleNumRaw)) : 1;
@@ -573,6 +577,9 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
         label: d.label,
         commands: d.status?.commands || [],
         attrs: d.status?.attributes || {},
+        caps: Array.isArray(d?.capabilities) ? d.capabilities : (Array.isArray(d?.status?.capabilities) ? d.status.capabilities : []),
+        hubitatType: d?.type,
+        state: d?.status?.state,
       }))
       .filter((d) => Array.isArray(d.commands) && d.commands.length)
       .map((d) => ({
@@ -587,6 +594,13 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
           const set = new Set(perDevice);
           return base.filter((c) => set.has(String(c)));
         })(),
+        internalType: inferInternalDeviceType({
+          hubitatType: d.hubitatType,
+          capabilities: d.caps,
+          attributes: d.attrs,
+          state: d.state,
+          commandSchemas: d.commands,
+        }),
       }))
       .filter((d) => d.commands.length);
   }, [devices, deviceCommandAllowlist]);
@@ -609,11 +623,11 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
       .join(' ');
   };
 
-  const runAction = async (deviceId, command) => {
+  const runAction = async (deviceId, command, args = []) => {
     const key = `${deviceId}:${command}`;
     setBusyActions((prev) => new Set(prev).add(key));
     try {
-      await sendDeviceCommand(deviceId, command);
+      await sendDeviceCommand(deviceId, command, args);
     } finally {
       setBusyActions((prev) => {
         const next = new Set(prev);
@@ -764,7 +778,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
   }, [metricCards.length, homeRoomMetricColumns, homeRoomColumnsXl]);
 
   return (
-    <section className={`glass-panel p-4 md:p-5 border ${headerGlow}`}>
+    <section className={`glass-panel p-4 md:p-5 border ${headerGlow} ${fillHeight ? 'h-full flex flex-col' : ''}`.trim()}>
       <div className="flex items-center justify-between gap-3">
         <h2
           className={`min-w-0 jvs-primary-text-strong ${scaleNum === 1 ? 'jvs-home-room-title' : ''} font-extrabold tracking-wide truncate ${primaryTextColorClassName || 'text-white'}`.trim()}
@@ -813,21 +827,24 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
           >
             Controls
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {supportedActions.map((d) => (
-              <div
-                key={d.id}
-                className={`glass-panel ${scaleNum === 1 ? 'p-4' : ''} border border-white/10`}
-                style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
-              >
+          <div className="flex flex-wrap justify-center gap-3">
+            {supportedActions.map((d) => {
+              const iconSrc = getDeviceTypeIconSrc({ ui: { deviceTypeIcons } }, d.internalType);
+
+              return (
                 <div
-                  className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold truncate ${secondaryTextColorClassName}`.trim()}
-                  style={{ fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
+                  key={d.id}
+                  className={`glass-panel ${scaleNum === 1 ? 'p-3' : ''} border border-white/10 inline-flex flex-col items-center`}
+                  style={scaleNum === 1 ? undefined : { padding: `${Math.round(16 * scaleNum)}px` }}
                 >
-                  {d.label}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {(() => {
+                  <div
+                    className={`${scaleNum === 1 ? 'text-[11px] md:text-xs' : ''} text-center uppercase tracking-[0.2em] jvs-secondary-text-strong font-semibold ${secondaryTextColorClassName}`.trim()}
+                    style={{ fontSize: `calc(${Math.round(11 * scaleNum)}px * var(--jvs-secondary-text-size-scale, 1))` }}
+                  >
+                    <span className="truncate">{d.label}</span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    {(() => {
                     const commands = Array.isArray(d.commands)
                       ? d.commands.map((v) => String(v || '').trim()).filter(Boolean)
                       : [];
@@ -863,11 +880,92 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                       return runAction(d.id, 'on');
                     };
 
+                      const hasIconSurface = Boolean(iconSrc);
+                      const svgHasHotspots = svgHotspotsByDeviceId[d.id] === true;
+
                     const otherCommands = commands.filter((c) => c !== 'on' && c !== 'off' && c !== 'toggle');
+
+                    const resolveCommandForDevice = (rawCmd) => {
+                      const wanted = String(rawCmd || '').trim();
+                      if (!wanted) return null;
+                      const wantedLower = wanted.toLowerCase();
+                      const exact = commands.find((c) => c === wanted);
+                      if (exact) return exact;
+                      return commands.find((c) => String(c || '').toLowerCase() === wantedLower) || null;
+                    };
+
+                    const handleSvgCommand = (rawCmd, args) => {
+                      if (!connected || anyBusy) return;
+                      const resolved = resolveCommandForDevice(rawCmd);
+                      if (!resolved) return;
+                      runAction(d.id, resolved, Array.isArray(args) ? args : []);
+                    };
 
                     return (
                       <>
-                        {hasPowerCommands && mode === 'switch' ? (
+                          {hasIconSurface && hasPowerCommands ? (
+                            svgHasHotspots ? (
+                              <div className="w-fit mx-auto inline-flex items-center justify-center">
+                                <InlineSvg
+                                  src={iconSrc}
+                                  rootClassName={isOn === true ? 'is-on' : ''}
+                                  onCommand={handleSvgCommand}
+                                  onMeta={({ hasHotspots }) => {
+                                    setSvgHotspotsByDeviceId((prev) => (
+                                      prev[d.id] === hasHotspots ? prev : { ...prev, [d.id]: hasHotspots }
+                                    ));
+                                  }}
+                                  className="mx-auto w-[88px] h-[88px]"
+                                  style={{ display: 'block' }}
+                                  role="img"
+                                  ariaLabel={`${d.label} ${isOn ? 'on' : 'off'}`}
+                                />
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={!connected || anyBusy}
+                                onClick={runToggle}
+                                className="w-fit mx-auto inline-flex items-center justify-center bg-transparent p-0 active:scale-[0.99] disabled:opacity-100"
+                                aria-pressed={isOn === true ? 'true' : 'false'}
+                              >
+                                <InlineSvg
+                                  src={iconSrc}
+                                  rootClassName={isOn === true ? 'is-on' : ''}
+                                  onCommand={handleSvgCommand}
+                                  onMeta={({ hasHotspots }) => {
+                                    setSvgHotspotsByDeviceId((prev) => (
+                                      prev[d.id] === hasHotspots ? prev : { ...prev, [d.id]: hasHotspots }
+                                    ));
+                                  }}
+                                  className="mx-auto w-[88px] h-[88px]"
+                                  style={{ display: 'block' }}
+                                  role="img"
+                                  ariaLabel={`${d.label} ${isOn ? 'on' : 'off'}`}
+                                />
+                              </button>
+                            )
+                          ) : null}
+
+                          {hasIconSurface && !hasPowerCommands ? (
+                            <div className="w-fit mx-auto inline-flex items-center justify-center">
+                              <InlineSvg
+                                src={iconSrc}
+                                onCommand={handleSvgCommand}
+                                onMeta={({ hasHotspots }) => {
+                                  setSvgHotspotsByDeviceId((prev) => (
+                                    prev[d.id] === hasHotspots ? prev : { ...prev, [d.id]: hasHotspots }
+                                  ));
+                                }}
+                                className="mx-auto"
+                                style={{ display: 'block', width: 180, height: 360 }}
+                                role="img"
+                                ariaLabel={`${d.label} controls`}
+                              />
+                            </div>
+                          ) : null}
+
+                          {hasPowerCommands && !hasIconSurface && mode === 'switch' ? (
                           <button
                             type="button"
                             disabled={!connected || anyBusy}
@@ -899,7 +997,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                           </button>
                         ) : null}
 
-                        {hasPowerCommands && mode !== 'switch' && hasOn ? (
+                          {hasPowerCommands && !hasIconSurface && mode !== 'switch' && hasOn ? (
                           <ActionButton
                             key="power:on"
                             label="On"
@@ -914,7 +1012,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                           />
                         ) : null}
 
-                        {hasPowerCommands && mode !== 'switch' && hasOff ? (
+                          {hasPowerCommands && !hasIconSurface && mode !== 'switch' && hasOff ? (
                           <ActionButton
                             key="power:off"
                             label="Off"
@@ -929,7 +1027,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                           />
                         ) : null}
 
-                        {hasPowerCommands && mode !== 'switch' && !hasOn && !hasOff && hasToggle ? (
+                          {hasPowerCommands && !hasIconSurface && mode !== 'switch' && !hasOn && !hasOff && hasToggle ? (
                           <ActionButton
                             key="power:toggle"
                             label="Toggle"
@@ -944,7 +1042,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                           />
                         ) : null}
 
-                        {otherCommands.map((cmd) => (
+                        {!svgHasHotspots ? otherCommands.map((cmd) => (
                           <ActionButton
                             key={cmd}
                             label={formatCommandLabel(cmd)}
@@ -957,13 +1055,14 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
                             scaled
                             scale={scaleNum}
                           />
-                        ))}
+                        )) : null}
                       </>
                     );
-                  })()}
+                    })()}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -1168,6 +1267,34 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     return Math.max(1, Math.min(6, Math.round(raw)));
   }, [config?.ui?.homeRoomColumnsXl]);
 
+  const homeRoomLayoutMode = useMemo(() => {
+    const raw = String(config?.ui?.homeRoomLayoutMode ?? '').trim().toLowerCase();
+    return raw === 'masonry' ? 'masonry' : 'grid';
+  }, [config?.ui?.homeRoomLayoutMode]);
+
+  const homeRoomMasonryRowHeightPx = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMasonryRowHeightPx);
+    if (!Number.isFinite(raw)) return 10;
+    return Math.max(4, Math.min(40, Math.round(raw)));
+  }, [config?.ui?.homeRoomMasonryRowHeightPx]);
+
+  const homeRoomMinWidthPx = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMinWidthPx);
+    if (!Number.isFinite(raw)) return 0;
+    return Math.max(0, Math.min(1200, Math.round(raw)));
+  }, [config?.ui?.homeRoomMinWidthPx]);
+
+  const homeRoomTiles = useMemo(() => {
+    const rawMap = (config?.ui?.homeRoomTiles && typeof config.ui.homeRoomTiles === 'object')
+      ? config.ui.homeRoomTiles
+      : {};
+    return rawMap;
+  }, [config?.ui?.homeRoomTiles]);
+
+  const roomsGridRef = useRef(null);
+  const roomTileElsRef = useRef(new Map());
+  const [homeRoomAutoRowSpans, setHomeRoomAutoRowSpans] = useState(() => ({}));
+
   const homeRoomMetricColumns = useMemo(() => {
     const raw = Number(config?.ui?.homeRoomMetricColumns);
     if (!Number.isFinite(raw)) return 0;
@@ -1222,6 +1349,80 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     () => buildRoomsWithStatuses(config, statuses, { deviceIdSet: homeVisibleDeviceIds }),
     [config, statuses, homeVisibleDeviceIds],
   );
+
+  useLayoutEffect(() => {
+    if (homeRoomLayoutMode !== 'masonry') {
+      setHomeRoomAutoRowSpans({});
+      return undefined;
+    }
+
+    const gridEl = roomsGridRef.current;
+    if (!gridEl) return undefined;
+
+    const getGapPx = () => {
+      try {
+        const style = window.getComputedStyle(gridEl);
+        const rawGap = style.rowGap || style.gap || '0px';
+        const gap = parseFloat(String(rawGap));
+        return Number.isFinite(gap) ? gap : 0;
+      } catch {
+        return 0;
+      }
+    };
+
+    const computeSpanForEl = (el) => {
+      if (!el) return 1;
+      const rowH = homeRoomMasonryRowHeightPx;
+      const gap = getGapPx();
+      const contentEl = el.firstElementChild;
+      const hRaw = contentEl
+        ? Number(contentEl.getBoundingClientRect().height || contentEl.scrollHeight || 0)
+        : Number(el.getBoundingClientRect().height || el.scrollHeight || 0);
+      const h = Number.isFinite(hRaw) ? hRaw : 0;
+      const denom = Math.max(1, rowH + gap);
+      const span = Math.ceil((h + gap) / denom);
+      return Math.max(1, Math.min(999, span));
+    };
+
+    const recomputeAll = () => {
+      const next = {};
+      for (const [rid, el] of roomTileElsRef.current.entries()) {
+        if (!rid || !el) continue;
+        next[rid] = computeSpanForEl(el);
+      }
+      setHomeRoomAutoRowSpans((prev) => {
+        // Avoid churn if nothing changed.
+        const prevKeys = Object.keys(prev || {});
+        const nextKeys = Object.keys(next);
+        if (prevKeys.length !== nextKeys.length) return next;
+        for (const k of nextKeys) {
+          if (prev?.[k] !== next[k]) return next;
+        }
+        return prev;
+      });
+    };
+
+    // Compute once after paint.
+    const raf = requestAnimationFrame(recomputeAll);
+
+    let ro = null;
+    try {
+      ro = new ResizeObserver(() => {
+        recomputeAll();
+      });
+      for (const el of roomTileElsRef.current.values()) {
+        if (el) ro.observe(el);
+      }
+      ro.observe(gridEl);
+    } catch {
+      ro = null;
+    }
+
+    return () => {
+      cancelAnimationFrame(raf);
+      if (ro) ro.disconnect();
+    };
+  }, [homeRoomLayoutMode, homeRoomMasonryRowHeightPx, rooms.length]);
   const now = useClock(1000);
   const roomContentScale = useMemo(() => {
     const raw = Number(cardScalePct);
@@ -1680,35 +1881,80 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
             ) : null}
 
             <div
-              className="jvs-home-rooms-grid gap-4"
+              ref={roomsGridRef}
+              className={`jvs-home-rooms-grid gap-4 ${homeRoomMinWidthPx > 0 ? 'jvs-home-rooms-grid--autofit' : ''} ${homeRoomLayoutMode === 'masonry' ? 'jvs-home-rooms-grid--masonry' : ''}`.trim()}
               style={{
                 '--jvs-home-rooms-cols-desktop': homeRoomColumnsXl,
+                ...(homeRoomMinWidthPx > 0 ? { '--jvs-home-room-min-width': `${homeRoomMinWidthPx}px` } : {}),
+                ...(homeRoomLayoutMode === 'masonry' ? { '--jvs-home-room-row-height': `${homeRoomMasonryRowHeightPx}px` } : {}),
               }}
             >
             {rooms.length ? (
-              rooms.map((r) => (
-                <RoomPanel
-                  key={r.room.id}
-                  roomName={r.room.name}
-                  devices={r.devices}
-                  connected={connected}
-                  uiScheme={resolvedUiScheme}
-                  climateTolerances={climateTolerances}
-                  climateToleranceColors={climateToleranceColors}
-                  colorizeHomeValues={colorizeHomeValues}
-                  colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
-                  deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
-                  deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
-                  switchControlStyle={switchControlStyle}
-                  switchAnimationStyle={switchAnimationStyle}
-                  homeRoomMetricKeys={homeRoomMetricKeys}
-                  homeRoomMetricColumns={homeRoomMetricColumns}
-                  homeRoomColumnsXl={homeRoomColumnsXl}
-                  primaryTextColorClassName={primaryTextColorClass}
-                  secondaryTextColorClassName={secondaryTextColorClass}
-                  contentScale={roomContentScale}
-                />
-              ))
+              rooms.map((r) => {
+                const rid = String(r?.room?.id || '').trim();
+                const tile = (rid && homeRoomTiles && typeof homeRoomTiles === 'object') ? homeRoomTiles[rid] : null;
+                const spanRaw = tile && typeof tile === 'object' ? Number(tile.span) : NaN;
+                const orderRaw = tile && typeof tile === 'object' ? Number(tile.order) : NaN;
+                const rowSpanRaw = tile && typeof tile === 'object' ? Number(tile.rowSpan) : NaN;
+                const span = Number.isFinite(spanRaw) ? Math.max(1, Math.min(6, Math.round(spanRaw))) : 1;
+                const order = Number.isFinite(orderRaw) ? Math.max(-999, Math.min(999, Math.round(orderRaw))) : null;
+                const manualRowSpan = Number.isFinite(rowSpanRaw)
+                  ? Math.max(1, Math.min(999, Math.round(rowSpanRaw)))
+                  : null;
+                const autoRowSpan = (rid && homeRoomAutoRowSpans && typeof homeRoomAutoRowSpans === 'object')
+                  ? homeRoomAutoRowSpans[rid]
+                  : null;
+                const effectiveRowSpan = manualRowSpan !== null
+                  ? manualRowSpan
+                  : (Number.isFinite(Number(autoRowSpan)) ? Math.max(1, Math.min(999, Math.round(Number(autoRowSpan)))) : null);
+                const fallbackRowSpan = Math.max(1, Math.min(999, Math.round(420 / Math.max(4, homeRoomMasonryRowHeightPx))));
+
+                const wrapperStyle = {
+                  ...(span > 1 ? { gridColumn: `span ${span}` } : {}),
+                  ...(order !== null ? { order } : {}),
+                  ...(homeRoomLayoutMode === 'masonry'
+                    ? { gridRowEnd: `span ${effectiveRowSpan !== null ? effectiveRowSpan : fallbackRowSpan}` }
+                    : {}),
+                };
+
+                return (
+                  <div
+                    key={rid || r.room.name}
+                    style={wrapperStyle}
+                    className={`min-w-0 ${homeRoomLayoutMode === 'masonry' ? '' : 'h-full'}`.trim()}
+                    ref={(el) => {
+                      if (!rid) return;
+                      const map = roomTileElsRef.current;
+                      if (!map) return;
+                      if (el) map.set(rid, el);
+                      else map.delete(rid);
+                    }}
+                  >
+                    <RoomPanel
+                      roomName={r.room.name}
+                      devices={r.devices}
+                      connected={connected}
+                      uiScheme={resolvedUiScheme}
+                      climateTolerances={climateTolerances}
+                      climateToleranceColors={climateToleranceColors}
+                      colorizeHomeValues={colorizeHomeValues}
+                      colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
+                      deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
+                      deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                      deviceTypeIcons={config?.ui?.deviceTypeIcons}
+                      switchControlStyle={switchControlStyle}
+                      switchAnimationStyle={switchAnimationStyle}
+                      homeRoomMetricKeys={homeRoomMetricKeys}
+                      homeRoomMetricColumns={homeRoomMetricColumns}
+                      homeRoomColumnsXl={homeRoomColumnsXl}
+                      primaryTextColorClassName={primaryTextColorClass}
+                      secondaryTextColorClassName={secondaryTextColorClass}
+                      contentScale={roomContentScale}
+                      fillHeight={homeRoomLayoutMode !== 'masonry'}
+                    />
+                  </div>
+                );
+              })
             ) : (
               <div className="glass-panel p-8 border border-white/10 text-center text-white/50 lg:col-span-2 xl:col-span-3">
                 <div className="text-sm uppercase tracking-[0.2em]">No data</div>

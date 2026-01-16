@@ -112,6 +112,51 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
 
   const rooms = useMemo(() => buildRoomsWithActivity(config, statuses), [config, statuses]);
 
+  const cardScalePct = useMemo(() => {
+    const raw = Number(config?.ui?.cardScalePct);
+    if (!Number.isFinite(raw)) return 100;
+    return Math.max(50, Math.min(200, Math.round(raw)));
+  }, [config?.ui?.cardScalePct]);
+
+  const contentScale = useMemo(() => {
+    const raw = Number(cardScalePct);
+    if (!Number.isFinite(raw)) return 1;
+    return Math.max(0.5, Math.min(2, raw / 100));
+  }, [cardScalePct]);
+
+  const activityBackground = useMemo(() => {
+    const raw = (config?.ui?.homeBackground && typeof config.ui.homeBackground === 'object')
+      ? config.ui.homeBackground
+      : {};
+
+    const enabled = raw.enabled === true;
+    const url = (raw.url === null || raw.url === undefined) ? null : String(raw.url).trim();
+    const opacityRaw = Number(raw.opacityPct);
+    const opacityPct = Number.isFinite(opacityRaw)
+      ? Math.max(0, Math.min(100, Math.round(opacityRaw)))
+      : 35;
+
+    if (!enabled || !url) return { enabled: false, url: null, opacityPct };
+    return { enabled: true, url, opacityPct };
+  }, [config?.ui?.homeBackground]);
+
+  const [activityBackgroundImageError, setActivityBackgroundImageError] = useState(false);
+
+  useEffect(() => {
+    setActivityBackgroundImageError(false);
+    if (!activityBackground.enabled || !activityBackground.url) return;
+
+    const img = new Image();
+    img.onerror = () => {
+      setActivityBackgroundImageError(true);
+    };
+    img.src = activityBackground.url;
+
+    return () => {
+      img.onerror = null;
+    };
+  }, [activityBackground.enabled, activityBackground.url]);
+
   const ensureAudio = async () => {
     if (!audioCtxRef.current) {
       const Ctor = window.AudioContext || window.webkitAudioContext;
@@ -297,7 +342,26 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
   }, [alertsEnabled]);
 
   return (
-    <div className="w-full h-full overflow-auto p-3 md:p-5">
+    <div className="relative w-full h-full overflow-auto p-3 md:p-5">
+      {activityBackground.enabled && activityBackground.url && !activityBackgroundImageError ? (
+        <div
+          className="fixed inset-0 z-0 pointer-events-none"
+          style={{
+            backgroundImage: `url(${JSON.stringify(String(activityBackground.url))})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            opacity: activityBackground.opacityPct / 100,
+          }}
+        />
+      ) : null}
+
+      <div
+        className="relative z-10"
+        style={{
+          transform: `scale(${contentScale})`,
+          transformOrigin: 'top left',
+        }}
+      >
       <div className="flex justify-end">
         <button
           type="button"
@@ -321,7 +385,7 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
           {alertsEnabled ? (
             <Volume2 className={`w-4 h-4 ${uiScheme?.selectedText || 'text-neon-blue'}`} />
           ) : (
-            <VolumeX className="w-4 h-4 text-white/50" />
+            <VolumeX className="w-4 h-4 jvs-secondary-text text-white" />
           )}
         </button>
       </div>
@@ -343,7 +407,10 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
                 aria-label={String(r.room?.name || r.room?.id)}
                 title={String(r.room?.name || r.room?.id)}
               >
-                <div className="text-base md:text-lg font-extrabold tracking-wide text-white/85 truncate text-center">
+                <div
+                  className="font-extrabold tracking-wide jvs-primary-text-strong text-white truncate text-center"
+                  style={{ fontSize: 'calc(16px * var(--jvs-primary-text-size-scale, 1))' }}
+                >
                   {String(r.room?.name || r.room?.id)}
                 </div>
                 <div className="w-full flex items-center justify-center gap-6 py-4">
@@ -367,6 +434,7 @@ const ActivityPanel = ({ config: configProp, statuses: statusesProp, uiScheme: u
             <DoorOpen className="w-10 h-10 text-white/20" aria-label="Door" title="Door" />
           </div>
         )}
+      </div>
       </div>
     </div>
   );

@@ -1,185 +1,100 @@
-# RTSP/HLS Camera Streaming Configuration
+# Camera Setup (RTSP/HLS)
 
-This document describes the environment variables for configuring RTSP-to-HLS camera streaming with automatic health monitoring and recovery.
+Stream RTSP cameras directly in the dashboard. The server converts RTSP to browser-friendly HLS.
 
-## Overview
+---
 
-The server includes built-in RTSP-to-HLS transcoding using ffmpeg, which converts RTSP camera streams to HLS format for playback in web browsers. The system includes automatic health monitoring, failure detection, and recovery mechanisms to ensure reliable video playback.
+## How It Works
 
-## Basic RTSP/HLS Configuration
-
-### Core Settings
-
-| Variable | Default | Range | Description |
-|----------|---------|-------|-------------|
-| `RTSP_HLS_DIR` | `server/data/hls` | - | Directory for HLS output files |
-| `RTSP_HLS_SEGMENT_SECONDS` | `2` | 1-6 | Duration of each HLS segment in seconds |
-| `RTSP_HLS_LIST_SIZE` | `6` | 3-20 | Number of segments to keep in playlist |
-| `RTSP_HLS_OUTPUT_FPS` | `15` | 1-60 | Output framerate (forces constant framerate) |
-| `RTSP_HLS_RTSP_TRANSPORT` | `tcp` | tcp/udp | RTSP transport protocol (TCP is recommended) |
-| `RTSP_HLS_STARTUP_TIMEOUT_MS` | `15000` | 2000-60000 | Timeout for initial stream startup |
-| `RTSP_HLS_DEBUG` | `false` | - | Enable debug output for ffmpeg |
-| `FFMPEG_PATH` | `ffmpeg` | - | Path to ffmpeg binary |
-
-**Note:** `RTSP_HLS_PROBESIZE` and `RTSP_HLS_ANALYZEDURATION` are no longer used in the current stable ffmpeg command but remain available for future use.
-
-## Health Monitoring & Auto-Recovery
-
-The system includes automatic health monitoring that detects and recovers from various failure conditions.
-
-### Health Check Configuration
-
-| Variable | Default | Range | Description |
-|----------|---------|-------|-------------|
-| `RTSP_HLS_HEALTH_CHECK_INTERVAL_MS` | `10000` | 5000-60000 | How often to check stream health (milliseconds) |
-| `RTSP_HLS_MAX_SEGMENT_AGE_SECONDS` | `30` | 10-300 | Delete segments older than this (seconds) |
-| `RTSP_HLS_STALE_THRESHOLD_SECONDS` | `15` | 5-60 | Consider stream stale if no new segment in this time |
-| `RTSP_HLS_MAX_RESTART_ATTEMPTS` | `5` | 1-20 | Maximum restart attempts before giving up |
-| `RTSP_HLS_RESTART_BACKOFF_MS` | `2000` | 1000-30000 | Initial backoff between restart attempts (milliseconds) |
-| `RTSP_HLS_CLEANUP_ON_SHUTDOWN` | `false` | - | Whether to delete HLS files on server shutdown |
-
-### How Health Monitoring Works
-
-1. **Process Monitoring**: Checks if ffmpeg process is still running
-2. **Segment Detection**: Monitors for new segment files being created
-3. **Staleness Detection**: Detects when segments stop being updated
-4. **Automatic Restart**: Restarts failed or stalled streams with exponential backoff
-5. **Segment Cleanup**: Removes old segments to prevent disk space issues
-
-### Health Status States
-
-- **starting**: Stream is initializing (waiting for first segments)
-- **healthy**: Stream is running and producing new segments
-- **stale**: Stream exists but no new segments within threshold
-- **dead**: ffmpeg process has exited
-- **restarting**: Stream is being automatically restarted
-
-### Restart Behavior
-
-When a stream fails or stalls:
-
-1. The health monitor detects the issue
-2. System waits for the configured backoff period
-3. Attempts to restart the stream
-4. Backoff period doubles on each retry (exponential backoff)
-5. After max attempts, stream status becomes "dead" and automatic restarts stop
-6. Restart counter resets after successful streaming period
-
-## Health Monitoring API
-
-### GET /api/hls/health
-
-Returns health status for all active HLS streams.
-
-**Example Response:**
-```json
-{
-  "ok": true,
-  "summary": {
-    "totalStreams": 2,
-    "healthy": 1,
-    "stale": 0,
-    "dead": 0,
-    "starting": 1,
-    "restarting": 0
-  },
-  "streams": {
-    "camera1": {
-      "healthStatus": "healthy",
-      "ffmpegRunning": true,
-      "uptime": 45000,
-      "uptimeSeconds": 45,
-      "startedAt": "2026-01-10T18:00:00.000Z",
-      "lastSegmentTime": "2026-01-10T18:00:43.000Z",
-      "lastSegmentAgeSeconds": 2,
-      "restartAttempts": 0,
-      "totalRestarts": 0,
-      "currentBackoffMs": 2000,
-      "maxRestartAttempts": 5,
-      "lastError": null
-    }
-  },
-  "config": {
-    "healthCheckIntervalMs": 10000,
-    "maxSegmentAgeSeconds": 30,
-    "staleThresholdSeconds": 15,
-    "maxRestartAttempts": 5,
-    "restartBackoffMs": 2000,
-    "cleanupOnShutdown": false
-  }
-}
+```
+Camera (RTSP) --> ffmpeg --> HLS segments --> Browser
 ```
 
-## Example Configurations
+The server runs ffmpeg to convert RTSP streams into HLS format that plays in any browser.
 
-### Production (Reliable)
+---
+
+## Requirements
+
+- **ffmpeg** installed on the server (the installer does this automatically)
+- Camera with RTSP support
+- Camera accessible from the server
+
+---
+
+## Adding a Camera
+
+In the dashboard Settings > Cameras:
+
+1. Click **Add Camera**
+2. Enter the RTSP URL: `rtsp://user:pass@camera-ip:554/stream`
+3. Save
+
+The camera will appear on the Controls page.
+
+---
+
+## Common RTSP URL Formats
+
+| Brand | URL Pattern |
+|-------|-------------|
+| Generic | `rtsp://user:pass@ip:554/stream1` |
+| Hikvision | `rtsp://user:pass@ip:554/Streaming/Channels/101` |
+| Dahua | `rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0` |
+| Amcrest | `rtsp://user:pass@ip:554/cam/realmonitor?channel=1&subtype=0` |
+| Reolink | `rtsp://user:pass@ip:554/h264Preview_01_main` |
+
+---
+
+## Tuning (Optional)
+
+Set in `/etc/jvshomecontrol.env`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RTSP_HLS_SEGMENT_SECONDS` | 2 | Segment duration (1-6) |
+| `RTSP_HLS_OUTPUT_FPS` | 15 | Output framerate (1-60) |
+| `RTSP_HLS_RTSP_TRANSPORT` | tcp | Protocol: `tcp` or `udp` |
+
+---
+
+## Health Monitoring
+
+The server automatically:
+- Detects when streams stall
+- Restarts failed streams
+- Cleans up old segments
+
+Check health:
 ```bash
-# Conservative settings for maximum reliability
-export RTSP_HLS_HEALTH_CHECK_INTERVAL_MS=10000
-export RTSP_HLS_STALE_THRESHOLD_SECONDS=20
-export RTSP_HLS_MAX_RESTART_ATTEMPTS=10
-export RTSP_HLS_RESTART_BACKOFF_MS=3000
-export RTSP_HLS_RTSP_TRANSPORT=tcp
+curl -s http://localhost:3000/api/hls/health | jq
 ```
 
-### Low Latency (Fast but less reliable)
-```bash
-# Aggressive settings for minimum latency
-export RTSP_HLS_SEGMENT_SECONDS=1
-export RTSP_HLS_LIST_SIZE=3
-export RTSP_HLS_HEALTH_CHECK_INTERVAL_MS=5000
-export RTSP_HLS_STALE_THRESHOLD_SECONDS=5
-export RTSP_HLS_RTSP_TRANSPORT=udp
-```
-
-### High Reliability (Aggressive recovery)
-```bash
-# Maximum recovery attempts with frequent health checks
-export RTSP_HLS_HEALTH_CHECK_INTERVAL_MS=5000
-export RTSP_HLS_MAX_RESTART_ATTEMPTS=20
-export RTSP_HLS_RESTART_BACKOFF_MS=1000
-export RTSP_HLS_STALE_THRESHOLD_SECONDS=10
-export RTSP_HLS_MAX_SEGMENT_AGE_SECONDS=60
-```
-
-## Graceful Shutdown
-
-The server handles SIGTERM and SIGINT signals gracefully:
-
-1. Stops health monitoring
-2. Terminates all ffmpeg processes
-3. Optionally cleans up HLS directories (if `RTSP_HLS_CLEANUP_ON_SHUTDOWN=true`)
-4. Closes server connections
-5. Exits cleanly
+---
 
 ## Troubleshooting
 
-### Streams keep restarting
-- Increase `RTSP_HLS_STALE_THRESHOLD_SECONDS` if network is slow
-- Check camera RTSP URL is valid and accessible
-- Verify ffmpeg is installed and working: `ffmpeg -version`
-- Enable debug mode: `RTSP_HLS_DEBUG=true`
+**Camera not loading:**
+```bash
+# Test RTSP URL directly
+ffmpeg -i "rtsp://user:pass@camera:554/stream" -t 5 -f null -
+```
 
-### Segments not being cleaned up
-- Check `RTSP_HLS_MAX_SEGMENT_AGE_SECONDS` is set appropriately
-- Verify disk space is available
-- Check file permissions on HLS directory
+**Stream keeps restarting:**
+- Try UDP instead of TCP: `RTSP_HLS_RTSP_TRANSPORT=udp`
+- Increase stale threshold: `RTSP_HLS_STALE_THRESHOLD_SECONDS=30`
 
-### High restart count
-- Camera may be unstable - check camera logs
-- Network issues between server and camera
-- Consider increasing restart backoff: `RTSP_HLS_RESTART_BACKOFF_MS=5000`
+**High CPU usage:**
+- Lower the framerate: `RTSP_HLS_OUTPUT_FPS=10`
+- Use substream instead of main stream in RTSP URL
 
-### Stale segments after ffmpeg crash
-- Enable cleanup on shutdown: `RTSP_HLS_CLEANUP_ON_SHUTDOWN=true`
-- Automatic cleanup runs during health checks
-- Stale segments older than `RTSP_HLS_MAX_SEGMENT_AGE_SECONDS` are automatically removed
+---
 
-## Monitoring Integration
+## Advanced Settings
 
-The `/api/hls/health` endpoint can be integrated with monitoring systems:
-
-- **Prometheus**: Scrape endpoint and alert on unhealthy streams
-- **Uptime monitors**: Check `summary.healthy` vs `summary.totalStreams`
-- **Dashboard**: Display real-time stream health status
-- **Alerting**: Trigger alerts when `restartAttempts` is high or status is "dead"
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RTSP_HLS_HEALTH_CHECK_INTERVAL_MS` | 10000 | Health check interval |
+| `RTSP_HLS_MAX_RESTART_ATTEMPTS` | 5 | Max auto-restarts |
+| `RTSP_HLS_STALE_THRESHOLD_SECONDS` | 15 | When to consider stream dead |
+| `RTSP_HLS_CLEANUP_ON_SHUTDOWN` | false | Delete HLS files on stop |

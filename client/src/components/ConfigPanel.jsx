@@ -7,6 +7,7 @@ import {
   normalizeToleranceColorId,
 } from '../toleranceColors';
 import { getUiScheme } from '../uiScheme';
+import { INTERNAL_DEVICE_TYPES } from '../deviceMapping';
 
 const HOME_TOP_ROW_CARD_IDS = ['time', 'outside', 'inside', 'home'];
 
@@ -97,6 +98,19 @@ async function saveDeviceControlStyles(deviceControlStyles) {
   return res.json().catch(() => ({}));
 }
 
+async function saveDeviceTypeIcons(deviceTypeIcons) {
+  const res = await fetch(`${API_HOST}/api/ui/device-type-icons`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceTypeIcons: deviceTypeIcons || {} }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Device type icons save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -138,6 +152,22 @@ async function fetchSoundFiles() {
   const data = await res.json().catch(() => ({}));
   const files = Array.isArray(data?.files) ? data.files : [];
   return files.map((v) => String(v)).filter(Boolean);
+}
+
+async function fetchDeviceIconsIndex() {
+  const res = await fetch(`${API_HOST}/api/device-icons`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Device icons fetch failed (${res.status})`);
+  }
+  const data = await res.json().catch(() => ({}));
+  const byType = (data?.byType && typeof data.byType === 'object') ? data.byType : {};
+  const out = {};
+  for (const [k, v] of Object.entries(byType)) {
+    const files = Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean) : [];
+    out[String(k)] = files;
+  }
+  return { rootUrl: typeof data?.rootUrl === 'string' ? data.rootUrl : '/device-icons', byType: out };
 }
 
 async function fetchOpenMeteoConfig() {
@@ -463,6 +493,26 @@ async function saveHomeRoomColumnsXl(homeRoomColumnsXl, panelName) {
   return res.json().catch(() => ({}));
 }
 
+async function saveHomeRoomLayout(payload, panelName) {
+  const next = payload && typeof payload === 'object' ? payload : {};
+  const res = await fetch(`${API_HOST}/api/ui/home-room-layout`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ...(Object.prototype.hasOwnProperty.call(next, 'homeRoomLayoutMode') ? { homeRoomLayoutMode: next.homeRoomLayoutMode } : {}),
+      ...(Object.prototype.hasOwnProperty.call(next, 'homeRoomMasonryRowHeightPx') ? { homeRoomMasonryRowHeightPx: next.homeRoomMasonryRowHeightPx } : {}),
+      ...(Object.prototype.hasOwnProperty.call(next, 'homeRoomMinWidthPx') ? { homeRoomMinWidthPx: next.homeRoomMinWidthPx } : {}),
+      ...(Object.prototype.hasOwnProperty.call(next, 'homeRoomTiles') ? { homeRoomTiles: next.homeRoomTiles || {} } : {}),
+      ...(panelName ? { panelName } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Home room layout save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
 async function saveHomeRoomMetricColumns(homeRoomMetricColumns, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/home-room-metric-columns`, {
     method: 'PUT',
@@ -714,6 +764,8 @@ const ConfigPanel = ({
 
   const [soundFiles, setSoundFiles] = useState([]);
   const [soundFilesError, setSoundFilesError] = useState(null);
+  const [deviceIconsIndex, setDeviceIconsIndex] = useState(() => ({ rootUrl: '/device-icons', byType: {} }));
+  const [deviceIconsError, setDeviceIconsError] = useState(null);
   const [openMeteoDraft, setOpenMeteoDraft] = useState(() => ({ lat: '', lon: '', timezone: 'auto' }));
   const [openMeteoDirty, setOpenMeteoDirty] = useState(false);
   const [openMeteoError, setOpenMeteoError] = useState(null);
@@ -770,6 +822,22 @@ const ConfigPanel = ({
   const accentColorId = String(config?.ui?.accentColorId || 'neon-blue');
   const scheme = getUiScheme(accentColorId);
 
+  const deviceIconTypes = useMemo(() => {
+    const seeded = [
+      INTERNAL_DEVICE_TYPES.SWITCH,
+      INTERNAL_DEVICE_TYPES.DIMMER,
+      INTERNAL_DEVICE_TYPES.MEDIA_PLAYER,
+      INTERNAL_DEVICE_TYPES.BUTTON,
+      INTERNAL_DEVICE_TYPES.SENSOR,
+      INTERNAL_DEVICE_TYPES.UNKNOWN,
+    ];
+    const byType = (deviceIconsIndex && typeof deviceIconsIndex === 'object' && deviceIconsIndex.byType && typeof deviceIconsIndex.byType === 'object')
+      ? deviceIconsIndex.byType
+      : {};
+    const discovered = Object.keys(byType).map((v) => String(v));
+    return Array.from(new Set([...seeded, ...discovered])).sort((a, b) => a.localeCompare(b));
+  }, [deviceIconsIndex]);
+
   const homeVisibleSave = useAsyncSave((payload) => {
     const ids = payload && typeof payload === 'object' ? payload.homeVisibleDeviceIds : [];
     const panelName = payload && typeof payload === 'object' ? payload.panelName : null;
@@ -823,8 +891,10 @@ const ConfigPanel = ({
   const iconSizeSave = useAsyncSave((iconSizePct) => saveIconSizePct(iconSizePct, selectedPanelName || null));
   const cardScaleSave = useAsyncSave((cardScalePct) => saveCardScalePct(cardScalePct, selectedPanelName || null));
   const deviceControlStylesSave = useAsyncSave((deviceControlStyles) => saveDeviceControlStyles(deviceControlStyles));
+  const deviceTypeIconsSave = useAsyncSave((deviceTypeIcons) => saveDeviceTypeIcons(deviceTypeIcons));
   const homeTopRowSave = useAsyncSave((payload) => saveHomeTopRow(payload, selectedPanelName || null));
   const homeRoomColsSave = useAsyncSave((homeRoomColumnsXl) => saveHomeRoomColumnsXl(homeRoomColumnsXl, selectedPanelName || null));
+  const homeRoomLayoutSave = useAsyncSave((payload) => saveHomeRoomLayout(payload, selectedPanelName || null));
   const homeRoomMetricColsSave = useAsyncSave((homeRoomMetricColumns) => saveHomeRoomMetricColumns(homeRoomMetricColumns, selectedPanelName || null));
   const homeRoomMetricKeysSave = useAsyncSave((homeRoomMetricKeys) => saveHomeRoomMetricKeys(homeRoomMetricKeys, selectedPanelName || null));
   const cameraPreviewsSave = useAsyncSave((payload) => saveCameraPreviews(payload, selectedPanelName || null));
@@ -1128,6 +1198,30 @@ const ConfigPanel = ({
     return Math.max(1, Math.min(6, Math.round(raw)));
   }, [config?.ui?.homeRoomColumnsXl]);
 
+  const homeRoomLayoutModeFromConfig = useMemo(() => {
+    const raw = String(config?.ui?.homeRoomLayoutMode ?? '').trim().toLowerCase();
+    return raw === 'masonry' ? 'masonry' : 'grid';
+  }, [config?.ui?.homeRoomLayoutMode]);
+
+  const homeRoomMasonryRowHeightPxFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMasonryRowHeightPx);
+    if (!Number.isFinite(raw)) return 10;
+    return Math.max(4, Math.min(40, Math.round(raw)));
+  }, [config?.ui?.homeRoomMasonryRowHeightPx]);
+
+  const homeRoomMinWidthPxFromConfig = useMemo(() => {
+    const raw = Number(config?.ui?.homeRoomMinWidthPx);
+    if (!Number.isFinite(raw)) return 0;
+    return Math.max(0, Math.min(1200, Math.round(raw)));
+  }, [config?.ui?.homeRoomMinWidthPx]);
+
+  const homeRoomTilesFromConfig = useMemo(() => {
+    const raw = (config?.ui?.homeRoomTiles && typeof config.ui.homeRoomTiles === 'object')
+      ? config.ui.homeRoomTiles
+      : {};
+    return raw;
+  }, [config?.ui?.homeRoomTiles]);
+
   const globalHomeRoomColumnsXlFromConfig = useMemo(() => {
     const raw = Number(baseConfig?.ui?.homeRoomColumnsXl);
     if (!Number.isFinite(raw)) return 3;
@@ -1266,6 +1360,13 @@ const ConfigPanel = ({
   const [homeRoomColumnsXlDirty, setHomeRoomColumnsXlDirty] = useState(false);
   const [homeRoomColumnsXlError, setHomeRoomColumnsXlError] = useState(null);
 
+  const [homeRoomMinWidthPxDraft, setHomeRoomMinWidthPxDraft] = useState(() => 0);
+  const [homeRoomLayoutModeDraft, setHomeRoomLayoutModeDraft] = useState(() => 'grid');
+  const [homeRoomMasonryRowHeightPxDraft, setHomeRoomMasonryRowHeightPxDraft] = useState(() => 10);
+  const [homeRoomTilesDraft, setHomeRoomTilesDraft] = useState(() => ({}));
+  const [homeRoomLayoutDirty, setHomeRoomLayoutDirty] = useState(false);
+  const [homeRoomLayoutError, setHomeRoomLayoutError] = useState(null);
+
   const [globalHomeRoomColumnsXlDraft, setGlobalHomeRoomColumnsXlDraft] = useState(() => 3);
   const [globalHomeRoomColumnsXlDirty, setGlobalHomeRoomColumnsXlDirty] = useState(false);
   const [globalHomeRoomColumnsXlError, setGlobalHomeRoomColumnsXlError] = useState(null);
@@ -1317,6 +1418,25 @@ const ConfigPanel = ({
       cards: homeTopRowCardsFromConfig,
     });
   }, [selectedPanelName, homeTopRowEnabledFromConfig, homeTopRowScaleFromConfig, homeTopRowCardsFromConfig]);
+
+  useEffect(() => {
+    // When switching profiles, reset the editor to the selected profile's saved values.
+    setHomeRoomLayoutError(null);
+    setHomeRoomLayoutDirty(false);
+    setHomeRoomLayoutModeDraft(homeRoomLayoutModeFromConfig);
+    setHomeRoomMasonryRowHeightPxDraft(homeRoomMasonryRowHeightPxFromConfig);
+    setHomeRoomMinWidthPxDraft(homeRoomMinWidthPxFromConfig);
+    setHomeRoomTilesDraft(homeRoomTilesFromConfig);
+  }, [selectedPanelName]);
+
+  useEffect(() => {
+    // Keep drafts in sync with config refreshes, but never clobber in-progress edits.
+    if (homeRoomLayoutDirty) return;
+    setHomeRoomLayoutModeDraft(homeRoomLayoutModeFromConfig);
+    setHomeRoomMasonryRowHeightPxDraft(homeRoomMasonryRowHeightPxFromConfig);
+    setHomeRoomMinWidthPxDraft(homeRoomMinWidthPxFromConfig);
+    setHomeRoomTilesDraft(homeRoomTilesFromConfig);
+  }, [homeRoomLayoutDirty, homeRoomLayoutModeFromConfig, homeRoomMasonryRowHeightPxFromConfig, homeRoomMinWidthPxFromConfig, homeRoomTilesFromConfig]);
 
   useEffect(() => {
     if (cardOpacityScaleDirty) return;
@@ -2559,6 +2679,23 @@ const ConfigPanel = ({
         if (!cancelled) setSoundFiles(files);
       } catch (e) {
         if (!cancelled) setSoundFilesError(e?.message || String(e));
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setDeviceIconsError(null);
+        const idx = await fetchDeviceIconsIndex();
+        if (!cancelled) setDeviceIconsIndex(idx);
+      } catch (e) {
+        if (!cancelled) setDeviceIconsError(e?.message || String(e));
       }
     };
     run();
@@ -5367,6 +5504,317 @@ const ConfigPanel = ({
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                      Room layout (granular)
+                    </div>
+                    <div className="mt-1 text-xs text-white/45">
+                      Auto-fit packs rooms by minimum width. Use per-room span/order to fill the screen how you want.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">Layout mode</div>
+                    <div className="shrink-0 flex items-center gap-2">
+                      <select
+                        value={homeRoomLayoutModeDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const raw = String(e.target.value || '').trim().toLowerCase();
+                          const nextMode = raw === 'masonry' ? 'masonry' : 'grid';
+                          setHomeRoomLayoutError(null);
+                          setHomeRoomLayoutDirty(true);
+                          setHomeRoomLayoutModeDraft(nextMode);
+                        }}
+                        className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      >
+                        <option value="grid">Grid (default)</option>
+                        <option value="masonry">Masonry</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {homeRoomLayoutModeDraft === 'masonry' ? (
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-white/45">Masonry row height</div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={4}
+                            max={40}
+                            step={1}
+                            value={homeRoomMasonryRowHeightPxDraft}
+                            disabled={!connected || busy}
+                            onChange={(e) => {
+                              const n = Number(e.target.value);
+                              const next = Number.isFinite(n) ? Math.max(4, Math.min(40, Math.round(n))) : 10;
+                              setHomeRoomLayoutError(null);
+                              setHomeRoomLayoutDirty(true);
+                              setHomeRoomMasonryRowHeightPxDraft(next);
+                            }}
+                            className="w-[110px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                          />
+                          <div className="text-xs text-white/45">px</div>
+                        </div>
+                      </div>
+                      <input
+                        type="range"
+                        min={4}
+                        max={40}
+                        step={1}
+                        value={homeRoomMasonryRowHeightPxDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(4, Math.min(40, Math.round(n))) : 10;
+                          setHomeRoomLayoutError(null);
+                          setHomeRoomLayoutDirty(true);
+                          setHomeRoomMasonryRowHeightPxDraft(next);
+                        }}
+                        className="mt-2 w-full"
+                      />
+                      <div className="mt-1 text-[11px] text-white/45">
+                        Tip: use per-room row-span overrides below to force taller/shorter cards.
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <label className="flex items-center gap-2 text-sm text-white/80">
+                    <input
+                      type="checkbox"
+                      checked={homeRoomMinWidthPxDraft > 0}
+                      disabled={!connected || busy}
+                      onChange={(e) => {
+                        const enabled = e.target.checked === true;
+                        setHomeRoomLayoutError(null);
+                        setHomeRoomLayoutDirty(true);
+                        setHomeRoomMinWidthPxDraft(enabled ? Math.max(240, homeRoomMinWidthPxDraft || 360) : 0);
+                      }}
+                      className="h-4 w-4 rounded border-white/30 bg-black/50"
+                    />
+                    <span>Enable auto-fit room grid</span>
+                  </label>
+
+                  {homeRoomMinWidthPxDraft > 0 ? (
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-xs text-white/45">Minimum room width</div>
+                        <div className="shrink-0 flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={240}
+                            max={1200}
+                            step={10}
+                            value={homeRoomMinWidthPxDraft}
+                            disabled={!connected || busy}
+                            onChange={(e) => {
+                              const n = Number(e.target.value);
+                              const next = Number.isFinite(n) ? Math.max(240, Math.min(1200, Math.round(n))) : 360;
+                              setHomeRoomLayoutError(null);
+                              setHomeRoomLayoutDirty(true);
+                              setHomeRoomMinWidthPxDraft(next);
+                            }}
+                            className="w-[110px] rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                          />
+                          <div className="text-xs text-white/45">px</div>
+                        </div>
+                      </div>
+
+                      <input
+                        type="range"
+                        min={240}
+                        max={1200}
+                        step={10}
+                        value={homeRoomMinWidthPxDraft}
+                        disabled={!connected || busy}
+                        onChange={(e) => {
+                          const n = Number(e.target.value);
+                          const next = Number.isFinite(n) ? Math.max(240, Math.min(1200, Math.round(n))) : 360;
+                          setHomeRoomLayoutError(null);
+                          setHomeRoomLayoutDirty(true);
+                          setHomeRoomMinWidthPxDraft(next);
+                        }}
+                        className="mt-2 w-full"
+                      />
+                    </div>
+                  ) : null}
+
+                  <div className="mt-2">
+                    <div className="text-xs text-white/45">Per-room overrides</div>
+                    <div className="mt-2 space-y-2">
+                      {(Array.isArray(config?.rooms) ? config.rooms : [])
+                        .map((r) => ({
+                          id: String(r?.id || '').trim(),
+                          name: String(r?.name || r?.id || '').trim(),
+                        }))
+                        .filter((r) => r.id)
+                        .map((r) => {
+                          const tile = (homeRoomTilesDraft && typeof homeRoomTilesDraft === 'object') ? homeRoomTilesDraft[r.id] : null;
+                          const spanRaw = tile && typeof tile === 'object' ? Number(tile.span) : NaN;
+                          const orderRaw = tile && typeof tile === 'object' ? Number(tile.order) : NaN;
+                          const rowSpanRaw = tile && typeof tile === 'object' ? Number(tile.rowSpan) : NaN;
+                          const span = Number.isFinite(spanRaw) ? Math.max(1, Math.min(6, Math.round(spanRaw))) : 1;
+                          const order = Number.isFinite(orderRaw) ? Math.max(-999, Math.min(999, Math.round(orderRaw))) : '';
+                          const rowSpan = Number.isFinite(rowSpanRaw) ? Math.max(1, Math.min(999, Math.round(rowSpanRaw))) : '';
+
+                          return (
+                            <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="text-sm text-white/85 truncate">{r.name || r.id}</div>
+                                <div className="text-[11px] text-white/40 truncate">{r.id}</div>
+                              </div>
+
+                              <div className="shrink-0 flex items-center gap-2">
+                                <div className="text-[11px] text-white/45">span</div>
+                                <select
+                                  value={span}
+                                  disabled={!connected || busy}
+                                  onChange={(e) => {
+                                    const n = Number(e.target.value);
+                                    const nextSpan = Number.isFinite(n) ? Math.max(1, Math.min(6, Math.round(n))) : 1;
+                                    setHomeRoomLayoutError(null);
+                                    setHomeRoomLayoutDirty(true);
+                                    setHomeRoomTilesDraft((prev) => {
+                                      const base = (prev && typeof prev === 'object') ? { ...prev } : {};
+                                      const prevEntry = (base[r.id] && typeof base[r.id] === 'object') ? base[r.id] : {};
+                                      const nextEntry = { ...prevEntry, span: nextSpan };
+                                      base[r.id] = nextEntry;
+                                      return base;
+                                    });
+                                  }}
+                                  className="rounded-xl border border-white/10 bg-black/30 px-2 py-2 text-sm text-white/90"
+                                >
+                                  <option value={1}>1</option>
+                                  <option value={2}>2</option>
+                                  <option value={3}>3</option>
+                                  <option value={4}>4</option>
+                                  <option value={5}>5</option>
+                                  <option value={6}>6</option>
+                                </select>
+
+                                <div className="ml-2 text-[11px] text-white/45">order</div>
+                                <input
+                                  type="number"
+                                  min={-999}
+                                  max={999}
+                                  step={1}
+                                  value={order}
+                                  disabled={!connected || busy}
+                                  onChange={(e) => {
+                                    const s = String(e.target.value);
+                                    const n = s.trim() === '' ? null : Number(s);
+                                    const nextOrder = (n === null) ? null : (Number.isFinite(n) ? Math.max(-999, Math.min(999, Math.round(n))) : null);
+                                    setHomeRoomLayoutError(null);
+                                    setHomeRoomLayoutDirty(true);
+                                    setHomeRoomTilesDraft((prev) => {
+                                      const base = (prev && typeof prev === 'object') ? { ...prev } : {};
+                                      const prevEntry = (base[r.id] && typeof base[r.id] === 'object') ? base[r.id] : {};
+                                      const nextEntry = { ...prevEntry };
+                                      if (nextOrder === null) delete nextEntry.order;
+                                      else nextEntry.order = nextOrder;
+                                      base[r.id] = nextEntry;
+                                      return base;
+                                    });
+                                  }}
+                                  className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-2 py-2 text-sm text-white/90"
+                                  placeholder="(auto)"
+                                />
+
+                                {homeRoomLayoutModeDraft === 'masonry' ? (
+                                  <>
+                                    <div className="ml-2 text-[11px] text-white/45">rows</div>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={999}
+                                      step={1}
+                                      value={rowSpan}
+                                      disabled={!connected || busy}
+                                      onChange={(e) => {
+                                        const s = String(e.target.value);
+                                        const n = s.trim() === '' ? null : Number(s);
+                                        const nextRowSpan = (n === null) ? null : (Number.isFinite(n) ? Math.max(1, Math.min(999, Math.round(n))) : null);
+                                        setHomeRoomLayoutError(null);
+                                        setHomeRoomLayoutDirty(true);
+                                        setHomeRoomTilesDraft((prev) => {
+                                          const base = (prev && typeof prev === 'object') ? { ...prev } : {};
+                                          const prevEntry = (base[r.id] && typeof base[r.id] === 'object') ? base[r.id] : {};
+                                          const nextEntry = { ...prevEntry };
+                                          if (nextRowSpan === null) delete nextEntry.rowSpan;
+                                          else nextEntry.rowSpan = nextRowSpan;
+                                          base[r.id] = nextEntry;
+                                          return base;
+                                        });
+                                      }}
+                                      className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-2 py-2 text-sm text-white/90"
+                                      placeholder="(auto)"
+                                    />
+                                  </>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between gap-3">
+                    <div className="text-xs text-white/45">
+                      {homeRoomLayoutDirty ? 'Pending changes…' : 'Saved'}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-xs text-white/45">{statusText(homeRoomLayoutSave.status)}</div>
+                      <button
+                        type="button"
+                        disabled={!connected || busy || !homeRoomLayoutDirty}
+                        onClick={async () => {
+                          try {
+                            setHomeRoomLayoutError(null);
+                            const rawTiles = (homeRoomTilesDraft && typeof homeRoomTilesDraft === 'object') ? homeRoomTilesDraft : {};
+                            const cleaned = {};
+                            for (const [rid, vRaw] of Object.entries(rawTiles)) {
+                              const id = String(rid || '').trim();
+                              if (!id) continue;
+                              const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
+                              const spanNum = Number(v.span);
+                              const orderNum = Number(v.order);
+                              const rowSpanNum = Number(v.rowSpan);
+                              const entry = {};
+                              if (Number.isFinite(spanNum)) entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
+                              if (Number.isFinite(orderNum)) entry.order = Math.max(-999, Math.min(999, Math.round(orderNum)));
+                              if (Number.isFinite(rowSpanNum)) entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
+                              if (Object.keys(entry).length) cleaned[id] = entry;
+                            }
+
+                            await homeRoomLayoutSave.run({
+                              homeRoomLayoutMode: homeRoomLayoutModeDraft,
+                              homeRoomMasonryRowHeightPx: homeRoomMasonryRowHeightPxDraft,
+                              homeRoomMinWidthPx: homeRoomMinWidthPxDraft,
+                              homeRoomTiles: cleaned,
+                            });
+                            setHomeRoomLayoutDirty(false);
+                          } catch (e) {
+                            setHomeRoomLayoutError(e?.message || String(e));
+                          }
+                        }}
+                        className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-white/90 disabled:opacity-50"
+                      >
+                        Save layout
+                      </button>
+                    </div>
+                  </div>
+
+                  {homeRoomLayoutError ? (
+                    <div className="text-[11px] text-neon-red break-words">Save failed: {homeRoomLayoutError}</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-white/10 pt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
                       Sub-card columns
                     </div>
                     <div className="mt-1 text-xs text-white/45">
@@ -6122,6 +6570,70 @@ const ConfigPanel = ({
                   Save failed: {globalSwitchControlStyleError || globalSwitchAnimationStyleError}
                 </div>
               ) : null}
+            </div>
+
+            <div className="mt-4 utility-group p-4">
+              <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+                Device icons
+              </div>
+              <div className="mt-1 text-xs text-white/45">
+                Choose an SVG filename per device type. Files are loaded from <span className="font-mono text-[11px] text-white/60">server/data/device-icons/&lt;deviceType&gt;/</span>.
+              </div>
+
+              {deviceIconsError ? (
+                <div className="mt-2 text-[11px] text-neon-red break-words">
+                  Device icons unavailable: {deviceIconsError}
+                </div>
+              ) : null}
+
+              <div className="mt-4 grid grid-cols-1 gap-3">
+                {deviceIconTypes.map((t) => {
+                  const byType = (deviceIconsIndex && typeof deviceIconsIndex === 'object' && deviceIconsIndex.byType && typeof deviceIconsIndex.byType === 'object')
+                    ? deviceIconsIndex.byType
+                    : {};
+                  const files = Array.isArray(byType[t]) ? byType[t] : [];
+
+                  const current = (config?.ui?.deviceTypeIcons && typeof config.ui.deviceTypeIcons === 'object')
+                    ? String(config.ui.deviceTypeIcons[t] || '')
+                    : '';
+
+                  return (
+                    <label key={t} className="block">
+                      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/45">
+                        {t}
+                      </div>
+                      <select
+                        value={current}
+                        disabled={!connected || busy}
+                        onChange={async (e) => {
+                          const next = String(e.target.value || '').trim();
+                          setError(null);
+                          try {
+                            await deviceTypeIconsSave.run({ [t]: next || null });
+                            // Refresh index (helps when user just dropped files into the folder).
+                            const idx = await fetchDeviceIconsIndex();
+                            setDeviceIconsIndex(idx);
+                          } catch (err) {
+                            setError(err?.message || String(err));
+                          }
+                        }}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/90"
+                      >
+                        <option value="">None</option>
+                        {files.map((f) => (
+                          <option key={f} value={f}>{f}</option>
+                        ))}
+                      </select>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="mt-3 flex items-center justify-end gap-3">
+                <div className="text-xs text-white/45">
+                  {statusText(deviceTypeIconsSave.status)}
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
