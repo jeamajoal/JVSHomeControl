@@ -6382,7 +6382,7 @@ const ConfigPanel = ({
                       Room layout (granular)
                     </div>
                     <div className="mt-1 text-xs text-white/45">
-                      Auto-fit packs rooms by minimum width. Use per-room span/order to fill the screen how you want.
+                      Auto-fit packs rooms by minimum width. Use per-room span to control column width. Drag-and-drop room ordering is available on the Home screen (pencil icon).
                     </div>
                   </div>
                 </div>
@@ -6527,10 +6527,8 @@ const ConfigPanel = ({
                         .map((r) => {
                           const tile = (homeRoomTilesDraft && typeof homeRoomTilesDraft === 'object') ? homeRoomTilesDraft[r.id] : null;
                           const spanRaw = tile && typeof tile === 'object' ? Number(tile.span) : NaN;
-                          const orderRaw = tile && typeof tile === 'object' ? Number(tile.order) : NaN;
                           const rowSpanRaw = tile && typeof tile === 'object' ? Number(tile.rowSpan) : NaN;
                           const span = Number.isFinite(spanRaw) ? Math.max(1, Math.min(6, Math.round(spanRaw))) : 1;
-                          const order = Number.isFinite(orderRaw) ? Math.max(-999, Math.min(999, Math.round(orderRaw))) : '';
                           const rowSpan = Number.isFinite(rowSpanRaw) ? Math.max(1, Math.min(999, Math.round(rowSpanRaw))) : '';
 
                           return (
@@ -6567,34 +6565,6 @@ const ConfigPanel = ({
                                   <option value={5}>5</option>
                                   <option value={6}>6</option>
                                 </select>
-
-                                <div className="ml-2 text-[11px] text-white/45">order</div>
-                                <input
-                                  type="number"
-                                  min={-999}
-                                  max={999}
-                                  step={1}
-                                  value={order}
-                                  disabled={!connected || busy}
-                                  onChange={(e) => {
-                                    const s = String(e.target.value);
-                                    const n = s.trim() === '' ? null : Number(s);
-                                    const nextOrder = (n === null) ? null : (Number.isFinite(n) ? Math.max(-999, Math.min(999, Math.round(n))) : null);
-                                    setHomeRoomLayoutError(null);
-                                    setHomeRoomLayoutDirty(true);
-                                    setHomeRoomTilesDraft((prev) => {
-                                      const base = (prev && typeof prev === 'object') ? { ...prev } : {};
-                                      const prevEntry = (base[r.id] && typeof base[r.id] === 'object') ? base[r.id] : {};
-                                      const nextEntry = { ...prevEntry };
-                                      if (nextOrder === null) delete nextEntry.order;
-                                      else nextEntry.order = nextOrder;
-                                      base[r.id] = nextEntry;
-                                      return base;
-                                    });
-                                  }}
-                                  className="w-[90px] rounded-xl border border-white/10 bg-black/30 px-2 py-2 text-sm text-white/90"
-                                  placeholder="(auto)"
-                                />
 
                                 {homeRoomLayoutModeDraft === 'masonry' ? (
                                   <>
@@ -6653,11 +6623,9 @@ const ConfigPanel = ({
                               if (!id) continue;
                               const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
                               const spanNum = Number(v.span);
-                              const orderNum = Number(v.order);
                               const rowSpanNum = Number(v.rowSpan);
                               const entry = {};
                               if (Number.isFinite(spanNum)) entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
-                              if (Number.isFinite(orderNum)) entry.order = Math.max(-999, Math.min(999, Math.round(orderNum)));
                               if (Number.isFinite(rowSpanNum)) entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
                               if (Object.keys(entry).length) cleaned[id] = entry;
                             }

@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Thermometer,
   Droplets,
@@ -15,7 +15,11 @@ import {
   Flame,
   CircleAlert,
   User,
+  GripVertical,
+  Pencil,
+  Check,
 } from 'lucide-react';
+import { Reorder } from 'framer-motion';
 
 import { getUiScheme } from '../uiScheme';
 import { useAppState } from '../appState';
@@ -1682,6 +1686,70 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
     [config, statuses, homeVisibleDeviceIds],
   );
 
+  // --- Drag-and-drop room reordering ---
+  const [editingRoomOrder, setEditingRoomOrder] = useState(false);
+  const [dragRoomOrder, setDragRoomOrder] = useState([]); // room IDs in drag order
+  const [savingRoomOrder, setSavingRoomOrder] = useState(false);
+
+  // Sync drag order when rooms change externally (initial load, Hubitat refresh)
+  useEffect(() => {
+    if (!editingRoomOrder) {
+      setDragRoomOrder(rooms.map((r) => String(r?.room?.id || '').trim()).filter(Boolean));
+    }
+  }, [rooms, editingRoomOrder]);
+
+  const handleEnterEditMode = useCallback(() => {
+    setDragRoomOrder(rooms.map((r) => String(r?.room?.id || '').trim()).filter(Boolean));
+    setEditingRoomOrder(true);
+  }, [rooms]);
+
+  const handleSaveRoomOrder = useCallback(async () => {
+    if (!dragRoomOrder.length) {
+      setEditingRoomOrder(false);
+      return;
+    }
+    setSavingRoomOrder(true);
+    try {
+      const res = await fetch(`${API_HOST}/api/ui/room-order`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomIds: dragRoomOrder }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        console.error('Room order save failed:', text || res.status);
+      }
+    } catch (err) {
+      console.error('Room order save failed:', err);
+    } finally {
+      setSavingRoomOrder(false);
+      setEditingRoomOrder(false);
+    }
+  }, [dragRoomOrder]);
+
+  const handleCancelEditMode = useCallback(() => {
+    setDragRoomOrder(rooms.map((r) => String(r?.room?.id || '').trim()).filter(Boolean));
+    setEditingRoomOrder(false);
+  }, [rooms]);
+
+  // Build a lookup from roomId → room data for drag ordering
+  const roomsById = useMemo(() => {
+    const map = new Map();
+    for (const r of rooms) {
+      const rid = String(r?.room?.id || '').trim();
+      if (rid) map.set(rid, r);
+    }
+    return map;
+  }, [rooms]);
+
+  // The room list to render — in drag order when editing, otherwise natural
+  const displayRooms = useMemo(() => {
+    if (!editingRoomOrder) return rooms;
+    return dragRoomOrder
+      .map((id) => roomsById.get(id))
+      .filter(Boolean);
+  }, [editingRoomOrder, dragRoomOrder, rooms, roomsById]);
+
   useLayoutEffect(() => {
     if (homeRoomLayoutMode !== 'masonry') {
       setHomeRoomAutoRowSpans({});
@@ -2219,92 +2287,187 @@ const EnvironmentPanel = ({ config: configProp, statuses: statusesProp, connecte
               </div>
             ) : null}
 
-            <div
-              ref={roomsGridRef}
-              className={`jvs-home-rooms-grid gap-4 ${homeRoomMinWidthPx > 0 ? 'jvs-home-rooms-grid--autofit' : ''} ${homeRoomLayoutMode === 'masonry' ? 'jvs-home-rooms-grid--masonry' : ''}`.trim()}
-              style={{
-                '--jvs-home-rooms-cols-desktop': homeRoomColumnsXl,
-                ...(homeRoomMinWidthPx > 0 ? { '--jvs-home-room-min-width': `${homeRoomMinWidthPx}px` } : {}),
-                ...(homeRoomLayoutMode === 'masonry' ? { '--jvs-home-room-row-height': `${homeRoomMasonryRowHeightPx}px` } : {}),
-              }}
-            >
-            {rooms.length ? (
-              rooms.map((r) => {
-                const rid = String(r?.room?.id || '').trim();
-                const tile = (rid && homeRoomTiles && typeof homeRoomTiles === 'object') ? homeRoomTiles[rid] : null;
-                const spanRaw = tile && typeof tile === 'object' ? Number(tile.span) : NaN;
-                const orderRaw = tile && typeof tile === 'object' ? Number(tile.order) : NaN;
-                const rowSpanRaw = tile && typeof tile === 'object' ? Number(tile.rowSpan) : NaN;
-                const span = Number.isFinite(spanRaw) ? Math.max(1, Math.min(6, Math.round(spanRaw))) : 1;
-                const order = Number.isFinite(orderRaw) ? Math.max(-999, Math.min(999, Math.round(orderRaw))) : null;
-                const manualRowSpan = Number.isFinite(rowSpanRaw)
-                  ? Math.max(1, Math.min(999, Math.round(rowSpanRaw)))
-                  : null;
-                const autoRowSpan = (rid && homeRoomAutoRowSpans && typeof homeRoomAutoRowSpans === 'object')
-                  ? homeRoomAutoRowSpans[rid]
-                  : null;
-                const effectiveRowSpan = manualRowSpan !== null
-                  ? manualRowSpan
-                  : (Number.isFinite(Number(autoRowSpan)) ? Math.max(1, Math.min(999, Math.round(Number(autoRowSpan)))) : null);
-                const fallbackRowSpan = Math.max(1, Math.min(999, Math.round(420 / Math.max(4, homeRoomMasonryRowHeightPx))));
-
-                const wrapperStyle = {
-                  ...(span > 1 ? { gridColumn: `span ${span}` } : {}),
-                  ...(order !== null ? { order } : {}),
-                  ...(homeRoomLayoutMode === 'masonry'
-                    ? { gridRowEnd: `span ${effectiveRowSpan !== null ? effectiveRowSpan : fallbackRowSpan}` }
-                    : {}),
-                };
-
-                return (
-                  <div
-                    key={rid || r.room.name}
-                    style={wrapperStyle}
-                    className={`min-w-0 ${homeRoomLayoutMode === 'masonry' ? '' : 'h-full'}`.trim()}
-                    ref={(el) => {
-                      if (!rid) return;
-                      const map = roomTileElsRef.current;
-                      if (!map) return;
-                      if (el) map.set(rid, el);
-                      else map.delete(rid);
-                    }}
+            {/* Room order edit-mode toggle */}
+            {rooms.length > 1 ? (
+              <div className="flex items-center justify-end gap-2 mb-2">
+                {editingRoomOrder ? (
+                  <>
+                    <span className="text-[11px] uppercase tracking-[0.15em] text-white/50 select-none">
+                      {savingRoomOrder ? 'Saving…' : 'Drag rooms to reorder'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleCancelEditMode}
+                      disabled={savingRoomOrder}
+                      className="p-1.5 rounded-lg border border-white/10 bg-white/5 text-white/60 hover:text-white/90 hover:bg-white/10 transition-colors disabled:opacity-40"
+                      title="Cancel"
+                    >
+                      <CircleAlert className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveRoomOrder}
+                      disabled={savingRoomOrder}
+                      className="p-1.5 rounded-lg border border-white/10 bg-white/10 text-white/80 hover:text-white hover:bg-white/20 transition-colors disabled:opacity-40"
+                      title="Save order"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleEnterEditMode}
+                    className="p-1.5 rounded-lg border border-white/10 bg-white/5 text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+                    title="Reorder rooms"
                   >
-                    <RoomPanel
-                      roomName={r.room.name}
-                      devices={r.devices}
-                      connected={connected}
-                      uiScheme={resolvedUiScheme}
-                      climateTolerances={climateTolerances}
-                      climateToleranceColors={climateToleranceColors}
-                      sensorIndicatorColors={sensorIndicatorColors}
-                      colorizeHomeValues={colorizeHomeValues}
-                      colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
-                      deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
-                      deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
-                      deviceInfoMetricAllowlist={config?.ui?.deviceInfoMetricAllowlist}
-                      deviceTypeIcons={config?.ui?.deviceTypeIcons}
-                      deviceControlIcons={config?.ui?.deviceControlIcons}
-                      switchControlStyle={switchControlStyle}
-                      switchAnimationStyle={switchAnimationStyle}
-                      homeRoomMetricKeys={homeRoomMetricKeys}
-                      homeRoomMetricColumns={homeRoomMetricColumns}
-                      homeRoomColumnsXl={homeRoomColumnsXl}
-                      primaryTextColorClassName={primaryTextColorClass}
-                      secondaryTextColorClassName={secondaryTextColorClass}
-                      tertiaryTextColorClassName={tertiaryTextColorClass}
-                      contentScale={roomContentScale}
-                      fillHeight={homeRoomLayoutMode !== 'masonry'}
-                    />
-                  </div>
-                );
-              })
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ) : null}
+
+            {editingRoomOrder && rooms.length > 1 ? (
+              /* ── Drag-and-drop reorder mode ── */
+              <Reorder.Group
+                axis="y"
+                values={dragRoomOrder}
+                onReorder={setDragRoomOrder}
+                className="flex flex-col gap-3"
+              >
+                {dragRoomOrder.map((rid) => {
+                  const r = roomsById.get(rid);
+                  if (!r) return null;
+                  return (
+                    <Reorder.Item
+                      key={rid}
+                      value={rid}
+                      className="min-w-0 cursor-grab active:cursor-grabbing"
+                      whileDrag={{ scale: 1.02, boxShadow: '0 8px 32px rgba(0,0,0,0.35)' }}
+                    >
+                      <div className="flex items-stretch gap-2">
+                        <div className="flex items-center px-1 text-white/30 hover:text-white/60 transition-colors">
+                          <GripVertical className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0 pointer-events-none">
+                          <RoomPanel
+                            roomName={r.room.name}
+                            devices={r.devices}
+                            connected={connected}
+                            uiScheme={resolvedUiScheme}
+                            climateTolerances={climateTolerances}
+                            climateToleranceColors={climateToleranceColors}
+                            sensorIndicatorColors={sensorIndicatorColors}
+                            colorizeHomeValues={colorizeHomeValues}
+                            colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
+                            deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
+                            deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                            deviceInfoMetricAllowlist={config?.ui?.deviceInfoMetricAllowlist}
+                            deviceTypeIcons={config?.ui?.deviceTypeIcons}
+                            deviceControlIcons={config?.ui?.deviceControlIcons}
+                            switchControlStyle={switchControlStyle}
+                            switchAnimationStyle={switchAnimationStyle}
+                            homeRoomMetricKeys={homeRoomMetricKeys}
+                            homeRoomMetricColumns={homeRoomMetricColumns}
+                            homeRoomColumnsXl={homeRoomColumnsXl}
+                            primaryTextColorClassName={primaryTextColorClass}
+                            secondaryTextColorClassName={secondaryTextColorClass}
+                            tertiaryTextColorClassName={tertiaryTextColorClass}
+                            contentScale={roomContentScale}
+                            fillHeight={false}
+                          />
+                        </div>
+                      </div>
+                    </Reorder.Item>
+                  );
+                })}
+              </Reorder.Group>
             ) : (
-              <div className="glass-panel p-8 border border-white/10 text-center text-white/50 lg:col-span-2 xl:col-span-3">
-                <div className="text-sm uppercase tracking-[0.2em]">No data</div>
-                <div className={`mt-2 text-xl font-extrabold jvs-primary-text-strong ${primaryTextColorClass || 'text-white'}`.trim()}>Waiting for devices…</div>
+              /* ── Normal grid mode ── */
+              <div
+                ref={roomsGridRef}
+                className={`jvs-home-rooms-grid gap-4 ${homeRoomMinWidthPx > 0 ? 'jvs-home-rooms-grid--autofit' : ''} ${homeRoomLayoutMode === 'masonry' ? 'jvs-home-rooms-grid--masonry' : ''}`.trim()}
+                style={{
+                  '--jvs-home-rooms-cols-desktop': homeRoomColumnsXl,
+                  ...(homeRoomMinWidthPx > 0 ? { '--jvs-home-room-min-width': `${homeRoomMinWidthPx}px` } : {}),
+                  ...(homeRoomLayoutMode === 'masonry' ? { '--jvs-home-room-row-height': `${homeRoomMasonryRowHeightPx}px` } : {}),
+                }}
+              >
+              {displayRooms.length ? (
+                displayRooms.map((r) => {
+                  const rid = String(r?.room?.id || '').trim();
+                  const tile = (rid && homeRoomTiles && typeof homeRoomTiles === 'object') ? homeRoomTiles[rid] : null;
+                  const spanRaw = tile && typeof tile === 'object' ? Number(tile.span) : NaN;
+                  const rowSpanRaw = tile && typeof tile === 'object' ? Number(tile.rowSpan) : NaN;
+                  const span = Number.isFinite(spanRaw) ? Math.max(1, Math.min(6, Math.round(spanRaw))) : 1;
+                  const manualRowSpan = Number.isFinite(rowSpanRaw)
+                    ? Math.max(1, Math.min(999, Math.round(rowSpanRaw)))
+                    : null;
+                  const autoRowSpan = (rid && homeRoomAutoRowSpans && typeof homeRoomAutoRowSpans === 'object')
+                    ? homeRoomAutoRowSpans[rid]
+                    : null;
+                  const effectiveRowSpan = manualRowSpan !== null
+                    ? manualRowSpan
+                    : (Number.isFinite(Number(autoRowSpan)) ? Math.max(1, Math.min(999, Math.round(Number(autoRowSpan)))) : null);
+                  const fallbackRowSpan = Math.max(1, Math.min(999, Math.round(420 / Math.max(4, homeRoomMasonryRowHeightPx))));
+
+                  const wrapperStyle = {
+                    ...(span > 1 ? { gridColumn: `span ${span}` } : {}),
+                    ...(homeRoomLayoutMode === 'masonry'
+                      ? { gridRowEnd: `span ${effectiveRowSpan !== null ? effectiveRowSpan : fallbackRowSpan}` }
+                      : {}),
+                  };
+
+                  return (
+                    <div
+                      key={rid || r.room.name}
+                      style={wrapperStyle}
+                      className={`min-w-0 ${homeRoomLayoutMode === 'masonry' ? '' : 'h-full'}`.trim()}
+                      ref={(el) => {
+                        if (!rid) return;
+                        const map = roomTileElsRef.current;
+                        if (!map) return;
+                        if (el) map.set(rid, el);
+                        else map.delete(rid);
+                      }}
+                    >
+                      <RoomPanel
+                        roomName={r.room.name}
+                        devices={r.devices}
+                        connected={connected}
+                        uiScheme={resolvedUiScheme}
+                        climateTolerances={climateTolerances}
+                        climateToleranceColors={climateToleranceColors}
+                        sensorIndicatorColors={sensorIndicatorColors}
+                        colorizeHomeValues={colorizeHomeValues}
+                        colorizeHomeValuesOpacityPct={colorizeHomeValuesOpacityPct}
+                        deviceCommandAllowlist={config?.ui?.deviceCommandAllowlist}
+                        deviceHomeMetricAllowlist={config?.ui?.deviceHomeMetricAllowlist}
+                        deviceInfoMetricAllowlist={config?.ui?.deviceInfoMetricAllowlist}
+                        deviceTypeIcons={config?.ui?.deviceTypeIcons}
+                        deviceControlIcons={config?.ui?.deviceControlIcons}
+                        switchControlStyle={switchControlStyle}
+                        switchAnimationStyle={switchAnimationStyle}
+                        homeRoomMetricKeys={homeRoomMetricKeys}
+                        homeRoomMetricColumns={homeRoomMetricColumns}
+                        homeRoomColumnsXl={homeRoomColumnsXl}
+                        primaryTextColorClassName={primaryTextColorClass}
+                        secondaryTextColorClassName={secondaryTextColorClass}
+                        tertiaryTextColorClassName={tertiaryTextColorClass}
+                        contentScale={roomContentScale}
+                        fillHeight={homeRoomLayoutMode !== 'masonry'}
+                      />
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="glass-panel p-8 border border-white/10 text-center text-white/50 lg:col-span-2 xl:col-span-3">
+                  <div className="text-sm uppercase tracking-[0.2em]">No data</div>
+                  <div className={`mt-2 text-xl font-extrabold jvs-primary-text-strong ${primaryTextColorClass || 'text-white'}`.trim()}>Waiting for devices…</div>
+                </div>
+              )}
               </div>
             )}
-            </div>
           </div>
         </div>
       </div>
