@@ -57,10 +57,12 @@ function ensureSvgViewportSizing(svgMarkup) {
       a += ' style="display:block"';
     }
 
-    // Inject a <style> so interactive elements capture clicks on their
-    // entire bounding box — not just on visible fill/stroke edges.
+    // Inject a <style> so clicks pass through decorative SVG elements
+    // (ring, icon paths, etc.) and land on the interactive hit-area
+    // elements underneath.  The second rule re-enables pointer-events
+    // on the actual interactive regions so they capture those clicks.
     const interactiveStyle =
-      '<style>[data-region],[data-jvs-command],[data-command],[data-jvs-action]{pointer-events:all;cursor:pointer}</style>';
+      '<style>svg *{pointer-events:none}[data-region],[data-jvs-command],[data-command],[data-jvs-action]{pointer-events:all;cursor:pointer}</style>';
 
     return `<svg${a}>${interactiveStyle}`;
   });
