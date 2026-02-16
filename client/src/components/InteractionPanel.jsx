@@ -923,7 +923,13 @@ const InteractionPanel = ({ config: configProp, statuses: statusesProp, connecte
                       .filter(Boolean);
 
                     const internalType = inferInternalDeviceType({
-                      hubitatType: d.type,
+                      hubitatType: [
+                        d.hubitatType,
+                        d.hubitatTypeName,
+                        d.driverNamespace,
+                        d.driverName,
+                        d.type,
+                      ].map((v) => String(v || '').trim()).filter(Boolean).join(' '),
                       capabilities: d.status?.capabilities,
                       attributes: attrs,
                       state: d.status?.state,

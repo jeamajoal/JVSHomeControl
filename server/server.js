@@ -328,16 +328,19 @@ function corsOriginAllowed(origin, callback) {
     callback(new Error('CORS: origin not allowed'), false);
 }
 
+// Serve the built client UI BEFORE the CORS middleware so that static assets
+// (which carry `crossorigin` attributes added by Vite) are never blocked by
+// the origin check.  Only /api routes need CORS protection.
+if (HAS_BUILT_CLIENT) {
+    app.use(express.static(CLIENT_DIST_DIR));
+}
+
 app.use(cors({ origin: corsOriginAllowed }));
 // Hubitat Maker API postURL can send JSON as text/plain (and sometimes with log prefixes).
 // Parse /api/events as raw text first, then normalize inside the handler.
 app.use('/api/events', bodyParser.text({ type: '*/*', limit: '1mb' }));
 
 app.use(bodyParser.json());
-
-if (HAS_BUILT_CLIENT) {
-    app.use(express.static(CLIENT_DIST_DIR));
-}
 
 // Serve custom alert sounds from the server-managed sounds directory.
 // Files placed in server/data/sounds will be reachable at /sounds/<file>.
@@ -906,8 +909,11 @@ function normalizePersistedConfig(raw) {
         const outMap = {};
         const isValidIconId = (s) => typeof s === 'string' && s.trim().length > 0 && s.trim().length <= 64 && /^[a-z0-9][a-z0-9-]*$/i.test(s.trim());
         for (const [k, v] of Object.entries(rawMap)) {
-            const typeToken = normalizeDeviceTypeToken(k);
-            if (!typeToken || !VALID_INTERNAL_TYPES.has(typeToken)) continue;
+            const typeTokenRaw = String(k || '').trim().toLowerCase();
+            const typeToken = VALID_INTERNAL_TYPES.has(typeTokenRaw)
+                ? typeTokenRaw
+                : (isUnknownTypeDefaultKey(typeTokenRaw) ? typeTokenRaw : null);
+            if (!typeToken) continue;
             if (!v || typeof v !== 'object') continue;
 
             const entry = {};
@@ -2641,6 +2647,29 @@ function pickCommands(commands = []) {
     }
 }
 
+function normalizeUnknownTypeSignature(value) {
+    const s = String(value || '').trim().toLowerCase();
+    if (!s) return null;
+    const normalized = s
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 96);
+    return normalized || null;
+}
+
+function isUnknownTypeDefaultKey(value) {
+    return /^unknown::[a-z0-9][a-z0-9-]{0,95}$/.test(String(value || '').trim().toLowerCase());
+}
+
+function buildUnknownTypeDefaultKey(parts = []) {
+    const joined = (Array.isArray(parts) ? parts : [])
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .join(' ');
+    const sig = normalizeUnknownTypeSignature(joined);
+    return sig ? `unknown::${sig}` : null;
+}
+
 
 // Note: parseDmsOrDecimal is imported from ./utils
 
@@ -2826,6 +2855,11 @@ async function syncHubitatDataInner() {
                     if (!id) return null;
                     const label = String(d?.label ?? id).trim() || id;
                     const room = String(d?.room ?? '').trim();
+                    const hubitatType = String(d?.type ?? '').trim();
+                    const hubitatTypeName = String(d?.typeName ?? '').trim();
+                    const driverNamespace = String(d?.driverNamespace ?? '').trim();
+                    const driverName = String(d?.driverName ?? '').trim();
+                    const deviceNetworkId = String(d?.deviceNetworkId ?? '').trim();
                     const capabilities = Array.isArray(d?.capabilities) ? d.capabilities.map((c) => String(c)) : [];
                     const commands = pickCommands(d.commands);
                     return {
@@ -2834,6 +2868,11 @@ async function syncHubitatDataInner() {
                         ...(room ? { room } : {}),
                         source,
                         sourceId,
+                        ...(hubitatType ? { hubitatType } : {}),
+                        ...(hubitatTypeName ? { hubitatTypeName } : {}),
+                        ...(driverNamespace ? { driverNamespace } : {}),
+                        ...(driverName ? { driverName } : {}),
+                        ...(deviceNetworkId ? { deviceNetworkId } : {}),
                         capabilities,
                         commands,
                     };
@@ -2875,17 +2914,147 @@ async function syncHubitatDataInner() {
                     ui: {
                         ...(ui || {}),
                         availabilityInitialized: true,
-                        visibilityInitialized: true,
                         mainAllowedDeviceIds: allIds,
                         ctrlAllowedDeviceIds: allIds,
-                        // New devices start hidden; user enables them in Settings.
-                        homeVisibleDeviceIds: [],
-                        ctrlVisibleDeviceIds: [],
                         // Only on/off by default; other commands enabled in Settings.
                         deviceCommandAllowlist,
                     },
                 });
                 persistConfigToDiskIfChanged('init-availability-all');
+
+                // Apply device type defaults to newly-initialised devices
+                // (e.g. after a backup restore that already has typeDefaults).
+                try {
+                    const tdMap = (persistedConfig?.ui?.deviceTypeDefaults && typeof persistedConfig.ui.deviceTypeDefaults === 'object')
+                        ? persistedConfig.ui.deviceTypeDefaults : {};
+                    if (Object.keys(tdMap).length > 0) {
+                        const pui2 = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+                        const tdCmds = (pui2.deviceCommandAllowlist && typeof pui2.deviceCommandAllowlist === 'object') ? { ...pui2.deviceCommandAllowlist } : {};
+                        const tdHome = (pui2.deviceHomeMetricAllowlist && typeof pui2.deviceHomeMetricAllowlist === 'object') ? { ...pui2.deviceHomeMetricAllowlist } : {};
+                        const tdInfo = (pui2.deviceInfoMetricAllowlist && typeof pui2.deviceInfoMetricAllowlist === 'object') ? { ...pui2.deviceInfoMetricAllowlist } : {};
+                        const tdIcons = (pui2.deviceControlIcons && typeof pui2.deviceControlIcons === 'object') ? { ...pui2.deviceControlIcons } : {};
+                        const rawProfiles = (pui2.panelProfiles && typeof pui2.panelProfiles === 'object') ? pui2.panelProfiles : {};
+                        const tdProfiles = { ...rawProfiles };
+                        let tdHomeVis = Array.isArray(pui2.homeVisibleDeviceIds) ? [...pui2.homeVisibleDeviceIds] : null;
+                        let tdCtrlVis = Array.isArray(pui2.ctrlVisibleDeviceIds) ? [...pui2.ctrlVisibleDeviceIds] : null;
+                        let appliedAny = false;
+                        let tdVisTouched = false;
+                        const appliedDefaultsByDeviceId = {};
+
+                        for (const dev of catalog) {
+                            const devId = String(dev.id);
+                            const hubitatIdentityHint = [
+                                dev?.hubitatType,
+                                dev?.hubitatTypeName,
+                                dev?.driverNamespace,
+                                dev?.driverName,
+                            ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+                            const devType = inferInternalDeviceType({
+                                hubitatType: hubitatIdentityHint,
+                                capabilities: Array.isArray(dev.capabilities) ? dev.capabilities : [],
+                                attributes: {},
+                                state: '',
+                                commands: Array.isArray(dev.commands) ? dev.commands : [],
+                            });
+                            const unknownKey = buildUnknownTypeDefaultKey([
+                                dev?.hubitatTypeName,
+                                dev?.hubitatType,
+                                dev?.driverNamespace,
+                                dev?.driverName,
+                            ]);
+                            const td = (unknownKey && tdMap[unknownKey]) || tdMap[devType];
+                            if (!td) continue;
+                            appliedAny = true;
+                            appliedDefaultsByDeviceId[devId] = td;
+
+                            if (td.commands !== null) tdCmds[devId] = [...td.commands];
+                            if (td.homeMetrics !== null) tdHome[devId] = [...td.homeMetrics];
+                            if (td.infoMetrics !== null) tdInfo[devId] = [...td.infoMetrics];
+                            if (td.controlIcons !== null) tdIcons[devId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons];
+
+                            if (td.homeVisible !== null) {
+                                tdVisTouched = true;
+                                if (tdHomeVis === null) tdHomeVis = [...allIds];
+                                const s = new Set(tdHomeVis.map(String));
+                                if (td.homeVisible) s.add(devId); else s.delete(devId);
+                                tdHomeVis = Array.from(s);
+                            }
+                            if (td.ctrlVisible !== null) {
+                                tdVisTouched = true;
+                                if (tdCtrlVis === null) tdCtrlVis = [...allIds];
+                                const s = new Set(tdCtrlVis.map(String));
+                                if (td.ctrlVisible) s.add(devId); else s.delete(devId);
+                                tdCtrlVis = Array.from(s);
+                            }
+                        }
+
+                        if (appliedAny) {
+                            for (const [profileName, rawProfile] of Object.entries(rawProfiles)) {
+                                if (!rawProfile || typeof rawProfile !== 'object') continue;
+                                if (PRESET_PANEL_PROFILE_NAMES.has(profileName) || rawProfile._preset === true) continue;
+
+                                const profile = { ...rawProfile };
+                                const pCmds = (profile.deviceCommandAllowlist && typeof profile.deviceCommandAllowlist === 'object')
+                                    ? { ...profile.deviceCommandAllowlist } : {};
+                                const pHome = (profile.deviceHomeMetricAllowlist && typeof profile.deviceHomeMetricAllowlist === 'object')
+                                    ? { ...profile.deviceHomeMetricAllowlist } : {};
+                                const pInfo = (profile.deviceInfoMetricAllowlist && typeof profile.deviceInfoMetricAllowlist === 'object')
+                                    ? { ...profile.deviceInfoMetricAllowlist } : {};
+                                const pIcons = (profile.deviceControlIcons && typeof profile.deviceControlIcons === 'object')
+                                    ? { ...profile.deviceControlIcons } : {};
+
+                                let pHomeVis = Array.isArray(profile.homeVisibleDeviceIds) ? [...profile.homeVisibleDeviceIds] : null;
+                                let pCtrlVis = Array.isArray(profile.ctrlVisibleDeviceIds) ? [...profile.ctrlVisibleDeviceIds] : null;
+
+                                for (const [deviceId, td] of Object.entries(appliedDefaultsByDeviceId)) {
+                                    if (td.commands !== null) pCmds[deviceId] = [...td.commands]; else delete pCmds[deviceId];
+                                    if (td.homeMetrics !== null) pHome[deviceId] = [...td.homeMetrics]; else delete pHome[deviceId];
+                                    if (td.infoMetrics !== null) pInfo[deviceId] = [...td.infoMetrics]; else delete pInfo[deviceId];
+                                    if (td.controlIcons !== null) pIcons[deviceId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons]; else delete pIcons[deviceId];
+
+                                    if (td.homeVisible !== null) {
+                                        if (pHomeVis === null) pHomeVis = [...allIds];
+                                        const s = new Set(pHomeVis.map(String));
+                                        if (td.homeVisible) s.add(deviceId); else s.delete(deviceId);
+                                        pHomeVis = Array.from(s);
+                                    }
+                                    if (td.ctrlVisible !== null) {
+                                        if (pCtrlVis === null) pCtrlVis = [...allIds];
+                                        const s = new Set(pCtrlVis.map(String));
+                                        if (td.ctrlVisible) s.add(deviceId); else s.delete(deviceId);
+                                        pCtrlVis = Array.from(s);
+                                    }
+                                }
+
+                                profile.deviceCommandAllowlist = pCmds;
+                                profile.deviceHomeMetricAllowlist = pHome;
+                                profile.deviceInfoMetricAllowlist = pInfo;
+                                profile.deviceControlIcons = pIcons;
+                                if (pHomeVis !== null) profile.homeVisibleDeviceIds = pHomeVis;
+                                if (pCtrlVis !== null) profile.ctrlVisibleDeviceIds = pCtrlVis;
+
+                                tdProfiles[profileName] = profile;
+                            }
+
+                            const upd = {
+                                ...pui2,
+                                deviceCommandAllowlist: tdCmds,
+                                deviceHomeMetricAllowlist: tdHome,
+                                deviceInfoMetricAllowlist: tdInfo,
+                                deviceControlIcons: tdIcons,
+                                panelProfiles: tdProfiles,
+                            };
+                            if (tdHomeVis !== null) upd.homeVisibleDeviceIds = tdHomeVis;
+                            if (tdCtrlVis !== null) upd.ctrlVisibleDeviceIds = tdCtrlVis;
+                            if (tdVisTouched) upd.visibilityInitialized = true;
+                            persistedConfig = normalizePersistedConfig({ ...(persistedConfig || {}), ui: upd });
+                            persistConfigToDiskIfChanged('init-availability-type-defaults');
+                            console.log(`[init-availability] Applied device type defaults during initial availability setup`);
+                        }
+                    }
+                } catch {
+                    // ignore — type defaults are best-effort
+                }
             }
         } catch {
             // ignore
@@ -2942,35 +3111,58 @@ async function syncHubitatDataInner() {
                             const tdHome = (pui.deviceHomeMetricAllowlist && typeof pui.deviceHomeMetricAllowlist === 'object') ? { ...pui.deviceHomeMetricAllowlist } : {};
                             const tdInfo = (pui.deviceInfoMetricAllowlist && typeof pui.deviceInfoMetricAllowlist === 'object') ? { ...pui.deviceInfoMetricAllowlist } : {};
                             const tdIcons = (pui.deviceControlIcons && typeof pui.deviceControlIcons === 'object') ? { ...pui.deviceControlIcons } : {};
+                            const rawProfiles = (pui.panelProfiles && typeof pui.panelProfiles === 'object') ? pui.panelProfiles : {};
+                            const tdProfiles = { ...rawProfiles };
                             let tdHomeVis = Array.isArray(pui.homeVisibleDeviceIds) ? [...pui.homeVisibleDeviceIds] : null;
                             let tdCtrlVis = Array.isArray(pui.ctrlVisibleDeviceIds) ? [...pui.ctrlVisibleDeviceIds] : null;
                             let appliedAny = false;
+                            let tdVisTouched = false;
+                            const appliedDefaultsByDeviceId = {};
+                            // All currently known sensor IDs for materialising null visibility arrays.
+                            const tdAllSensorIds = (Array.isArray(config?.sensors) ? config.sensors : []).map((s) => String(s?.id || '').trim()).filter(Boolean);
 
                             for (const newId of newIds) {
                                 const catEntry = catalog.find((d) => String(d.id) === newId);
                                 if (!catEntry) continue;
+                                const hubitatIdentityHint = [
+                                    catEntry?.hubitatType,
+                                    catEntry?.hubitatTypeName,
+                                    catEntry?.driverNamespace,
+                                    catEntry?.driverName,
+                                ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
                                 const devType = inferInternalDeviceType({
-                                    hubitatType: '',
+                                    hubitatType: hubitatIdentityHint,
                                     capabilities: Array.isArray(catEntry.capabilities) ? catEntry.capabilities : [],
                                     attributes: {},
                                     state: '',
                                     commands: Array.isArray(catEntry.commands) ? catEntry.commands : [],
                                 });
-                                const td = typeDefaults[devType];
+                                const unknownKey = buildUnknownTypeDefaultKey([
+                                    catEntry?.hubitatTypeName,
+                                    catEntry?.hubitatType,
+                                    catEntry?.driverNamespace,
+                                    catEntry?.driverName,
+                                ]);
+                                const td = (unknownKey && typeDefaults[unknownKey]) || typeDefaults[devType];
                                 if (!td) continue;
                                 appliedAny = true;
+                                appliedDefaultsByDeviceId[newId] = td;
 
                                 if (td.commands !== null) tdCmds[newId] = [...td.commands];
                                 if (td.homeMetrics !== null) tdHome[newId] = [...td.homeMetrics];
                                 if (td.infoMetrics !== null) tdInfo[newId] = [...td.infoMetrics];
                                 if (td.controlIcons !== null) tdIcons[newId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons];
 
-                                if (td.homeVisible !== null && tdHomeVis !== null) {
+                                if (td.homeVisible !== null) {
+                                    tdVisTouched = true;
+                                    if (tdHomeVis === null) tdHomeVis = [...tdAllSensorIds];
                                     const s = new Set(tdHomeVis.map(String));
                                     if (td.homeVisible) s.add(newId); else s.delete(newId);
                                     tdHomeVis = Array.from(s);
                                 }
-                                if (td.ctrlVisible !== null && tdCtrlVis !== null) {
+                                if (td.ctrlVisible !== null) {
+                                    tdVisTouched = true;
+                                    if (tdCtrlVis === null) tdCtrlVis = [...tdAllSensorIds];
                                     const s = new Set(tdCtrlVis.map(String));
                                     if (td.ctrlVisible) s.add(newId); else s.delete(newId);
                                     tdCtrlVis = Array.from(s);
@@ -2978,15 +3170,64 @@ async function syncHubitatDataInner() {
                             }
 
                             if (appliedAny) {
+                                for (const [profileName, rawProfile] of Object.entries(rawProfiles)) {
+                                    if (!rawProfile || typeof rawProfile !== 'object') continue;
+                                    if (PRESET_PANEL_PROFILE_NAMES.has(profileName) || rawProfile._preset === true) continue;
+
+                                    const profile = { ...rawProfile };
+                                    const pCmds = (profile.deviceCommandAllowlist && typeof profile.deviceCommandAllowlist === 'object')
+                                        ? { ...profile.deviceCommandAllowlist } : {};
+                                    const pHome = (profile.deviceHomeMetricAllowlist && typeof profile.deviceHomeMetricAllowlist === 'object')
+                                        ? { ...profile.deviceHomeMetricAllowlist } : {};
+                                    const pInfo = (profile.deviceInfoMetricAllowlist && typeof profile.deviceInfoMetricAllowlist === 'object')
+                                        ? { ...profile.deviceInfoMetricAllowlist } : {};
+                                    const pIcons = (profile.deviceControlIcons && typeof profile.deviceControlIcons === 'object')
+                                        ? { ...profile.deviceControlIcons } : {};
+
+                                    let pHomeVis = Array.isArray(profile.homeVisibleDeviceIds) ? [...profile.homeVisibleDeviceIds] : null;
+                                    let pCtrlVis = Array.isArray(profile.ctrlVisibleDeviceIds) ? [...profile.ctrlVisibleDeviceIds] : null;
+
+                                    for (const [deviceId, td] of Object.entries(appliedDefaultsByDeviceId)) {
+                                        if (td.commands !== null) pCmds[deviceId] = [...td.commands]; else delete pCmds[deviceId];
+                                        if (td.homeMetrics !== null) pHome[deviceId] = [...td.homeMetrics]; else delete pHome[deviceId];
+                                        if (td.infoMetrics !== null) pInfo[deviceId] = [...td.infoMetrics]; else delete pInfo[deviceId];
+                                        if (td.controlIcons !== null) pIcons[deviceId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons]; else delete pIcons[deviceId];
+
+                                        if (td.homeVisible !== null) {
+                                            if (pHomeVis === null) pHomeVis = [...tdAllSensorIds];
+                                            const s = new Set(pHomeVis.map(String));
+                                            if (td.homeVisible) s.add(deviceId); else s.delete(deviceId);
+                                            pHomeVis = Array.from(s);
+                                        }
+                                        if (td.ctrlVisible !== null) {
+                                            if (pCtrlVis === null) pCtrlVis = [...tdAllSensorIds];
+                                            const s = new Set(pCtrlVis.map(String));
+                                            if (td.ctrlVisible) s.add(deviceId); else s.delete(deviceId);
+                                            pCtrlVis = Array.from(s);
+                                        }
+                                    }
+
+                                    profile.deviceCommandAllowlist = pCmds;
+                                    profile.deviceHomeMetricAllowlist = pHome;
+                                    profile.deviceInfoMetricAllowlist = pInfo;
+                                    profile.deviceControlIcons = pIcons;
+                                    if (pHomeVis !== null) profile.homeVisibleDeviceIds = pHomeVis;
+                                    if (pCtrlVis !== null) profile.ctrlVisibleDeviceIds = pCtrlVis;
+
+                                    tdProfiles[profileName] = profile;
+                                }
+
                                 const upd = {
                                     ...pui,
                                     deviceCommandAllowlist: tdCmds,
                                     deviceHomeMetricAllowlist: tdHome,
                                     deviceInfoMetricAllowlist: tdInfo,
                                     deviceControlIcons: tdIcons,
+                                    panelProfiles: tdProfiles,
                                 };
                                 if (tdHomeVis !== null) upd.homeVisibleDeviceIds = tdHomeVis;
                                 if (tdCtrlVis !== null) upd.ctrlVisibleDeviceIds = tdCtrlVis;
+                                if (tdVisTouched) upd.visibilityInitialized = true;
                                 persistedConfig = normalizePersistedConfig({ ...(persistedConfig || {}), ui: upd });
                                 persistConfigToDiskIfChanged('auto-add-type-defaults');
                                 console.log(`[auto-add] Applied device type defaults to newly added device(s)`);
@@ -3111,6 +3352,12 @@ async function syncHubitatDataInner() {
                 };
             }
 
+            const hubitatType = String(dev?.type ?? '').trim();
+            const hubitatTypeName = String(dev?.typeName ?? '').trim();
+            const driverNamespace = String(dev?.driverNamespace ?? '').trim();
+            const driverName = String(dev?.driverName ?? '').trim();
+            const deviceNetworkId = String(dev?.deviceNetworkId ?? '').trim();
+
             newSensorsById.set(String(dev.id), {
                 id: dev.id,
                 source,
@@ -3118,6 +3365,11 @@ async function syncHubitatDataInner() {
                 roomId: roomId,
                 label: dev.label,
                 type: type,
+                ...(hubitatType ? { hubitatType } : {}),
+                ...(hubitatTypeName ? { hubitatTypeName } : {}),
+                ...(driverNamespace ? { driverNamespace } : {}),
+                ...(driverName ? { driverName } : {}),
+                ...(deviceNetworkId ? { deviceNetworkId } : {}),
                 capabilities: caps,
                 metadata: { battery: attrs?.battery },
                 position
@@ -3132,6 +3384,11 @@ async function syncHubitatDataInner() {
                 capabilities: caps,
                 commands: pickCommands(dev.commands),
                 type,
+                ...(hubitatType ? { hubitatType } : {}),
+                ...(hubitatTypeName ? { hubitatTypeName } : {}),
+                ...(driverNamespace ? { driverNamespace } : {}),
+                ...(driverName ? { driverName } : {}),
+                ...(deviceNetworkId ? { deviceNetworkId } : {}),
                 state,
                 attributes: pickAttributes(attrs),
                 lastUpdated: new Date().toISOString(),
@@ -5423,7 +5680,9 @@ app.put('/api/ui/device-overrides', (req, res) => {
 app.put('/api/ui/device-type-defaults', (req, res) => {
     const body = (req.body && typeof req.body === 'object') ? req.body : {};
     const deviceType = String(body.deviceType || '').trim().toLowerCase();
-    if (!deviceType || !VALID_INTERNAL_TYPES.has(deviceType)) {
+    const isInternalTypeKey = VALID_INTERNAL_TYPES.has(deviceType);
+    const isUnknownScopedKey = isUnknownTypeDefaultKey(deviceType);
+    if (!deviceType || (!isInternalTypeKey && !isUnknownScopedKey)) {
         return res.status(400).json({ error: 'Invalid or missing deviceType' });
     }
 
@@ -5442,13 +5701,7 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
         });
         persistConfigToDiskIfChanged('api-ui-device-type-defaults-clear');
 
-        config = {
-            ...config,
-            ui: {
-                ...(config?.ui || {}),
-                deviceTypeDefaults: persistedConfig?.ui?.deviceTypeDefaults || {},
-            },
-        };
+        rebuildRuntimeConfigFromPersisted();
         io.emit('config_update', config);
         return res.json({ ok: true, appliedCount: 0, ui: { ...(config?.ui || {}) } });
     }
@@ -5520,14 +5773,49 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
             const caps = Array.isArray(sensor.capabilities) ? sensor.capabilities : [];
             const attrs = (st.attributes && typeof st.attributes === 'object') ? st.attributes : {};
             const cmds = Array.isArray(st.commands) ? st.commands : (Array.isArray(catalogEntry?.commands) ? catalogEntry.commands : []);
+            const hubitatIdentityHint = [
+                sensor?.hubitatType,
+                sensor?.hubitatTypeName,
+                st?.hubitatType,
+                st?.hubitatTypeName,
+                catalogEntry?.hubitatType,
+                catalogEntry?.hubitatTypeName,
+                sensor?.driverNamespace,
+                sensor?.driverName,
+                st?.driverNamespace,
+                st?.driverName,
+                catalogEntry?.driverNamespace,
+                catalogEntry?.driverName,
+                sensor?.type,
+            ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
             const devType = inferInternalDeviceType({
-                hubitatType: sensor.type || '',
+                hubitatType: hubitatIdentityHint,
                 capabilities: caps,
                 attributes: attrs,
                 state: st.state || '',
                 commands: cmds,
             });
-            if (devType === deviceType) matchingIds.push(id);
+            if (isInternalTypeKey && devType === deviceType) {
+                matchingIds.push(id);
+                continue;
+            }
+            if (isUnknownScopedKey) {
+                const sensorUnknownKey = buildUnknownTypeDefaultKey([
+                    sensor?.hubitatTypeName,
+                    sensor?.hubitatType,
+                    st?.hubitatTypeName,
+                    st?.hubitatType,
+                    catalogEntry?.hubitatTypeName,
+                    catalogEntry?.hubitatType,
+                    sensor?.driverNamespace,
+                    sensor?.driverName,
+                    st?.driverNamespace,
+                    st?.driverName,
+                    catalogEntry?.driverNamespace,
+                    catalogEntry?.driverName,
+                ]);
+                if (sensorUnknownKey && sensorUnknownKey === deviceType) matchingIds.push(id);
+            }
         }
 
         if (matchingIds.length > 0) {
@@ -5546,9 +5834,18 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
             const nextIcons = (pui.deviceControlIcons && typeof pui.deviceControlIcons === 'object')
                 ? { ...pui.deviceControlIcons } : {};
 
+            // Per-panel profile overrides that can mask global updates.
+            const rawProfiles = (pui.panelProfiles && typeof pui.panelProfiles === 'object')
+                ? pui.panelProfiles : {};
+            const nextProfiles = { ...rawProfiles };
+
             // Home/ctrl visibility arrays.
+            // null means "show all" (uninitialized). When we need to set
+            // visibility for a device we must first materialise the array.
+            const allSensorIds = sensors.map((s) => String(s?.id || '').trim()).filter(Boolean);
             let nextHomeVisible = Array.isArray(pui.homeVisibleDeviceIds) ? [...pui.homeVisibleDeviceIds] : null;
             let nextCtrlVisible = Array.isArray(pui.ctrlVisibleDeviceIds) ? [...pui.ctrlVisibleDeviceIds] : null;
+            let visibilityTouched = false;
 
             for (const id of matchingIds) {
                 // Commands
@@ -5580,18 +5877,93 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
                 }
 
                 // Visibility: home
-                if (entry.homeVisible !== null && nextHomeVisible !== null) {
+                if (entry.homeVisible !== null) {
+                    visibilityTouched = true;
+                    // Materialise the array if uninitialized (null = show all → all IDs).
+                    if (nextHomeVisible === null) nextHomeVisible = [...allSensorIds];
                     const set = new Set(nextHomeVisible.map((v) => String(v)));
                     if (entry.homeVisible) set.add(id); else set.delete(id);
                     nextHomeVisible = Array.from(set);
                 }
 
                 // Visibility: controls
-                if (entry.ctrlVisible !== null && nextCtrlVisible !== null) {
+                if (entry.ctrlVisible !== null) {
+                    visibilityTouched = true;
+                    if (nextCtrlVisible === null) nextCtrlVisible = [...allSensorIds];
                     const set = new Set(nextCtrlVisible.map((v) => String(v)));
                     if (entry.ctrlVisible) set.add(id); else set.delete(id);
                     nextCtrlVisible = Array.from(set);
                 }
+            }
+
+            // Also update all user-defined panel profiles so profile overlays do not
+            // mask global device-type-default updates for matching devices.
+            for (const [profileName, rawProfile] of Object.entries(rawProfiles)) {
+                if (!rawProfile || typeof rawProfile !== 'object') continue;
+                if (PRESET_PANEL_PROFILE_NAMES.has(profileName) || rawProfile._preset === true) continue;
+
+                const profile = { ...rawProfile };
+
+                const pCmds = (profile.deviceCommandAllowlist && typeof profile.deviceCommandAllowlist === 'object')
+                    ? { ...profile.deviceCommandAllowlist } : {};
+                const pHome = (profile.deviceHomeMetricAllowlist && typeof profile.deviceHomeMetricAllowlist === 'object')
+                    ? { ...profile.deviceHomeMetricAllowlist } : {};
+                const pInfo = (profile.deviceInfoMetricAllowlist && typeof profile.deviceInfoMetricAllowlist === 'object')
+                    ? { ...profile.deviceInfoMetricAllowlist } : {};
+                const pIcons = (profile.deviceControlIcons && typeof profile.deviceControlIcons === 'object')
+                    ? { ...profile.deviceControlIcons } : {};
+
+                let pHomeVisible = Array.isArray(profile.homeVisibleDeviceIds) ? [...profile.homeVisibleDeviceIds] : null;
+                let pCtrlVisible = Array.isArray(profile.ctrlVisibleDeviceIds) ? [...profile.ctrlVisibleDeviceIds] : null;
+
+                for (const id of matchingIds) {
+                    if (entry.commands !== null) {
+                        pCmds[id] = [...entry.commands];
+                    } else {
+                        delete pCmds[id];
+                    }
+
+                    if (entry.homeMetrics !== null) {
+                        pHome[id] = [...entry.homeMetrics];
+                    } else {
+                        delete pHome[id];
+                    }
+
+                    if (entry.infoMetrics !== null) {
+                        pInfo[id] = [...entry.infoMetrics];
+                    } else {
+                        delete pInfo[id];
+                    }
+
+                    if (entry.controlIcons !== null) {
+                        pIcons[id] = entry.controlIcons.length === 1 ? entry.controlIcons[0] : [...entry.controlIcons];
+                    } else {
+                        delete pIcons[id];
+                    }
+
+                    if (entry.homeVisible !== null) {
+                        if (pHomeVisible === null) pHomeVisible = [...allSensorIds];
+                        const set = new Set(pHomeVisible.map((v) => String(v)));
+                        if (entry.homeVisible) set.add(id); else set.delete(id);
+                        pHomeVisible = Array.from(set);
+                    }
+
+                    if (entry.ctrlVisible !== null) {
+                        if (pCtrlVisible === null) pCtrlVisible = [...allSensorIds];
+                        const set = new Set(pCtrlVisible.map((v) => String(v)));
+                        if (entry.ctrlVisible) set.add(id); else set.delete(id);
+                        pCtrlVisible = Array.from(set);
+                    }
+                }
+
+                profile.deviceCommandAllowlist = pCmds;
+                profile.deviceHomeMetricAllowlist = pHome;
+                profile.deviceInfoMetricAllowlist = pInfo;
+                profile.deviceControlIcons = pIcons;
+                if (entry.homeVisible !== null) profile.homeVisibleDeviceIds = pHomeVisible;
+                if (entry.ctrlVisible !== null) profile.ctrlVisibleDeviceIds = pCtrlVisible;
+
+                nextProfiles[profileName] = profile;
             }
 
             const updatePayload = {
@@ -5600,9 +5972,12 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
                 deviceHomeMetricAllowlist: nextHome,
                 deviceInfoMetricAllowlist: nextInfo,
                 deviceControlIcons: nextIcons,
+                panelProfiles: nextProfiles,
             };
             if (nextHomeVisible !== null) updatePayload.homeVisibleDeviceIds = nextHomeVisible;
             if (nextCtrlVisible !== null) updatePayload.ctrlVisibleDeviceIds = nextCtrlVisible;
+            // Mark visibility initialized so empty arrays mean "show none" going forward.
+            if (visibilityTouched) updatePayload.visibilityInitialized = true;
 
             persistedConfig = normalizePersistedConfig({
                 ...(persistedConfig || {}),
@@ -5614,30 +5989,7 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
 
     persistConfigToDiskIfChanged('api-ui-device-type-defaults');
 
-    const nextAllowlists = getUiAllowlistsInfo();
-    config = {
-        ...config,
-        ui: {
-            ...(config?.ui || {}),
-            ctrlAllowedDeviceIds: nextAllowlists.ctrl.ids,
-            mainAllowedDeviceIds: nextAllowlists.main.ids,
-            allowedDeviceIds: getUiAllowedDeviceIdsUnion(),
-            ctrlAllowlistSource: nextAllowlists.ctrl.source,
-            ctrlAllowlistLocked: nextAllowlists.ctrl.locked,
-            mainAllowlistSource: nextAllowlists.main.source,
-            mainAllowlistLocked: nextAllowlists.main.locked,
-            visibleRoomIds: Array.isArray(persistedConfig?.ui?.visibleRoomIds) ? persistedConfig.ui.visibleRoomIds : [],
-            deviceLabelOverrides: (persistedConfig?.ui?.deviceLabelOverrides && typeof persistedConfig.ui.deviceLabelOverrides === 'object') ? persistedConfig.ui.deviceLabelOverrides : {},
-            deviceCommandAllowlist: (persistedConfig?.ui?.deviceCommandAllowlist && typeof persistedConfig.ui.deviceCommandAllowlist === 'object') ? persistedConfig.ui.deviceCommandAllowlist : {},
-            deviceHomeMetricAllowlist: (persistedConfig?.ui?.deviceHomeMetricAllowlist && typeof persistedConfig.ui.deviceHomeMetricAllowlist === 'object') ? persistedConfig.ui.deviceHomeMetricAllowlist : {},
-            deviceInfoMetricAllowlist: (persistedConfig?.ui?.deviceInfoMetricAllowlist && typeof persistedConfig.ui.deviceInfoMetricAllowlist === 'object') ? persistedConfig.ui.deviceInfoMetricAllowlist : {},
-            deviceControlIcons: (persistedConfig?.ui?.deviceControlIcons && typeof persistedConfig.ui.deviceControlIcons === 'object') ? persistedConfig.ui.deviceControlIcons : {},
-            deviceTypeDefaults: persistedConfig?.ui?.deviceTypeDefaults || {},
-            ...(persistedConfig?.ui?.homeVisibleDeviceIds ? { homeVisibleDeviceIds: persistedConfig.ui.homeVisibleDeviceIds } : {}),
-            ...(persistedConfig?.ui?.ctrlVisibleDeviceIds ? { ctrlVisibleDeviceIds: persistedConfig.ui.ctrlVisibleDeviceIds } : {}),
-            panelProfiles: persistedConfig?.ui?.panelProfiles,
-        },
-    };
+    rebuildRuntimeConfigFromPersisted();
     io.emit('config_update', config);
 
     console.log(`[device-type-defaults] Saved defaults for type "${deviceType}"${applyToExisting ? ` and applied to ${appliedCount} device(s)` : ''}`);

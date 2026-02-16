@@ -157,6 +157,27 @@ const INTERNAL_TYPE_LABELS = {
   unknown: 'Unknown',
 };
 
+const normalizeUnknownTypeSignature = (value) => {
+  const s = String(value || '').trim().toLowerCase();
+  if (!s) return null;
+  const normalized = s
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return normalized || null;
+};
+
+const buildUnknownTypeDefaultKey = (parts = []) => {
+  const joined = (Array.isArray(parts) ? parts : [])
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const sig = normalizeUnknownTypeSignature(joined);
+  return sig ? `unknown::${sig}` : null;
+};
+
+const isUnknownScopedTypeKey = (value) => /^unknown::[a-z0-9][a-z0-9-]{0,95}$/.test(String(value || '').trim().toLowerCase());
+
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -3029,7 +3050,29 @@ const ConfigPanel = ({
     return (v && typeof v === 'object') ? v : {};
   }, [config?.ui?.deviceInfoMetricAllowlist, selectedPanelName, selectedPanelProfile]);
 
+  // Track previous effective allowlist values so we can detect server-side changes
+  // (e.g. from device-type-defaults apply) and sync drafts without clobbering
+  // in-progress user edits.
+  const prevEffectiveAllowlistsRef = useRef({});
+
   useEffect(() => {
+    const prevRef = prevEffectiveAllowlistsRef.current;
+
+    // Pre-compute current effective values for each device.
+    const effectiveValues = {};
+    for (const d of allDevices) {
+      const id = String(d?.id || '').trim();
+      if (!id) continue;
+      const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
+      const cmds = effectiveDeviceCommandAllowlist?.[id];
+      const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
+      const hm = effectiveDeviceHomeMetricAllowlist?.[id];
+      const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
+      const im = effectiveDeviceInfoMetricAllowlist?.[id];
+      const normalizedInfoMetrics = Array.isArray(im) ? im.map((c) => String(c)) : null;
+      effectiveValues[id] = { label, commands: normalizedCmds, homeMetrics: normalizedHomeMetrics, infoMetrics: normalizedInfoMetrics };
+    }
+
     setDeviceOverrideDrafts((prev) => {
       const next = { ...prev };
       for (const d of allDevices) {
@@ -3037,23 +3080,20 @@ const ConfigPanel = ({
         if (!id) continue;
 
         const existing = next[id];
-        const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
-        const cmds = effectiveDeviceCommandAllowlist?.[id];
-        // Missing allowlist => inherit (allow all). Explicit empty array => allow none.
-        const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
-        const hm = effectiveDeviceHomeMetricAllowlist?.[id];
-        const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
-        const im = effectiveDeviceInfoMetricAllowlist?.[id];
-        const normalizedInfoMetrics = Array.isArray(im) ? im.map((c) => String(c)) : null;
+        const ev = effectiveValues[id];
+        if (!ev) continue;
 
         if (!existing) {
-          next[id] = { label, commands: normalizedCmds, homeMetrics: normalizedHomeMetrics, infoMetrics: normalizedInfoMetrics };
+          next[id] = { ...ev };
         } else {
-          // Only fill in missing keys to avoid clobbering in-progress edits.
-          if (existing.label === undefined) existing.label = label;
-          if (existing.commands === undefined) existing.commands = normalizedCmds;
-          if (existing.homeMetrics === undefined) existing.homeMetrics = normalizedHomeMetrics;
-          if (existing.infoMetrics === undefined) existing.infoMetrics = normalizedInfoMetrics;
+          const p = prevRef[id];
+          // If the effective value changed from what we last saw (i.e. a server-side
+          // config_update), sync the draft. Otherwise keep the local draft intact so
+          // in-progress user edits are not clobbered.
+          if (!p || p.label !== ev.label) existing.label = ev.label;
+          if (!p || JSON.stringify(p.commands) !== JSON.stringify(ev.commands)) existing.commands = ev.commands;
+          if (!p || JSON.stringify(p.homeMetrics) !== JSON.stringify(ev.homeMetrics)) existing.homeMetrics = ev.homeMetrics;
+          if (!p || JSON.stringify(p.infoMetrics) !== JSON.stringify(ev.infoMetrics)) existing.infoMetrics = ev.infoMetrics;
         }
       }
 
@@ -3062,6 +3102,9 @@ const ConfigPanel = ({
       }
       return next;
     });
+
+    // Update ref so next run can detect what changed.
+    prevEffectiveAllowlistsRef.current = effectiveValues;
   }, [allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist, effectiveDeviceInfoMetricAllowlist]);
 
   // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
@@ -7835,28 +7878,82 @@ const ConfigPanel = ({
                               {(() => {
                                 const st = statuses?.[String(d.id)] || {};
                                 const sensorEntry = (config?.sensors || []).find((s) => String(s?.id) === String(d.id));
+                                const deviceIdentityParts = [
+                                  sensorEntry?.hubitatTypeName,
+                                  sensorEntry?.hubitatType,
+                                  st?.hubitatTypeName,
+                                  st?.hubitatType,
+                                  sensorEntry?.driverNamespace,
+                                  sensorEntry?.driverName,
+                                  st?.driverNamespace,
+                                  st?.driverName,
+                                  sensorEntry?.type,
+                                ];
+                                const hubitatIdentityHint = [
+                                  sensorEntry?.hubitatType,
+                                  sensorEntry?.hubitatTypeName,
+                                  st?.hubitatType,
+                                  st?.hubitatTypeName,
+                                  sensorEntry?.driverNamespace,
+                                  sensorEntry?.driverName,
+                                  st?.driverNamespace,
+                                  st?.driverName,
+                                  sensorEntry?.type,
+                                ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
                                 const devType = inferInternalDeviceType({
-                                  hubitatType: sensorEntry?.type || '',
+                                  hubitatType: hubitatIdentityHint,
                                   capabilities: d.capabilities || [],
                                   attributes: (st.attributes && typeof st.attributes === 'object') ? st.attributes : {},
                                   state: st.state || '',
                                   commandSchemas: d.commands || [],
                                 });
-                                const typeLabel = INTERNAL_TYPE_LABELS[devType] || devType;
-                                const existingDefault = config?.ui?.deviceTypeDefaults?.[devType] || null;
+                                const unknownScopedKey = devType === 'unknown' ? buildUnknownTypeDefaultKey(deviceIdentityParts) : null;
+                                const typeDefaultKey = unknownScopedKey || devType;
+                                const unknownModelLabel = (sensorEntry?.hubitatTypeName || st?.hubitatTypeName || sensorEntry?.hubitatType || st?.hubitatType || sensorEntry?.driverName || st?.driverName || '').trim();
+                                const typeLabel = unknownScopedKey && unknownModelLabel
+                                  ? `${unknownModelLabel} (Model)`
+                                  : (INTERNAL_TYPE_LABELS[devType] || devType);
+                                const existingDefault = config?.ui?.deviceTypeDefaults?.[typeDefaultKey]
+                                  || config?.ui?.deviceTypeDefaults?.[devType]
+                                  || null;
                                 const isConfirming = typeDefaultConfirm && typeDefaultConfirm.deviceId === d.id;
 
                                 // Count matching devices of this type.
                                 const matchCount = allDevices.filter((other) => {
                                   const otherSt = statuses?.[String(other.id)] || {};
                                   const otherSensor = (config?.sensors || []).find((s) => String(s?.id) === String(other.id));
+                                  const otherIdentityParts = [
+                                    otherSensor?.hubitatTypeName,
+                                    otherSensor?.hubitatType,
+                                    otherSt?.hubitatTypeName,
+                                    otherSt?.hubitatType,
+                                    otherSensor?.driverNamespace,
+                                    otherSensor?.driverName,
+                                    otherSt?.driverNamespace,
+                                    otherSt?.driverName,
+                                    otherSensor?.type,
+                                  ];
+                                  const otherHubitatIdentityHint = [
+                                    otherSensor?.hubitatType,
+                                    otherSensor?.hubitatTypeName,
+                                    otherSt?.hubitatType,
+                                    otherSt?.hubitatTypeName,
+                                    otherSensor?.driverNamespace,
+                                    otherSensor?.driverName,
+                                    otherSt?.driverNamespace,
+                                    otherSt?.driverName,
+                                    otherSensor?.type,
+                                  ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
                                   const otherType = inferInternalDeviceType({
-                                    hubitatType: otherSensor?.type || '',
+                                    hubitatType: otherHubitatIdentityHint,
                                     capabilities: other.capabilities || [],
                                     attributes: (otherSt.attributes && typeof otherSt.attributes === 'object') ? otherSt.attributes : {},
                                     state: otherSt.state || '',
                                     commandSchemas: other.commands || [],
                                   });
+                                  const otherUnknownKey = otherType === 'unknown' ? buildUnknownTypeDefaultKey(otherIdentityParts) : null;
+                                  const otherTypeKey = otherUnknownKey || otherType;
+                                  if (isUnknownScopedTypeKey(typeDefaultKey)) return otherTypeKey === typeDefaultKey;
                                   return otherType === devType;
                                 }).length;
 
@@ -7889,7 +7986,7 @@ const ConfigPanel = ({
                                           onClick={() => {
                                             setTypeDefaultConfirm({
                                               deviceId: d.id,
-                                              deviceType: devType,
+                                              deviceType: typeDefaultKey,
                                               typeLabel,
                                               matchCount,
                                               defaults: buildDefaults(),
@@ -7907,7 +8004,8 @@ const ConfigPanel = ({
                                             disabled={!connected || busy}
                                             onClick={async () => {
                                               try {
-                                                await saveDeviceTypeDefaults(devType, null, false);
+                                                await saveDeviceTypeDefaults(typeDefaultKey, null, false);
+                                                if (ctx?.refreshNow) ctx.refreshNow();
                                               } catch {
                                                 // ignore
                                               }
@@ -7953,6 +8051,9 @@ const ConfigPanel = ({
                                                   true // applyToExisting
                                                 );
                                                 setTypeDefaultConfirm(null);
+                                                // Force full config refresh so visibility, commands, etc.
+                                                // reflect the server-side changes immediately.
+                                                if (ctx?.refreshNow) ctx.refreshNow();
                                               } catch (err) {
                                                 setTypeDefaultConfirm((prev) => ({ ...prev, saving: false, error: err?.message || String(err) }));
                                               }
