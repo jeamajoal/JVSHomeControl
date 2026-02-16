@@ -3623,6 +3623,21 @@ const ConfigPanel = ({
     }
   };
 
+  const [autoAddSaving, setAutoAddSaving] = useState(false);
+
+  const toggleAutoAddDevices = async (nextValue) => {
+    setError(null);
+    setAutoAddSaving(true);
+    try {
+      await saveAllowlists({ autoAddNewDevices: nextValue });
+      if (ctx?.refreshNow) ctx.refreshNow();
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setAutoAddSaving(false);
+    }
+  };
+
   const createPanel = async () => {
     setPanelCreateError(null);
     const name = String(newPanelName || '').trim();
@@ -3783,6 +3798,23 @@ const ConfigPanel = ({
               </div>
               <div className="mt-1 text-xs text-white/45">
                 Server-enforced allowlists. If a device is not allowed here, controls will be blocked everywhere.
+              </div>
+
+              <label className="mt-3 flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={config?.ui?.autoAddNewDevices === true}
+                  disabled={autoAddSaving}
+                  onChange={(e) => toggleAutoAddDevices(e.target.checked)}
+                  className="accent-cyan-400"
+                />
+                <span className="text-xs text-white/70">
+                  Auto-add new devices
+                </span>
+                {autoAddSaving && <span className="text-[10px] text-white/40 ml-1">saving…</span>}
+              </label>
+              <div className="mt-0.5 ml-5 text-[11px] text-white/40">
+                Automatically make newly discovered Hubitat devices available.
               </div>
 
               <div className="mt-3 text-xs text-white/45">
