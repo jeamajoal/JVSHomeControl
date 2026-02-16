@@ -8,7 +8,7 @@ import {
   normalizeToleranceColorId,
 } from '../toleranceColors';
 import { getUiScheme } from '../uiScheme';
-import { INTERNAL_DEVICE_TYPES } from '../deviceMapping';
+import { INTERNAL_DEVICE_TYPES, inferInternalDeviceType } from '../deviceMapping';
 import ServerSettingsTab from './ServerSettingsTab';
 
 const HOME_TOP_ROW_CARD_IDS = ['time', 'outside', 'inside', 'home'];
@@ -125,6 +125,58 @@ async function saveDeviceControlIcons(deviceControlIcons, panelName) {
   }
   return res.json().catch(() => ({}));
 }
+
+async function saveDeviceTypeDefaults(deviceType, defaults, applyToExisting) {
+  const res = await fetch(`${API_HOST}/api/ui/device-type-defaults`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceType, defaults, applyToExisting }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Device type defaults save failed (${res.status})`);
+  }
+  return res.json().catch(() => ({}));
+}
+
+const INTERNAL_TYPE_LABELS = {
+  thermostat: 'Thermostat',
+  fan_controller: 'Fan Controller',
+  color_light: 'Color Light',
+  ct_light: 'CT Light',
+  shade: 'Shade',
+  lock: 'Lock',
+  garage: 'Garage',
+  valve: 'Valve',
+  siren: 'Siren',
+  dimmer: 'Dimmer',
+  switch: 'Switch',
+  media_player: 'Media Player',
+  button: 'Button',
+  sensor: 'Sensor',
+  unknown: 'Unknown',
+};
+
+const normalizeUnknownTypeSignature = (value) => {
+  const s = String(value || '').trim().toLowerCase();
+  if (!s) return null;
+  const normalized = s
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96);
+  return normalized || null;
+};
+
+const buildUnknownTypeDefaultKey = (parts = []) => {
+  const joined = (Array.isArray(parts) ? parts : [])
+    .map((v) => String(v || '').trim())
+    .filter(Boolean)
+    .join(' ');
+  const sig = normalizeUnknownTypeSignature(joined);
+  return sig ? `unknown::${sig}` : null;
+};
+
+const isUnknownScopedTypeKey = (value) => /^unknown::[a-z0-9][a-z0-9-]{0,95}$/.test(String(value || '').trim().toLowerCase());
 
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
@@ -2773,6 +2825,9 @@ const ConfigPanel = ({
   const [deviceOverrideSaveState, setDeviceOverrideSaveState] = useState(() => ({}));
   const deviceOverrideTimersRef = useRef(new Map());
   const [selectedDeviceIdForEdit, setSelectedDeviceIdForEdit] = useState('');
+  // State for device type default confirmation dialog.
+  // Shape: null | { deviceId, deviceType, typeLabel, matchCount, defaults, saving, error }
+  const [typeDefaultConfirm, setTypeDefaultConfirm] = useState(null);
   // Commands are discovered per-device. Missing per-device allowlist means "allow all".
   const UI_HOME_METRICS = useMemo(() => (['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']), []);
   const UI_INFO_METRIC_PRIORITY = useMemo(() => ([
@@ -2995,7 +3050,29 @@ const ConfigPanel = ({
     return (v && typeof v === 'object') ? v : {};
   }, [config?.ui?.deviceInfoMetricAllowlist, selectedPanelName, selectedPanelProfile]);
 
+  // Track previous effective allowlist values so we can detect server-side changes
+  // (e.g. from device-type-defaults apply) and sync drafts without clobbering
+  // in-progress user edits.
+  const prevEffectiveAllowlistsRef = useRef({});
+
   useEffect(() => {
+    const prevRef = prevEffectiveAllowlistsRef.current;
+
+    // Pre-compute current effective values for each device.
+    const effectiveValues = {};
+    for (const d of allDevices) {
+      const id = String(d?.id || '').trim();
+      if (!id) continue;
+      const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
+      const cmds = effectiveDeviceCommandAllowlist?.[id];
+      const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
+      const hm = effectiveDeviceHomeMetricAllowlist?.[id];
+      const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
+      const im = effectiveDeviceInfoMetricAllowlist?.[id];
+      const normalizedInfoMetrics = Array.isArray(im) ? im.map((c) => String(c)) : null;
+      effectiveValues[id] = { label, commands: normalizedCmds, homeMetrics: normalizedHomeMetrics, infoMetrics: normalizedInfoMetrics };
+    }
+
     setDeviceOverrideDrafts((prev) => {
       const next = { ...prev };
       for (const d of allDevices) {
@@ -3003,23 +3080,20 @@ const ConfigPanel = ({
         if (!id) continue;
 
         const existing = next[id];
-        const label = String(effectiveDeviceLabelOverrides?.[id] ?? '');
-        const cmds = effectiveDeviceCommandAllowlist?.[id];
-        // Missing allowlist => inherit (allow all). Explicit empty array => allow none.
-        const normalizedCmds = Array.isArray(cmds) ? cmds.map((c) => String(c)) : null;
-        const hm = effectiveDeviceHomeMetricAllowlist?.[id];
-        const normalizedHomeMetrics = Array.isArray(hm) ? hm.map((c) => String(c)) : null;
-        const im = effectiveDeviceInfoMetricAllowlist?.[id];
-        const normalizedInfoMetrics = Array.isArray(im) ? im.map((c) => String(c)) : null;
+        const ev = effectiveValues[id];
+        if (!ev) continue;
 
         if (!existing) {
-          next[id] = { label, commands: normalizedCmds, homeMetrics: normalizedHomeMetrics, infoMetrics: normalizedInfoMetrics };
+          next[id] = { ...ev };
         } else {
-          // Only fill in missing keys to avoid clobbering in-progress edits.
-          if (existing.label === undefined) existing.label = label;
-          if (existing.commands === undefined) existing.commands = normalizedCmds;
-          if (existing.homeMetrics === undefined) existing.homeMetrics = normalizedHomeMetrics;
-          if (existing.infoMetrics === undefined) existing.infoMetrics = normalizedInfoMetrics;
+          const p = prevRef[id];
+          // If the effective value changed from what we last saw (i.e. a server-side
+          // config_update), sync the draft. Otherwise keep the local draft intact so
+          // in-progress user edits are not clobbered.
+          if (!p || p.label !== ev.label) existing.label = ev.label;
+          if (!p || JSON.stringify(p.commands) !== JSON.stringify(ev.commands)) existing.commands = ev.commands;
+          if (!p || JSON.stringify(p.homeMetrics) !== JSON.stringify(ev.homeMetrics)) existing.homeMetrics = ev.homeMetrics;
+          if (!p || JSON.stringify(p.infoMetrics) !== JSON.stringify(ev.infoMetrics)) existing.infoMetrics = ev.infoMetrics;
         }
       }
 
@@ -3028,6 +3102,9 @@ const ConfigPanel = ({
       }
       return next;
     });
+
+    // Update ref so next run can detect what changed.
+    prevEffectiveAllowlistsRef.current = effectiveValues;
   }, [allDevices, effectiveDeviceLabelOverrides, effectiveDeviceCommandAllowlist, effectiveDeviceHomeMetricAllowlist, effectiveDeviceInfoMetricAllowlist]);
 
   // When switching profiles, reset per-device override drafts to reflect the newly selected profile.
@@ -7796,6 +7873,209 @@ const ConfigPanel = ({
                                   ) : null}
                                 </div>
                               ) : null}
+
+                              {/* Save as device type default */}
+                              {(() => {
+                                const st = statuses?.[String(d.id)] || {};
+                                const sensorEntry = (config?.sensors || []).find((s) => String(s?.id) === String(d.id));
+                                const deviceIdentityParts = [
+                                  sensorEntry?.hubitatTypeName,
+                                  sensorEntry?.hubitatType,
+                                  st?.hubitatTypeName,
+                                  st?.hubitatType,
+                                  sensorEntry?.driverNamespace,
+                                  sensorEntry?.driverName,
+                                  st?.driverNamespace,
+                                  st?.driverName,
+                                  sensorEntry?.type,
+                                ];
+                                const hubitatIdentityHint = [
+                                  sensorEntry?.hubitatType,
+                                  sensorEntry?.hubitatTypeName,
+                                  st?.hubitatType,
+                                  st?.hubitatTypeName,
+                                  sensorEntry?.driverNamespace,
+                                  sensorEntry?.driverName,
+                                  st?.driverNamespace,
+                                  st?.driverName,
+                                  sensorEntry?.type,
+                                ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+                                const devType = inferInternalDeviceType({
+                                  hubitatType: hubitatIdentityHint,
+                                  capabilities: d.capabilities || [],
+                                  attributes: (st.attributes && typeof st.attributes === 'object') ? st.attributes : {},
+                                  state: st.state || '',
+                                  commandSchemas: d.commands || [],
+                                });
+                                const unknownScopedKey = devType === 'unknown' ? buildUnknownTypeDefaultKey(deviceIdentityParts) : null;
+                                const typeDefaultKey = unknownScopedKey || devType;
+                                const unknownModelLabel = (sensorEntry?.hubitatTypeName || st?.hubitatTypeName || sensorEntry?.hubitatType || st?.hubitatType || sensorEntry?.driverName || st?.driverName || '').trim();
+                                const typeLabel = unknownScopedKey && unknownModelLabel
+                                  ? `${unknownModelLabel} (Model)`
+                                  : (INTERNAL_TYPE_LABELS[devType] || devType);
+                                const existingDefault = config?.ui?.deviceTypeDefaults?.[typeDefaultKey]
+                                  || config?.ui?.deviceTypeDefaults?.[devType]
+                                  || null;
+                                const isConfirming = typeDefaultConfirm && typeDefaultConfirm.deviceId === d.id;
+
+                                // Count matching devices of this type.
+                                const matchCount = allDevices.filter((other) => {
+                                  const otherSt = statuses?.[String(other.id)] || {};
+                                  const otherSensor = (config?.sensors || []).find((s) => String(s?.id) === String(other.id));
+                                  const otherIdentityParts = [
+                                    otherSensor?.hubitatTypeName,
+                                    otherSensor?.hubitatType,
+                                    otherSt?.hubitatTypeName,
+                                    otherSt?.hubitatType,
+                                    otherSensor?.driverNamespace,
+                                    otherSensor?.driverName,
+                                    otherSt?.driverNamespace,
+                                    otherSt?.driverName,
+                                    otherSensor?.type,
+                                  ];
+                                  const otherHubitatIdentityHint = [
+                                    otherSensor?.hubitatType,
+                                    otherSensor?.hubitatTypeName,
+                                    otherSt?.hubitatType,
+                                    otherSt?.hubitatTypeName,
+                                    otherSensor?.driverNamespace,
+                                    otherSensor?.driverName,
+                                    otherSt?.driverNamespace,
+                                    otherSt?.driverName,
+                                    otherSensor?.type,
+                                  ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
+                                  const otherType = inferInternalDeviceType({
+                                    hubitatType: otherHubitatIdentityHint,
+                                    capabilities: other.capabilities || [],
+                                    attributes: (otherSt.attributes && typeof otherSt.attributes === 'object') ? otherSt.attributes : {},
+                                    state: otherSt.state || '',
+                                    commandSchemas: other.commands || [],
+                                  });
+                                  const otherUnknownKey = otherType === 'unknown' ? buildUnknownTypeDefaultKey(otherIdentityParts) : null;
+                                  const otherTypeKey = otherUnknownKey || otherType;
+                                  if (isUnknownScopedTypeKey(typeDefaultKey)) return otherTypeKey === typeDefaultKey;
+                                  return otherType === devType;
+                                }).length;
+
+                                // Build defaults payload from this device's current settings.
+                                const buildDefaults = () => {
+                                  const isHome = homeVisibleDeviceIds ? homeVisibleDeviceIds.has(String(d.id)) : null;
+                                  const isCtrl = ctrlVisibleDeviceIds ? ctrlVisibleDeviceIds.has(String(d.id)) : null;
+                                  const draftCmds = draft.commands;
+                                  const draftHomeM = draft.homeMetrics;
+                                  const draftInfoM = draft.infoMetrics;
+                                  const iconVal = localIconAssignments[d.id];
+                                  const iconIds = iconVal ? (Array.isArray(iconVal) ? iconVal : [iconVal]) : null;
+                                  return {
+                                    homeVisible: isHome,
+                                    ctrlVisible: isCtrl,
+                                    commands: Array.isArray(draftCmds) ? draftCmds : null,
+                                    homeMetrics: Array.isArray(draftHomeM) ? draftHomeM : null,
+                                    infoMetrics: Array.isArray(draftInfoM) ? draftInfoM : null,
+                                    controlIcons: iconIds,
+                                  };
+                                };
+
+                                return (
+                                  <div className="mt-4 border-t border-white/10 pt-3">
+                                    {!isConfirming ? (
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <button
+                                          type="button"
+                                          disabled={!connected || busy}
+                                          onClick={() => {
+                                            setTypeDefaultConfirm({
+                                              deviceId: d.id,
+                                              deviceType: typeDefaultKey,
+                                              typeLabel,
+                                              matchCount,
+                                              defaults: buildDefaults(),
+                                              saving: false,
+                                              error: null,
+                                            });
+                                          }}
+                                          className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors ${scheme.actionButton} ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5'}`}
+                                        >
+                                          Save as Default for {typeLabel}
+                                        </button>
+                                        {existingDefault ? (
+                                          <button
+                                            type="button"
+                                            disabled={!connected || busy}
+                                            onClick={async () => {
+                                              try {
+                                                await saveDeviceTypeDefaults(typeDefaultKey, null, false);
+                                                if (ctx?.refreshNow) ctx.refreshNow();
+                                              } catch {
+                                                // ignore
+                                              }
+                                            }}
+                                            className={`rounded-xl border px-3 py-2 text-[10px] font-bold uppercase tracking-[0.18em] transition-colors border-white/10 text-white/40 ${(!connected || busy) ? 'opacity-50' : 'hover:bg-white/5 hover:text-white/60'}`}
+                                          >
+                                            Clear Type Default
+                                          </button>
+                                        ) : null}
+                                        {existingDefault ? (
+                                          <span className="text-[10px] text-neon-blue/60">Type default active</span>
+                                        ) : null}
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-xl border border-white/15 bg-black/30 p-3 space-y-2">
+                                        <div className="text-xs font-semibold text-white/90">
+                                          Save these settings as the default for all <span className="text-neon-blue">{typeLabel}</span> devices?
+                                        </div>
+                                        <div className="text-[11px] text-white/60">
+                                          This will apply to <span className="font-bold text-white/80">{matchCount}</span> existing device{matchCount !== 1 ? 's' : ''} of this type.
+                                        </div>
+                                        {(typeDefaultConfirm.defaults?.homeVisible !== null || typeDefaultConfirm.defaults?.ctrlVisible !== null) ? (
+                                          <div className="text-[10px] text-amber-400/80 leading-snug">
+                                            ⚠ Visibility changes are global — enabling Home or Controls visibility will add these devices across <strong>all panel profiles</strong>, which may require manually removing them from panels where they aren&apos;t wanted.
+                                          </div>
+                                        ) : null}
+                                        <div className="text-[11px] text-white/45">
+                                          Future devices of this type will also inherit these defaults automatically.
+                                        </div>
+                                        {typeDefaultConfirm.error ? (
+                                          <div className="text-[11px] text-neon-red break-words">Error: {typeDefaultConfirm.error}</div>
+                                        ) : null}
+                                        <div className="flex gap-2 pt-1">
+                                          <button
+                                            type="button"
+                                            disabled={typeDefaultConfirm.saving}
+                                            onClick={async () => {
+                                              setTypeDefaultConfirm((prev) => ({ ...prev, saving: true, error: null }));
+                                              try {
+                                                await saveDeviceTypeDefaults(
+                                                  typeDefaultConfirm.deviceType,
+                                                  typeDefaultConfirm.defaults,
+                                                  true // applyToExisting
+                                                );
+                                                setTypeDefaultConfirm(null);
+                                                // Force full config refresh so visibility, commands, etc.
+                                                // reflect the server-side changes immediately.
+                                                if (ctx?.refreshNow) ctx.refreshNow();
+                                              } catch (err) {
+                                                setTypeDefaultConfirm((prev) => ({ ...prev, saving: false, error: err?.message || String(err) }));
+                                              }
+                                            }}
+                                            className={`rounded-xl border border-neon-blue/50 bg-neon-blue/20 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white transition-colors ${typeDefaultConfirm.saving ? 'opacity-50' : 'hover:bg-neon-blue/30'}`}
+                                          >
+                                            {typeDefaultConfirm.saving ? 'Saving…' : 'Confirm & Apply'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={typeDefaultConfirm.saving}
+                                            onClick={() => setTypeDefaultConfirm(null)}
+                                            className="rounded-xl border border-white/10 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/60 transition-colors hover:bg-white/5"
+                                          >
+                                            Cancel
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           );
                         })() : null}

@@ -175,11 +175,28 @@ export function inferInternalDeviceType({ hubitatType, capabilities, attributes,
     typeStr.includes('fan');
   if (isFan) return INTERNAL_DEVICE_TYPES.FAN_CONTROLLER;
 
+  // ── Sound sensor (virtual/physical) ───────────────────────────────────
+  const isSoundSensor =
+    capSet.has('SoundSensor') ||
+    attrs.sound !== undefined ||
+    attrs.soundPressure !== undefined ||
+    attrs.soundPressureLevel !== undefined ||
+    typeStr.includes('sound sensor');
+  if (isSoundSensor) return INTERNAL_DEVICE_TYPES.SENSOR;
+
   // ── Media player ────────────────────────────────────────────────────────
-  if (typeStr.includes('chromecast') || capSet.has('MediaTransport') || capSet.has('AudioVolume') ||
-      capSet.has('MusicPlayer') || capSet.has('SpeechSynthesis') ||
-      typeStr.includes('media') || typeStr.includes('speaker') || typeStr.includes('sonos') ||
-      typeStr.includes('roku') || typeStr.includes('tv')) {
+  const hasStrongMediaCapability =
+    capSet.has('MediaTransport') || capSet.has('AudioVolume') || capSet.has('MusicPlayer');
+  const hasMediaCommands =
+    cmdSet.has('play') || cmdSet.has('pause') || cmdSet.has('stop') ||
+    cmdSet.has('setVolume') || cmdSet.has('mute') || cmdSet.has('unmute') ||
+    cmdSet.has('nextTrack') || cmdSet.has('previousTrack');
+  const looksLikeMediaType =
+    typeStr.includes('chromecast') || typeStr.includes('media') || typeStr.includes('speaker') ||
+    typeStr.includes('sonos') || typeStr.includes('roku') || typeStr.includes('tv') ||
+    typeStr.includes('audio player');
+  const hasOnlySpeechSynthesis = capSet.has('SpeechSynthesis') && !hasStrongMediaCapability && !hasMediaCommands;
+  if (hasStrongMediaCapability || hasMediaCommands || (looksLikeMediaType && !hasOnlySpeechSynthesis)) {
     return INTERNAL_DEVICE_TYPES.MEDIA_PLAYER;
   }
 
