@@ -38,6 +38,7 @@ services:
 
 volumes:
   jvs-data:
+    name: jvs-data
 ```
 
 Then start:
