@@ -28,3 +28,9 @@ Thumbs.db
 Dockerfile
 docker-compose.yml
 .dockerignore
+
+# Config (keep local overrides out of version control)
+config.json
+
+# Config Backups
+server/data/backups/
