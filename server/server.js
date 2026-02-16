@@ -1089,7 +1089,8 @@ function normalizePersistedConfig(raw) {
     const homeRoomMinWidthPx = clampInt(uiRaw.homeRoomMinWidthPx, 0, 1200, 0);
 
     // Per-room overrides for Home tiles.
-    // Shape: { [roomId]: { span?: number(1-6), order?: number(-999..999), rowSpan?: number(1-999) } }
+    // Shape: { [roomId]: { span?: number(1-6), rowSpan?: number(1-999) } }
+    // Note: room ordering is now handled by array position (drag-and-drop) — see PUT /api/ui/room-order.
     const homeRoomTiles = (() => {
         const rawMap = (uiRaw.homeRoomTiles && typeof uiRaw.homeRoomTiles === 'object') ? uiRaw.homeRoomTiles : {};
         const outMap = {};
@@ -1100,19 +1101,14 @@ function normalizePersistedConfig(raw) {
             const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
 
             const hasSpan = Object.prototype.hasOwnProperty.call(v, 'span');
-            const hasOrder = Object.prototype.hasOwnProperty.call(v, 'order');
             const hasRowSpan = Object.prototype.hasOwnProperty.call(v, 'rowSpan');
 
             const spanNum = hasSpan ? (typeof v.span === 'number' ? v.span : Number(v.span)) : null;
-            const orderNum = hasOrder ? (typeof v.order === 'number' ? v.order : Number(v.order)) : null;
             const rowSpanNum = hasRowSpan ? (typeof v.rowSpan === 'number' ? v.rowSpan : Number(v.rowSpan)) : null;
 
             const entry = {};
             if (hasSpan && Number.isFinite(spanNum)) {
                 entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
-            }
-            if (hasOrder && Number.isFinite(orderNum)) {
-                entry.order = Math.max(-999, Math.min(999, Math.round(orderNum)));
             }
             if (hasRowSpan && Number.isFinite(rowSpanNum)) {
                 entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
@@ -7085,9 +7081,10 @@ app.put('/api/ui/home-room-columns-xl', (req, res) => {
 //   homeRoomLayoutMode?: 'grid'|'masonry'
 //   homeRoomMasonryRowHeightPx?: number(4-40)
 //   homeRoomMinWidthPx?: number(0-1200)  // 0 disables auto-fit
-//   homeRoomTiles?: { [roomId]: { span?: number(1-6), order?: number(-999..999), rowSpan?: number(1-999) } }
+//   homeRoomTiles?: { [roomId]: { span?: number(1-6), rowSpan?: number(1-999) } }
 //   panelName?: string
 // }
+// Note: room ordering is now handled by PUT /api/ui/room-order (drag-and-drop).
 app.put('/api/ui/home-room-layout', (req, res) => {
     const hasLayoutMode = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeRoomLayoutMode');
     const hasRowHeight = Object.prototype.hasOwnProperty.call(req.body || {}, 'homeRoomMasonryRowHeightPx');
@@ -7138,19 +7135,14 @@ app.put('/api/ui/home-room-layout', (req, res) => {
             const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
 
             const hasSpan = Object.prototype.hasOwnProperty.call(v, 'span');
-            const hasOrder = Object.prototype.hasOwnProperty.call(v, 'order');
             const hasRowSpan = Object.prototype.hasOwnProperty.call(v, 'rowSpan');
 
             const spanNum = hasSpan ? (typeof v.span === 'number' ? v.span : Number(v.span)) : null;
-            const orderNum = hasOrder ? (typeof v.order === 'number' ? v.order : Number(v.order)) : null;
             const rowSpanNum = hasRowSpan ? (typeof v.rowSpan === 'number' ? v.rowSpan : Number(v.rowSpan)) : null;
 
             const entry = {};
             if (hasSpan && Number.isFinite(spanNum)) {
                 entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
-            }
-            if (hasOrder && Number.isFinite(orderNum)) {
-                entry.order = Math.max(-999, Math.min(999, Math.round(orderNum)));
             }
             if (hasRowSpan && Number.isFinite(rowSpanNum)) {
                 entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
@@ -7233,6 +7225,73 @@ app.put('/api/ui/home-room-layout', (req, res) => {
     io.emit('config_update', config);
 
     return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+});
+
+// Reorder rooms via drag-and-drop.
+// Expected payload: { roomIds: string[] }
+// The rooms array in config and persistedConfig will be reordered to match.
+// Rooms not in the provided list are appended at the end in their current order.
+app.put('/api/ui/room-order', (req, res) => {
+    const body = (req.body && typeof req.body === 'object') ? req.body : {};
+    const rawIds = Array.isArray(body.roomIds) ? body.roomIds : null;
+
+    if (!rawIds) {
+        return res.status(400).json({ error: 'Missing roomIds array' });
+    }
+
+    const roomIds = rawIds
+        .map((v) => String(v || '').trim())
+        .filter(Boolean);
+
+    if (!roomIds.length) {
+        return res.status(400).json({ error: 'roomIds array is empty' });
+    }
+
+    // Build a lookup of the requested order.
+    const orderMap = new Map(roomIds.map((id, idx) => [id, idx]));
+
+    // Get the current rooms arrays (both runtime and persisted).
+    const currentRooms = Array.isArray(config?.rooms) ? config.rooms : [];
+    const persistedRooms = Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [];
+
+    // Reorder helper: sort rooms by the requested order, appending unknowns at end.
+    function reorder(rooms) {
+        const inOrder = [];
+        const rest = [];
+        for (const r of rooms) {
+            const id = String(r?.id || '');
+            if (orderMap.has(id)) {
+                inOrder.push(r);
+            } else {
+                rest.push(r);
+            }
+        }
+        inOrder.sort((a, b) => {
+            const ai = orderMap.get(String(a?.id || '')) ?? 9999;
+            const bi = orderMap.get(String(b?.id || '')) ?? 9999;
+            return ai - bi;
+        });
+        return [...inOrder, ...rest];
+    }
+
+    // Apply the reorder to both runtime config and persisted config.
+    const reorderedRooms = reorder(currentRooms);
+    const reorderedPersistedRooms = reorder(persistedRooms);
+
+    config = {
+        ...config,
+        rooms: reorderedRooms,
+    };
+
+    persistedConfig = normalizePersistedConfig({
+        ...(persistedConfig || {}),
+        rooms: reorderedPersistedRooms,
+    });
+
+    persistConfigToDiskIfChanged('api-ui-room-order');
+    io.emit('config_update', config);
+
+    return res.json({ ok: true });
 });
 
 // Update Home room metric grid columns (sub-cards inside each room panel).
