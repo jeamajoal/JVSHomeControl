@@ -234,8 +234,14 @@ export function inferControlIconIds({ capabilities, attributes, commandSchemas }
     }
   }
 
-  // Level / brightness
-  if (cmdSet.has('setLevel') || capSet.has('SwitchLevel')) ids.push('brightness-slider');
+  // Level / brightness — shades get a position slider; lights get brightness
+  const isShadeDevice = capSet.has('WindowShade') || capSet.has('WindowBlind')
+    || attrs.windowShade !== undefined || cmdSet.has('setPosition');
+  if (isShadeDevice && (cmdSet.has('setPosition') || cmdSet.has('setLevel'))) {
+    ids.push('position-slider');
+  } else if (cmdSet.has('setLevel') || capSet.has('SwitchLevel')) {
+    ids.push('brightness-slider');
+  }
 
   // Color controls
   if (cmdSet.has('setHue') || capSet.has('ColorControl')) ids.push('color-wheel');

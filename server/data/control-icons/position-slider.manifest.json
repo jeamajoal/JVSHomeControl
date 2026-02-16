@@ -1,0 +1,61 @@
+{
+  "id": "position-slider",
+  "name": "Position Slider",
+  "description": "A vertical slider for adjusting shade/blind position (0-100%).",
+  "file": "position-slider.svg",
+  "version": "1.0.0",
+  
+  "requiredCommands": ["setPosition"],
+  "optionalCommands": ["setLevel"],
+  "alternateRequiredCommands": ["setLevel"],
+  
+  "stateBindings": {
+    "level": {
+      "type": "number",
+      "attribute": "position",
+      "min": 0,
+      "max": 100,
+      "cssVariable": "--level",
+      "elements": {
+        "level-fill": {
+          "transform": "scaleY",
+          "origin": "bottom"
+        },
+        "level-thumb": {
+          "transform": "translateY",
+          "invert": true
+        },
+        "level-grip": {
+          "transform": "translateY",
+          "invert": true
+        }
+      }
+    }
+  },
+  
+  "regions": [
+    {
+      "id": "level",
+      "selector": "[data-region='level']",
+      "action": "slider",
+      "command": "setPosition",
+      "fallbackCommand": "setLevel",
+      "stateAttribute": "position",
+      "fallbackStateAttribute": "level",
+      "parameter": "position",
+      "min": 0,
+      "max": 100,
+      "step": 1,
+      "orientation": "vertical",
+      "invert": true,
+      "debounce": 100,
+      "tooltip": "Drag to adjust position"
+    }
+  ],
+  
+  "layout": {
+    "aspectRatio": "48:120",
+    "preferredWidth": 48,
+    "preferredHeight": 120
+  }
+}

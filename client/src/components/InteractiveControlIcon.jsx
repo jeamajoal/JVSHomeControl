@@ -375,16 +375,28 @@ export default function InteractiveControlIcon({
     let color = '#FBBF24'; // default golden
     if (manifest.id?.includes('temp')) color = '#F97316'; // orange for color temp
     if (manifest.id?.includes('saturation')) color = '#EC4899'; // pink for saturation
+    if (manifest.id?.includes('position')) color = '#818CF8'; // indigo for shade position
+
+    // Resolve command: use primary if device supports it, otherwise fallback.
+    const deviceCmds = Array.isArray(device?.commands) ? device.commands.map(c => typeof c === 'object' ? c.command || c.name : String(c)) : [];
+    const primaryCmd = region.command;
+    const fallbackCmd = region.fallbackCommand;
+    const command = (primaryCmd && deviceCmds.includes(primaryCmd)) ? primaryCmd : (fallbackCmd || primaryCmd);
+
+    // Resolve state attribute similarly.
+    const primaryAttr = region.stateAttribute || 'level';
+    const fallbackAttr = region.fallbackStateAttribute;
+    const attribute = (primaryAttr && device?.[primaryAttr] !== undefined) ? primaryAttr : (fallbackAttr || primaryAttr);
     
     return {
-      command: region.command,
-      attribute: region.stateAttribute || 'level',
+      command,
+      attribute,
       min: region.min ?? 0,
       max: region.max ?? 100,
       step: region.step ?? 1,
       color,
     };
-  }, [manifest, isSliderIcon]);
+  }, [manifest, isSliderIcon, device]);
 
   // Get color wheel configuration from manifest
   const colorWheelConfig = useMemo(() => {

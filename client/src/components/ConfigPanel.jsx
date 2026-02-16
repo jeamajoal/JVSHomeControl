@@ -7485,7 +7485,10 @@ const ConfigPanel = ({
                           const cmds = Array.isArray(d.commands) ? d.commands : [];
                           const compatibleIcons = icons.filter((icon) => {
                             const required = Array.isArray(icon.requiredCommands) ? icon.requiredCommands : [];
-                            return required.every((cmd) => cmds.includes(cmd));
+                            const alt = Array.isArray(icon.alternateRequiredCommands) ? icon.alternateRequiredCommands : [];
+                            const primary = required.every((cmd) => cmds.includes(cmd));
+                            const alternate = alt.length > 0 && alt.every((cmd) => cmds.includes(cmd));
+                            return primary || alternate;
                           });
                           const currentAssignments = localIconAssignments;
                           const iconVal = currentAssignments[d.id];
