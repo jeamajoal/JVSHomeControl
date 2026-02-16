@@ -6,7 +6,8 @@
   "version": "1.0.0",
   
   "requiredCommands": ["setPosition"],
-  "optionalCommands": [],
+  "optionalCommands": ["setLevel"],
+  "alternateRequiredCommands": ["setLevel"],
   
   "stateBindings": {
     "level": {
@@ -38,7 +39,9 @@
       "selector": "[data-region='level']",
       "action": "slider",
       "command": "setPosition",
+      "fallbackCommand": "setLevel",
       "stateAttribute": "position",
+      "fallbackStateAttribute": "level",
       "parameter": "position",
       "min": 0,
       "max": 100,

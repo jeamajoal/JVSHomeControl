@@ -47,6 +47,7 @@ fi
 # ── 3. Seed bundled control-icon manifests ──────────────────────────────
 #    The image ships manifests in /app/server/data/control-icons/.
 #    On a fresh volume they won't exist yet, so copy any missing ones.
+#    Also copy the corresponding SVG files for each manifest.
 BUNDLED_ICONS="/app/server/data-defaults/control-icons"
 TARGET_ICONS="$DATA_DIR/control-icons"
 if [ -d "$BUNDLED_ICONS" ]; then
@@ -56,6 +57,15 @@ if [ -d "$BUNDLED_ICONS" ]; then
         if [ ! -f "$TARGET_ICONS/$base" ]; then
             cp "$manifest" "$TARGET_ICONS/$base"
             echo "[entrypoint] Copied default $base"
+        fi
+    done
+    # Copy SVG files that are missing (each manifest references an SVG via "file").
+    for svg in "$BUNDLED_ICONS"/*.svg; do
+        [ -f "$svg" ] || continue
+        svgbase="$(basename "$svg")"
+        if [ ! -f "$TARGET_ICONS/$svgbase" ]; then
+            cp "$svg" "$TARGET_ICONS/$svgbase"
+            echo "[entrypoint] Copied default $svgbase"
         fi
     done
 fi
