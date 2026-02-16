@@ -36,6 +36,7 @@ RUN mkdir -p /app/server/data
 # into a fresh volume (the volume mount hides /app/server/data/).
 RUN mkdir -p /app/server/data-defaults && \
     cp -r /app/server/data/control-icons /app/server/data-defaults/control-icons 2>/dev/null || true && \
+    cp -r /app/server/data/backgrounds /app/server/data-defaults/backgrounds 2>/dev/null || true && \
     cp /app/server/data/config.example.json /app/server/data-defaults/config.example.json 2>/dev/null || true
 
 # Copy and prepare the entrypoint script

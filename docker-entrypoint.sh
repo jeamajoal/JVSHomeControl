@@ -70,6 +70,21 @@ if [ -d "$BUNDLED_ICONS" ]; then
     done
 fi
 
+# ── 3b. Seed bundled backgrounds ───────────────────────────────────────
+#    Copy any shipped background images into the data volume if missing.
+BUNDLED_BACKGROUNDS="/app/server/data-defaults/backgrounds"
+TARGET_BACKGROUNDS="$DATA_DIR/backgrounds"
+if [ -d "$BUNDLED_BACKGROUNDS" ]; then
+    for bg in "$BUNDLED_BACKGROUNDS"/*; do
+        [ -f "$bg" ] || continue
+        bgbase="$(basename "$bg")"
+        if [ ! -f "$TARGET_BACKGROUNDS/$bgbase" ]; then
+            cp "$bg" "$TARGET_BACKGROUNDS/$bgbase"
+            echo "[entrypoint] Copied default $bgbase"
+        fi
+    done
+fi
+
 # ── 4. Fix ownership (when running as root with a mapped volume) ────────
 #    If we're root, chown everything to the `node` user (uid 1000 on Alpine)
 #    so the app can read/write without permission errors.

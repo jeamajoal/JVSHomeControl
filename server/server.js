@@ -1772,12 +1772,14 @@ function normalizePersistedConfig(raw) {
         })();
 
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
-        // Preset profiles are trusted code-level constants (e.g. Unsplash URLs);
-        // user-created profiles must go through sanitizeBackgroundUrl.
         const isPreset = PRESET_PANEL_PROFILE_NAMES.has(name);
-        const pHomeBgUrl = isPreset
-            ? (pHomeBgRaw?.url ? String(pHomeBgRaw.url).trim() : null)
-            : sanitizeBackgroundUrl(pHomeBgRaw?.url);
+        const pHomeBgUrl = (() => {
+            const sanitized = sanitizeBackgroundUrl(pHomeBgRaw?.url);
+            if (sanitized) return sanitized;
+            // Ensure shipped presets always have a valid local background.
+            if (isPreset) return '/backgrounds/BlueSmoke.jpg';
+            return null;
+        })();
         const pHomeBackground = pHomeBgRaw
             ? {
                 enabled: pHomeBgRaw.enabled === true,
@@ -2257,6 +2259,9 @@ function ensurePanelProfileExists(panelName) {
             deviceLabelOverrides: (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {},
             deviceCommandAllowlist: (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {},
             deviceHomeMetricAllowlist: (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {},
+            deviceInfoMetricAllowlist: (ui.deviceInfoMetricAllowlist && typeof ui.deviceInfoMetricAllowlist === 'object') ? ui.deviceInfoMetricAllowlist : {},
+            ...(ui.deviceControlIcons && typeof ui.deviceControlIcons === 'object' ? { deviceControlIcons: ui.deviceControlIcons } : {}),
+            ...(ui.deviceControlStyles && typeof ui.deviceControlStyles === 'object' ? { deviceControlStyles: ui.deviceControlStyles } : {}),
             accentColorId: ui.accentColorId,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
@@ -2289,6 +2294,8 @@ function ensurePanelProfileExists(panelName) {
             topCameraSize: String(ui.topCameraSize ?? 'md').trim() || 'md',
             roomCameraIds: (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {},
             glowColorId: ui.glowColorId,
+            glowOpacityPct: ui.glowOpacityPct,
+            glowSizePct: ui.glowSizePct,
             iconColorId: ui.iconColorId,
             iconOpacityPct: ui.iconOpacityPct,
             iconSizePct: ui.iconSizePct,
@@ -2306,6 +2313,19 @@ function ensurePanelProfileExists(panelName) {
     persistConfigToDiskIfChanged('ensure-panel-profile');
     rebuildRuntimeConfigFromPersisted();
     return name;
+}
+
+function buildFreshInstallBaseConfig() {
+    return {
+        weather: settings.weather,
+        rooms: [],
+        sensors: [],
+        ui: {
+            primaryTextSizePct: 85,
+            homeRoomLayoutMode: 'masonry',
+            homeRoomMinWidthPx: 320,
+        },
+    };
 }
 
 function loadPersistedConfig() {
@@ -2388,7 +2408,7 @@ function loadPersistedConfig() {
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
-            persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
+            persistedConfig = normalizePersistedConfig(buildFreshInstallBaseConfig());
 
             // Ensure device icon folder structure exists at startup.
             try {
@@ -2411,7 +2431,7 @@ function loadPersistedConfig() {
         console.log('Config loaded');
     } catch (err) {
         console.error('Error loading config.json:', err);
-        persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
+        persistedConfig = normalizePersistedConfig(buildFreshInstallBaseConfig());
         lastPersistedSerialized = stableStringify(persistedConfig);
         applyServerSettings();
     }
@@ -6062,7 +6082,19 @@ app.post('/api/ui/panels', (req, res) => {
             secondaryTextOpacityPct: presetProfile.secondaryTextOpacityPct ?? ui.secondaryTextOpacityPct,
             tertiaryTextColorId: presetProfile.tertiaryTextColorId ?? ui.tertiaryTextColorId,
             tertiaryTextOpacityPct: presetProfile.tertiaryTextOpacityPct ?? ui.tertiaryTextOpacityPct,
-            homeBackground: presetProfile.homeBackground ?? ui.homeBackground,
+            homeBackground: (() => {
+                const presetBg = (presetProfile.homeBackground && typeof presetProfile.homeBackground === 'object')
+                    ? presetProfile.homeBackground
+                    : null;
+                const fallbackBg = (ui.homeBackground && typeof ui.homeBackground === 'object') ? ui.homeBackground : null;
+                const rawUrl = presetBg?.url;
+                const safeUrl = sanitizeBackgroundUrl(rawUrl) || '/backgrounds/BlueSmoke.jpg';
+                return {
+                    enabled: presetBg?.enabled === true,
+                    url: safeUrl,
+                    opacityPct: clampInt(presetBg?.opacityPct, 0, 100, clampInt(fallbackBg?.opacityPct, 0, 100, 35)),
+                };
+            })(),
         }
         : {
             ...ui,
