@@ -669,6 +669,12 @@ function normalizePersistedConfig(raw) {
     const availabilityInitialized = uiRaw.availabilityInitialized === true;
     const visibilityInitialized = uiRaw.visibilityInitialized === true;
 
+    // Auto-add newly discovered devices: defaults to true for fresh installs,
+    // false for existing configs (to avoid surprising device reveals on upgrade).
+    const autoAddNewDevices = typeof uiRaw.autoAddNewDevices === 'boolean'
+        ? uiRaw.autoAddNewDevices
+        : !availabilityInitialized;
+
     const extraAllowedPanelDeviceCommands = (() => {
         const rawArr = Array.isArray(uiRaw.extraAllowedPanelDeviceCommands) ? uiRaw.extraAllowedPanelDeviceCommands : [];
         const cleaned = rawArr
@@ -1801,6 +1807,7 @@ function normalizePersistedConfig(raw) {
         extraAllowedPanelDeviceCommands,
         availabilityInitialized,
         visibilityInitialized,
+        autoAddNewDevices,
         accentColorId,
         colorizeHomeValues,
         colorizeHomeValuesOpacityPct,
@@ -2816,6 +2823,52 @@ async function syncHubitatDataInner() {
             // ignore
         }
 
+        // Auto-add: if enabled, append any newly-discovered device IDs to both allowlists
+        // and seed their command allowlists with smart defaults (skip utility commands).
+        try {
+            const ui = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+            if (ui.autoAddNewDevices === true && ui.availabilityInitialized === true) {
+                const catalog = Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [];
+                const mainArr = Array.isArray(ui.mainAllowedDeviceIds) ? ui.mainAllowedDeviceIds : [];
+                const ctrlArr = Array.isArray(ui.ctrlAllowedDeviceIds) ? ui.ctrlAllowedDeviceIds : [];
+                const existingIds = new Set([...mainArr, ...ctrlArr].map((v) => String(v).trim()));
+
+                const newIds = catalog
+                    .map((d) => String(d.id))
+                    .filter((id) => id && !existingIds.has(id));
+
+                if (newIds.length) {
+                    const prevCmds = (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object')
+                        ? ui.deviceCommandAllowlist : {};
+                    const nextCmds = { ...prevCmds };
+                    for (const id of newIds) {
+                        if (!Object.prototype.hasOwnProperty.call(nextCmds, id)) {
+                            const entry = catalog.find((d) => String(d.id) === id);
+                            const cmds = Array.isArray(entry?.commands) ? entry.commands : [];
+                            nextCmds[id] = cmds.filter((c) => !SKIP_DEFAULT_COMMANDS.has(c));
+                        }
+                    }
+
+                    const nextMain = [...mainArr, ...newIds];
+                    const nextCtrl = [...ctrlArr, ...newIds];
+
+                    persistedConfig = normalizePersistedConfig({
+                        ...persistedConfig,
+                        ui: {
+                            ...(ui || {}),
+                            mainAllowedDeviceIds: nextMain,
+                            ctrlAllowedDeviceIds: nextCtrl,
+                            deviceCommandAllowlist: nextCmds,
+                        },
+                    });
+                    persistConfigToDiskIfChanged('auto-add-devices');
+                    console.log(`[auto-add] Added ${newIds.length} new device(s) to global availability: ${newIds.join(', ')}`);
+                }
+            }
+        } catch {
+            // ignore
+        }
+
         const existingRooms = Array.isArray(persistedConfig?.rooms) ? persistedConfig.rooms : [];
         const existingSensors = Array.isArray(persistedConfig?.sensors) ? persistedConfig.sensors : [];
 
@@ -3239,6 +3292,8 @@ function getClientSafeConfig() {
             cameras: publicCameras,
             // Full discovered catalog for Settings (includes devices not currently available).
             discoveredDevices: Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [],
+            // Auto-add toggle state for the Settings UI checkbox.
+            autoAddNewDevices: persistedConfig?.ui?.autoAddNewDevices === true,
             // Observed internal device types (for dynamic icon dropdowns).
             deviceTypesObserved: getObservedDeviceTypes(),
             ctrlAllowedDeviceIds: allowlists.ctrl.ids,
@@ -4399,7 +4454,26 @@ app.put('/api/ui/allowed-device-ids', (req, res) => {
         ? body.mainAllowedDeviceIds
         : null;
 
+    // Handle autoAddNewDevices toggle (can be sent alone or alongside allowlists).
+    const hasAutoAddField = body && typeof body === 'object' && typeof body.autoAddNewDevices === 'boolean';
+    if (hasAutoAddField) {
+        persistedConfig = normalizePersistedConfig({
+            ...(persistedConfig || {}),
+            ui: {
+                ...((persistedConfig && persistedConfig.ui) ? persistedConfig.ui : {}),
+                autoAddNewDevices: body.autoAddNewDevices,
+            },
+        });
+        persistConfigToDiskIfChanged('api-ui-auto-add');
+    }
+
     if (!Array.isArray(incomingCtrl) && !Array.isArray(incomingMain)) {
+        // If only autoAddNewDevices was sent, return success without requiring allowlist arrays.
+        if (hasAutoAddField) {
+            rebuildRuntimeConfigFromPersisted();
+            io.emit('config_update', getClientSafeConfig());
+            return res.json({ ok: true, ui: { ...(config?.ui || {}) } });
+        }
         return res.status(400).json({
             error:
                 'Expected an array (legacy ctrl list) or { ctrlAllowedDeviceIds: [], mainAllowedDeviceIds: [] }',
