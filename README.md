@@ -8,7 +8,67 @@
 
 ## See It In Action
 
-[![See examples and screenshots](https://img.shields.io/badge/Screenshots_and_Demo-jvsautomate.com-blue?style=for-the-badge)](https://jvsautomate.com/jvshomecontrol)
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/a04de14b-9c0e-47bd-8e76-d8a5244e087f">
+    <img src="https://github.com/user-attachments/assets/a04de14b-9c0e-47bd-8e76-d8a5244e087f" width="400" alt="JVS Home Control Dashboard - Light Theme">
+  </a>
+  <a href="https://github.com/user-attachments/assets/06f9f4b1-adf1-4331-8979-d547a7dd9968">
+    <img src="https://github.com/user-attachments/assets/06f9f4b1-adf1-4331-8979-d547a7dd9968" width="400" alt="JVS Home Control Dashboard - Dark Theme">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/6b2f90ab-b40d-4273-84e9-00460cd35f35">
+    <img src="https://github.com/user-attachments/assets/6b2f90ab-b40d-4273-84e9-00460cd35f35" width="400" alt="JVS Home Control Dashboard - Teal Theme">
+  </a>
+  <a href="https://github.com/user-attachments/assets/01b92a51-beef-40d0-8a84-6b999f9aef2b">
+    <img src="https://github.com/user-attachments/assets/01b92a51-beef-40d0-8a84-6b999f9aef2b" width="400" alt="JVS Home Control Dashboard - Colorful Theme">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/ac4ef36f-abca-45b4-b9b1-3818f44f202d">
+    <img src="https://github.com/user-attachments/assets/ac4ef36f-abca-45b4-b9b1-3818f44f202d" width="400" alt="JVS Home Control Dashboard - Blue Theme">
+  </a>
+  <a href="https://github.com/user-attachments/assets/70b407a5-f2e8-4eef-8e52-d739cf2b2200">
+    <img src="https://github.com/user-attachments/assets/70b407a5-f2e8-4eef-8e52-d739cf2b2200" width="400" alt="JVS Home Control Dashboard - Nature Theme">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/5e184043-bea9-40e8-9e87-596f1dfe5ff2">
+    <img src="https://github.com/user-attachments/assets/5e184043-bea9-40e8-9e87-596f1dfe5ff2" width="400" alt="JVS Home Control Dashboard">
+  </a>
+  <a href="https://github.com/user-attachments/assets/905217ac-93fd-43fe-a531-c824d1c6672d">
+    <img src="https://github.com/user-attachments/assets/905217ac-93fd-43fe-a531-c824d1c6672d" width="400" alt="JVS Home Control Dashboard">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/70692793-18dc-4e0d-a8c6-b48adaf9dfb0">
+    <img src="https://github.com/user-attachments/assets/70692793-18dc-4e0d-a8c6-b48adaf9dfb0" width="400" alt="JVS Home Control Dashboard">
+  </a>
+  <a href="https://github.com/user-attachments/assets/b14337ed-6b16-44de-9e7c-3534a6d5f7dd">
+    <img src="https://github.com/user-attachments/assets/b14337ed-6b16-44de-9e7c-3534a6d5f7dd" width="400" alt="JVS Home Control Dashboard">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/0a5cbc10-30bf-4b06-a4cf-deff171d842f">
+    <img src="https://github.com/user-attachments/assets/0a5cbc10-30bf-4b06-a4cf-deff171d842f" width="400" alt="JVS Home Control Dashboard">
+  </a>
+  <a href="https://github.com/user-attachments/assets/6aaabf3f-85a9-4d97-bfd7-056ea20cce1f">
+    <img src="https://github.com/user-attachments/assets/6aaabf3f-85a9-4d97-bfd7-056ea20cce1f" width="400" alt="JVS Home Control Dashboard">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/user-attachments/assets/af9f0a53-9b01-4808-9c9a-ef1c278038d6">
+    <img src="https://github.com/user-attachments/assets/af9f0a53-9b01-4808-9c9a-ef1c278038d6" width="400" alt="JVS Home Control Dashboard">
+  </a>
+</p>
+
+[![See more examples and demos](https://img.shields.io/badge/More_Screenshots_and_Demo-jvsautomate.com-blue?style=for-the-badge)](https://jvsautomate.com/jvshomecontrol)
 
 ---
 
