@@ -68,7 +68,7 @@
   </a>
 </p>
 
-[![See more examples and demos](https://img.shields.io/badge/More_Screenshots_and_Demo-jvsautomate.com-blue?style=for-the-badge)](https://jvsautomate.com/jvshomecontrol)
+[![Author Page](https://img.shields.io/badge/More_Screenshots_and_Demo-jvsautomate.com-blue?style=for-the-badge)](https://jvsautomate.com/jvshomecontrol)
 
 ---
 
