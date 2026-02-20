@@ -2355,11 +2355,40 @@ function loadPersistedConfig() {
             const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
             const hadHomeRoomMetricColumns = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricColumns'));
             const hadHomeRoomMetricKeys = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricKeys'));
+            const hadVisibilityInitialized = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'visibilityInitialized'));
+            const hadHomeVisibleDeviceIds = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeVisibleDeviceIds'));
+            const hadCtrlVisibleDeviceIds = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'ctrlVisibleDeviceIds'));
             const hadGlowColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'glowColorId'));
             const hadIconColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconColorId'));
             const hadIconOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconOpacityPct'));
             const hadIconSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconSizePct'));
             persistedConfig = normalizePersistedConfig(raw);
+
+            // Migration: if availability was initialized but visibility fields were never
+            // initialized, default to hidden-by-default visibility arrays.
+            // This prevents an accidental "show everything" state on first install.
+            try {
+                const uiNow = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+                const needsVisibilityMigration =
+                    uiNow.availabilityInitialized === true &&
+                    uiNow.visibilityInitialized !== true &&
+                    !hadHomeVisibleDeviceIds &&
+                    !hadCtrlVisibleDeviceIds;
+                if (needsVisibilityMigration) {
+                    persistedConfig = normalizePersistedConfig({
+                        ...(persistedConfig || {}),
+                        ui: {
+                            ...uiNow,
+                            visibilityInitialized: true,
+                            homeVisibleDeviceIds: [],
+                            ctrlVisibleDeviceIds: [],
+                        },
+                    });
+                    persistConfigToDiskIfChanged('migrate-ui-visibility-init-hidden', { force: true });
+                }
+            } catch {
+                // ignore
+            }
 
             // Ensure device icon folder structure exists at startup.
             try {
@@ -2934,8 +2963,12 @@ async function syncHubitatDataInner() {
                     ui: {
                         ...(ui || {}),
                         availabilityInitialized: true,
+                        visibilityInitialized: true,
                         mainAllowedDeviceIds: allIds,
                         ctrlAllowedDeviceIds: allIds,
+                        // New installs start with devices hidden until user/device-type defaults opt-in.
+                        homeVisibleDeviceIds: [],
+                        ctrlVisibleDeviceIds: [],
                         // Only on/off by default; other commands enabled in Settings.
                         deviceCommandAllowlist,
                     },
@@ -2982,15 +3015,23 @@ async function syncHubitatDataInner() {
                                 dev?.driverNamespace,
                                 dev?.driverName,
                             ]);
-                            const td = (unknownKey && tdMap[unknownKey]) || tdMap[devType];
+                            // Backward-compatible: some older clients included `device.type` in the signature.
+                            const unknownKeyWithType = buildUnknownTypeDefaultKey([
+                                dev?.hubitatTypeName,
+                                dev?.hubitatType,
+                                dev?.driverNamespace,
+                                dev?.driverName,
+                                dev?.type,
+                            ]);
+                            const td = (unknownKey && tdMap[unknownKey]) || (unknownKeyWithType && tdMap[unknownKeyWithType]) || tdMap[devType];
                             if (!td) continue;
                             appliedAny = true;
                             appliedDefaultsByDeviceId[devId] = td;
 
-                            if (td.commands !== null) tdCmds[devId] = [...td.commands];
-                            if (td.homeMetrics !== null) tdHome[devId] = [...td.homeMetrics];
-                            if (td.infoMetrics !== null) tdInfo[devId] = [...td.infoMetrics];
-                            if (td.controlIcons !== null) tdIcons[devId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons];
+                            if (td.commands !== null) tdCmds[devId] = [...td.commands]; else delete tdCmds[devId];
+                            if (td.homeMetrics !== null) tdHome[devId] = [...td.homeMetrics]; else delete tdHome[devId];
+                            if (td.infoMetrics !== null) tdInfo[devId] = [...td.infoMetrics]; else delete tdInfo[devId];
+                            if (td.controlIcons !== null) tdIcons[devId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons]; else delete tdIcons[devId];
 
                             if (td.homeVisible !== null) {
                                 tdVisTouched = true;
@@ -3163,15 +3204,22 @@ async function syncHubitatDataInner() {
                                     catEntry?.driverNamespace,
                                     catEntry?.driverName,
                                 ]);
-                                const td = (unknownKey && typeDefaults[unknownKey]) || typeDefaults[devType];
+                                const unknownKeyWithType = buildUnknownTypeDefaultKey([
+                                    catEntry?.hubitatTypeName,
+                                    catEntry?.hubitatType,
+                                    catEntry?.driverNamespace,
+                                    catEntry?.driverName,
+                                    catEntry?.type,
+                                ]);
+                                const td = (unknownKey && typeDefaults[unknownKey]) || (unknownKeyWithType && typeDefaults[unknownKeyWithType]) || typeDefaults[devType];
                                 if (!td) continue;
                                 appliedAny = true;
                                 appliedDefaultsByDeviceId[newId] = td;
 
-                                if (td.commands !== null) tdCmds[newId] = [...td.commands];
-                                if (td.homeMetrics !== null) tdHome[newId] = [...td.homeMetrics];
-                                if (td.infoMetrics !== null) tdInfo[newId] = [...td.infoMetrics];
-                                if (td.controlIcons !== null) tdIcons[newId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons];
+                                if (td.commands !== null) tdCmds[newId] = [...td.commands]; else delete tdCmds[newId];
+                                if (td.homeMetrics !== null) tdHome[newId] = [...td.homeMetrics]; else delete tdHome[newId];
+                                if (td.infoMetrics !== null) tdInfo[newId] = [...td.infoMetrics]; else delete tdInfo[newId];
+                                if (td.controlIcons !== null) tdIcons[newId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons]; else delete tdIcons[newId];
 
                                 if (td.homeVisible !== null) {
                                     tdVisTouched = true;
@@ -5834,7 +5882,22 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
                     catalogEntry?.driverNamespace,
                     catalogEntry?.driverName,
                 ]);
-                if (sensorUnknownKey && sensorUnknownKey === deviceType) matchingIds.push(id);
+                const sensorUnknownKeyWithType = buildUnknownTypeDefaultKey([
+                    sensor?.hubitatTypeName,
+                    sensor?.hubitatType,
+                    st?.hubitatTypeName,
+                    st?.hubitatType,
+                    catalogEntry?.hubitatTypeName,
+                    catalogEntry?.hubitatType,
+                    sensor?.driverNamespace,
+                    sensor?.driverName,
+                    st?.driverNamespace,
+                    st?.driverName,
+                    catalogEntry?.driverNamespace,
+                    catalogEntry?.driverName,
+                    sensor?.type,
+                ]);
+                if ((sensorUnknownKey && sensorUnknownKey === deviceType) || (sensorUnknownKeyWithType && sensorUnknownKeyWithType === deviceType)) matchingIds.push(id);
             }
         }
 

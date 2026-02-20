@@ -107,6 +107,8 @@ const SKIP_DEFAULT_COMMANDS = new Set([
 // (Used for multi-sensors where you want to hide/show specific attributes.)
 const ALLOWED_HOME_METRIC_KEYS = new Set([
     'temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door',
+    // Alert / safety sensors
+    'smoke', 'carbonMonoxide', 'water', 'presence',
     // Thermostat
     'heatingSetpoint', 'coolingSetpoint', 'thermostatSetpoint',
     'thermostatMode', 'thermostatFanMode', 'thermostatOperatingState',

@@ -384,6 +384,10 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     const allowMotion = canUseMetric(dev.id, 'motion');
     const allowContact = canUseMetric(dev.id, 'contact');
     const allowDoor = canUseMetric(dev.id, 'door');
+    const allowSmoke = canUseMetric(dev.id, 'smoke');
+    const allowCo = canUseMetric(dev.id, 'carbonMonoxide');
+    const allowWater = canUseMetric(dev.id, 'water');
+    const allowPresence = canUseMetric(dev.id, 'presence');
 
     if (allowTemp) {
       if (caps.includes('TemperatureMeasurement') || attrs.temperature !== undefined) {
@@ -432,7 +436,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     if (allowDoor) maybeCountDoorState(attrs.door);
 
     // Smoke detector: smoke attribute = 'detected' | 'clear'
-    if (typeof attrs.smoke === 'string') {
+    if (allowSmoke && typeof attrs.smoke === 'string') {
       smokeCount += 1; // Track that this room HAS a smoke detector
       const v = String(attrs.smoke).toLowerCase();
       if (v === 'detected') {
@@ -442,7 +446,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     }
 
     // Carbon monoxide detector: carbonMonoxide attribute = 'detected' | 'clear'
-    if (typeof attrs.carbonMonoxide === 'string') {
+    if (allowCo && typeof attrs.carbonMonoxide === 'string') {
       coCount += 1; // Track that this room HAS a CO detector
       const v = String(attrs.carbonMonoxide).toLowerCase();
       if (v === 'detected') {
@@ -452,7 +456,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     }
 
     // Water/leak sensor: water attribute = 'wet' | 'dry'
-    if (typeof attrs.water === 'string') {
+    if (allowWater && typeof attrs.water === 'string') {
       waterCount += 1; // Track that this room HAS a water sensor
       const v = String(attrs.water).toLowerCase();
       if (v === 'wet') {
@@ -472,7 +476,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     }
 
     // Presence sensor: presence attribute = 'present' | 'not present'
-    if (typeof attrs.presence === 'string') {
+    if (allowPresence && typeof attrs.presence === 'string') {
       presenceCount += 1; // Track that this room HAS a presence sensor
       const v = String(attrs.presence).toLowerCase();
       if (v === 'present') {

@@ -2829,7 +2829,7 @@ const ConfigPanel = ({
   // Shape: null | { deviceId, deviceType, typeLabel, matchCount, defaults, saving, error }
   const [typeDefaultConfirm, setTypeDefaultConfirm] = useState(null);
   // Commands are discovered per-device. Missing per-device allowlist means "allow all".
-  const UI_HOME_METRICS = useMemo(() => (['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door']), []);
+  const UI_HOME_METRICS = useMemo(() => (['temperature', 'humidity', 'illuminance', 'motion', 'contact', 'door', 'smoke', 'carbonMonoxide', 'water', 'presence']), []);
   const UI_INFO_METRIC_PRIORITY = useMemo(() => ([
     'temperature',
     'humidity',
@@ -3517,6 +3517,10 @@ const ConfigPanel = ({
       if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
       if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
       if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
+      if (typeof attrs.smoke === 'string') out.add('smoke');
+      if (typeof attrs.carbonMonoxide === 'string') out.add('carbonMonoxide');
+      if (typeof attrs.water === 'string') out.add('water');
+      if (typeof attrs.presence === 'string') out.add('presence');
       return Array.from(out);
     })();
 
@@ -7544,6 +7548,10 @@ const ConfigPanel = ({
                             if (caps.includes('MotionSensor') || typeof attrs.motion === 'string') out.add('motion');
                             if (caps.includes('ContactSensor') || typeof attrs.contact === 'string') out.add('contact');
                             if (caps.includes('GarageDoorControl') || typeof attrs.door === 'string') out.add('door');
+                            if (typeof attrs.smoke === 'string') out.add('smoke');
+                            if (typeof attrs.carbonMonoxide === 'string') out.add('carbonMonoxide');
+                            if (typeof attrs.water === 'string') out.add('water');
+                            if (typeof attrs.presence === 'string') out.add('presence');
                             return Array.from(out);
                           })();
 
