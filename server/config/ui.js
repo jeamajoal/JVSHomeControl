@@ -25,7 +25,7 @@ const UI_BLUR_SCALE_PCT_MAX = 200;
 
 // Primary text size (main values like room titles, sensor readings).
 // 100 = default, 50 = half-size, 200 = double-size.
-const UI_PRIMARY_TEXT_SIZE_PCT_DEFAULT = 100;
+const UI_PRIMARY_TEXT_SIZE_PCT_DEFAULT = 85;
 const UI_PRIMARY_TEXT_SIZE_PCT_MIN = 50;
 const UI_PRIMARY_TEXT_SIZE_PCT_MAX = 200;
 

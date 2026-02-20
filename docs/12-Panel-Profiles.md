@@ -14,7 +14,7 @@ A panel profile stores a **visual identity** for a single display:
 - Glow effect colour
 - Background image and opacity
 
-Layout settings (card scale, room columns, text sizes, blur) are shared globally across all profiles.
+Layout and display settings are profile-aware. New profiles start from the selected source panel (or global defaults) and can then be edited independently.
 
 ---
 
@@ -87,13 +87,13 @@ This lets you create a "Kitchen" profile that only shows kitchen devices, or a "
 | Text colours | ✅ | |
 | Glow colour | ✅ | |
 | Background image | ✅ | |
-| Card scale | | ✅ |
-| Text size percentages | | ✅ |
-| Blur intensity | | ✅ |
-| Room columns | | ✅ |
+| Card scale | ✅ | |
+| Text size percentages | ✅ | |
+| Blur intensity | ✅ | |
+| Room columns | ✅ | |
 | Climate tolerances | | ✅ |
 | Device type icons | | ✅ |
-| Control icon assignments | | ✅ |
+| Control icon assignments | ✅ | |
 
 ---
 

@@ -160,19 +160,34 @@ function sanitizeSoundFilename(raw) {
 function sanitizeBackgroundUrl(raw) {
     const s = String(raw || '').trim();
     if (!s) return null;
-    if (!s.startsWith('/backgrounds/')) return null;
 
-    const rawFile = s.slice('/backgrounds/'.length);
-    let decoded;
-    try { decoded = decodeURIComponent(rawFile); } catch { return null; }
+    // Local backgrounds: /backgrounds/<safeFilename>
+    if (s.startsWith('/backgrounds/')) {
+        const rawFile = s.slice('/backgrounds/'.length);
+        let decoded;
+        try { decoded = decodeURIComponent(rawFile); } catch { return null; }
 
-    // Strict filename: alphanumeric start, common image extensions only.
-    const safeFileRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(jpg|jpeg|png|webp|gif)$/i;
-    if (!safeFileRe.test(decoded)) return null;
-    if (decoded.includes('..') || decoded.includes('/') || decoded.includes('\\')) return null;
+        // Strict filename: alphanumeric start, common image extensions only.
+        const safeFileRe = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(jpg|jpeg|png|webp|gif)$/i;
+        if (!safeFileRe.test(decoded)) return null;
+        if (decoded.includes('..') || decoded.includes('/') || decoded.includes('\\')) return null;
 
-    // Return canonical encoded form.
-    return `/backgrounds/${encodeURIComponent(decoded)}`;
+        // Return canonical encoded form.
+        return `/backgrounds/${encodeURIComponent(decoded)}`;
+    }
+
+    // External HTTPS image URLs (e.g. preset theme backgrounds from Unsplash).
+    // The URL is rendered as a CSS background-image value in a React style object
+    // (auto-escaped, no injection risk).  Only HTTPS is accepted.
+    if (s.startsWith('https://')) {
+        if (s.length > 2048) return null;
+        // Reject control characters and newlines.
+        if (/[\x00-\x1f\x7f]/.test(s)) return null;
+        try { new URL(s); } catch { return null; }
+        return s;
+    }
+
+    return null;
 }
 
 module.exports = {

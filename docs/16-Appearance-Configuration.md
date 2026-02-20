@@ -197,7 +197,7 @@ The **Control Icons** section shows available interactive SVG icons for this dev
 
 Icons are matched to devices by their required commands. If a device supports `on`/`off`, the light toggle icon appears. If it supports `setLevel`, the brightness slider appears. Multiple icons can be stacked on a single device.
 
-> **Note:** Control icon assignments are global (not per-panel). Assigning an icon here affects all panels that show this device.
+> **Note:** Control icon assignments are panel-specific. Assigning icons here updates the currently selected panel profile only.
 
 <!-- 📸 SCREENSHOT: Control Icons section for a dimmer device showing light toggle and brightness slider icons assigned -->
 
@@ -334,7 +334,7 @@ For granular control over how room cards are arranged:
 
 | Setting | Options | Description |
 |---------|---------|-------------|
-| **Layout mode** | Grid (default) / Masonry | Grid = uniform rows; Masonry = Pinterest-style variable-height packing |
+| **Layout mode** | Masonry (default) / Grid | Masonry = Pinterest-style variable-height packing; Grid = uniform rows |
 | **Auto-fit room grid** | Checkbox | Packs rooms by minimum width instead of fixed columns |
 | **Minimum room width** | 240–1200 px | Only active with auto-fit enabled |
 | **Masonry row height** | 4–40 px | Only active in masonry mode |
@@ -536,7 +536,7 @@ Now that your master panel is fully configured, it's time to create specialized 
 3. Type a new name (e.g. "Kitchen Tablet") in the **New Panel Name** field.
 4. Click **Create**.
 
-The new panel is an exact copy of your master — all device visibility, commands, colors, and layout settings are duplicated. Now you only need to **subtract**:
+The new panel starts as a one-time snapshot of your source panel — device visibility, commands, colors, and layout settings are copied at creation time, then edited independently. Now you only need to **subtract**:
 
 <!-- 📸 SCREENSHOT: Creating a "Kitchen Tablet" panel by copying from "Master Control" -->
 

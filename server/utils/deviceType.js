@@ -199,7 +199,30 @@ function inferInternalDeviceType({ hubitatType, capabilities, attributes, state,
     }
 
     // Fallback: if it has no actuator-ish commands, treat as sensor.
-    if (capSet.has('Sensor')) return INTERNAL_DEVICE_TYPES.SENSOR;
+    // Many Hubitat sensors do NOT include the generic `Sensor` capability.
+    // Treat common sensor/measurement capabilities (and their attributes) as sensor.
+    const isSensorish =
+        capSet.has('Sensor') ||
+        capSet.has('MotionSensor') ||
+        capSet.has('ContactSensor') ||
+        capSet.has('TemperatureMeasurement') ||
+        capSet.has('RelativeHumidityMeasurement') ||
+        capSet.has('IlluminanceMeasurement') ||
+        capSet.has('PresenceSensor') ||
+        capSet.has('WaterSensor') ||
+        capSet.has('SmokeDetector') ||
+        capSet.has('CarbonMonoxideDetector') ||
+        attrs.temperature !== undefined ||
+        attrs.humidity !== undefined ||
+        attrs.illuminance !== undefined ||
+        typeof attrs.motion === 'string' ||
+        typeof attrs.contact === 'string' ||
+        typeof attrs.door === 'string' ||
+        typeof attrs.presence === 'string' ||
+        typeof attrs.water === 'string' ||
+        typeof attrs.smoke === 'string' ||
+        typeof attrs.carbonMonoxide === 'string';
+    if (isSensorish) return INTERNAL_DEVICE_TYPES.SENSOR;
 
     return INTERNAL_DEVICE_TYPES.UNKNOWN;
 }

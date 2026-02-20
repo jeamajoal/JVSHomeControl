@@ -1772,12 +1772,14 @@ function normalizePersistedConfig(raw) {
         })();
 
         const pHomeBgRaw = (p.homeBackground && typeof p.homeBackground === 'object') ? p.homeBackground : null;
-        // Preset profiles are trusted code-level constants (e.g. Unsplash URLs);
-        // user-created profiles must go through sanitizeBackgroundUrl.
         const isPreset = PRESET_PANEL_PROFILE_NAMES.has(name);
-        const pHomeBgUrl = isPreset
-            ? (pHomeBgRaw?.url ? String(pHomeBgRaw.url).trim() : null)
-            : sanitizeBackgroundUrl(pHomeBgRaw?.url);
+        const pHomeBgUrl = (() => {
+            const sanitized = sanitizeBackgroundUrl(pHomeBgRaw?.url);
+            if (sanitized) return sanitized;
+            // Ensure shipped presets always have a valid local background.
+            if (isPreset) return '/backgrounds/BlueSmoke.jpg';
+            return null;
+        })();
         const pHomeBackground = pHomeBgRaw
             ? {
                 enabled: pHomeBgRaw.enabled === true,
@@ -2257,6 +2259,9 @@ function ensurePanelProfileExists(panelName) {
             deviceLabelOverrides: (ui.deviceLabelOverrides && typeof ui.deviceLabelOverrides === 'object') ? ui.deviceLabelOverrides : {},
             deviceCommandAllowlist: (ui.deviceCommandAllowlist && typeof ui.deviceCommandAllowlist === 'object') ? ui.deviceCommandAllowlist : {},
             deviceHomeMetricAllowlist: (ui.deviceHomeMetricAllowlist && typeof ui.deviceHomeMetricAllowlist === 'object') ? ui.deviceHomeMetricAllowlist : {},
+            deviceInfoMetricAllowlist: (ui.deviceInfoMetricAllowlist && typeof ui.deviceInfoMetricAllowlist === 'object') ? ui.deviceInfoMetricAllowlist : {},
+            ...(ui.deviceControlIcons && typeof ui.deviceControlIcons === 'object' ? { deviceControlIcons: ui.deviceControlIcons } : {}),
+            ...(ui.deviceControlStyles && typeof ui.deviceControlStyles === 'object' ? { deviceControlStyles: ui.deviceControlStyles } : {}),
             accentColorId: ui.accentColorId,
             homeBackground: ui.homeBackground,
             cardOpacityScalePct: ui.cardOpacityScalePct,
@@ -2289,6 +2294,8 @@ function ensurePanelProfileExists(panelName) {
             topCameraSize: String(ui.topCameraSize ?? 'md').trim() || 'md',
             roomCameraIds: (ui.roomCameraIds && typeof ui.roomCameraIds === 'object') ? ui.roomCameraIds : {},
             glowColorId: ui.glowColorId,
+            glowOpacityPct: ui.glowOpacityPct,
+            glowSizePct: ui.glowSizePct,
             iconColorId: ui.iconColorId,
             iconOpacityPct: ui.iconOpacityPct,
             iconSizePct: ui.iconSizePct,
@@ -2306,6 +2313,19 @@ function ensurePanelProfileExists(panelName) {
     persistConfigToDiskIfChanged('ensure-panel-profile');
     rebuildRuntimeConfigFromPersisted();
     return name;
+}
+
+function buildFreshInstallBaseConfig() {
+    return {
+        weather: settings.weather,
+        rooms: [],
+        sensors: [],
+        ui: {
+            primaryTextSizePct: 85,
+            homeRoomLayoutMode: 'masonry',
+            homeRoomMinWidthPx: 320,
+        },
+    };
 }
 
 function loadPersistedConfig() {
@@ -2335,11 +2355,40 @@ function loadPersistedConfig() {
             const hadHomeRoomColumnsXl = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomColumnsXl'));
             const hadHomeRoomMetricColumns = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricColumns'));
             const hadHomeRoomMetricKeys = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeRoomMetricKeys'));
+            const hadVisibilityInitialized = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'visibilityInitialized'));
+            const hadHomeVisibleDeviceIds = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'homeVisibleDeviceIds'));
+            const hadCtrlVisibleDeviceIds = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'ctrlVisibleDeviceIds'));
             const hadGlowColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'glowColorId'));
             const hadIconColorId = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconColorId'));
             const hadIconOpacityPct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconOpacityPct'));
             const hadIconSizePct = Boolean(raw?.ui && typeof raw.ui === 'object' && Object.prototype.hasOwnProperty.call(raw.ui, 'iconSizePct'));
             persistedConfig = normalizePersistedConfig(raw);
+
+            // Migration: if availability was initialized but visibility fields were never
+            // initialized, default to hidden-by-default visibility arrays.
+            // This prevents an accidental "show everything" state on first install.
+            try {
+                const uiNow = (persistedConfig?.ui && typeof persistedConfig.ui === 'object') ? persistedConfig.ui : {};
+                const needsVisibilityMigration =
+                    uiNow.availabilityInitialized === true &&
+                    uiNow.visibilityInitialized !== true &&
+                    !hadHomeVisibleDeviceIds &&
+                    !hadCtrlVisibleDeviceIds;
+                if (needsVisibilityMigration) {
+                    persistedConfig = normalizePersistedConfig({
+                        ...(persistedConfig || {}),
+                        ui: {
+                            ...uiNow,
+                            visibilityInitialized: true,
+                            homeVisibleDeviceIds: [],
+                            ctrlVisibleDeviceIds: [],
+                        },
+                    });
+                    persistConfigToDiskIfChanged('migrate-ui-visibility-init-hidden', { force: true });
+                }
+            } catch {
+                // ignore
+            }
 
             // Ensure device icon folder structure exists at startup.
             try {
@@ -2388,7 +2437,7 @@ function loadPersistedConfig() {
                 persistConfigToDiskIfChanged(label, { force: true });
             }
         } else {
-            persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
+            persistedConfig = normalizePersistedConfig(buildFreshInstallBaseConfig());
 
             // Ensure device icon folder structure exists at startup.
             try {
@@ -2411,7 +2460,7 @@ function loadPersistedConfig() {
         console.log('Config loaded');
     } catch (err) {
         console.error('Error loading config.json:', err);
-        persistedConfig = normalizePersistedConfig({ weather: settings.weather, rooms: [], sensors: [] });
+        persistedConfig = normalizePersistedConfig(buildFreshInstallBaseConfig());
         lastPersistedSerialized = stableStringify(persistedConfig);
         applyServerSettings();
     }
@@ -2670,6 +2719,15 @@ function buildUnknownTypeDefaultKey(parts = []) {
     return sig ? `unknown::${sig}` : null;
 }
 
+function isDriverTypeDefaultKey(value) {
+    return /^driver::[a-z0-9][a-z0-9-]{0,95}$/.test(String(value || '').trim().toLowerCase());
+}
+
+function buildDriverTypeDefaultKey(hubitatType) {
+    const sig = normalizeUnknownTypeSignature(String(hubitatType || ''));
+    return sig ? `driver::${sig}` : null;
+}
+
 
 // Note: parseDmsOrDecimal is imported from ./utils
 
@@ -2914,8 +2972,12 @@ async function syncHubitatDataInner() {
                     ui: {
                         ...(ui || {}),
                         availabilityInitialized: true,
+                        visibilityInitialized: true,
                         mainAllowedDeviceIds: allIds,
                         ctrlAllowedDeviceIds: allIds,
+                        // New installs start with devices hidden until user/device-type defaults opt-in.
+                        homeVisibleDeviceIds: [],
+                        ctrlVisibleDeviceIds: [],
                         // Only on/off by default; other commands enabled in Settings.
                         deviceCommandAllowlist,
                     },
@@ -2962,15 +3024,24 @@ async function syncHubitatDataInner() {
                                 dev?.driverNamespace,
                                 dev?.driverName,
                             ]);
-                            const td = (unknownKey && tdMap[unknownKey]) || tdMap[devType];
+                            // Backward-compatible: some older clients included `device.type` in the signature.
+                            const unknownKeyWithType = buildUnknownTypeDefaultKey([
+                                dev?.hubitatTypeName,
+                                dev?.hubitatType,
+                                dev?.driverNamespace,
+                                dev?.driverName,
+                                dev?.type,
+                            ]);
+                            const driverKey = buildDriverTypeDefaultKey(dev?.hubitatType || '');
+                            const td = (driverKey && tdMap[driverKey]) || (unknownKey && tdMap[unknownKey]) || (unknownKeyWithType && tdMap[unknownKeyWithType]) || tdMap[devType];
                             if (!td) continue;
                             appliedAny = true;
                             appliedDefaultsByDeviceId[devId] = td;
 
-                            if (td.commands !== null) tdCmds[devId] = [...td.commands];
-                            if (td.homeMetrics !== null) tdHome[devId] = [...td.homeMetrics];
-                            if (td.infoMetrics !== null) tdInfo[devId] = [...td.infoMetrics];
-                            if (td.controlIcons !== null) tdIcons[devId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons];
+                            if (td.commands !== null) tdCmds[devId] = [...td.commands]; else delete tdCmds[devId];
+                            if (td.homeMetrics !== null) tdHome[devId] = [...td.homeMetrics]; else delete tdHome[devId];
+                            if (td.infoMetrics !== null) tdInfo[devId] = [...td.infoMetrics]; else delete tdInfo[devId];
+                            if (td.controlIcons !== null) tdIcons[devId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons]; else delete tdIcons[devId];
 
                             if (td.homeVisible !== null) {
                                 tdVisTouched = true;
@@ -3143,15 +3214,23 @@ async function syncHubitatDataInner() {
                                     catEntry?.driverNamespace,
                                     catEntry?.driverName,
                                 ]);
-                                const td = (unknownKey && typeDefaults[unknownKey]) || typeDefaults[devType];
+                                const unknownKeyWithType = buildUnknownTypeDefaultKey([
+                                    catEntry?.hubitatTypeName,
+                                    catEntry?.hubitatType,
+                                    catEntry?.driverNamespace,
+                                    catEntry?.driverName,
+                                    catEntry?.type,
+                                ]);
+                                const driverKey = buildDriverTypeDefaultKey(catEntry?.hubitatType || '');
+                                const td = (driverKey && typeDefaults[driverKey]) || (unknownKey && typeDefaults[unknownKey]) || (unknownKeyWithType && typeDefaults[unknownKeyWithType]) || typeDefaults[devType];
                                 if (!td) continue;
                                 appliedAny = true;
                                 appliedDefaultsByDeviceId[newId] = td;
 
-                                if (td.commands !== null) tdCmds[newId] = [...td.commands];
-                                if (td.homeMetrics !== null) tdHome[newId] = [...td.homeMetrics];
-                                if (td.infoMetrics !== null) tdInfo[newId] = [...td.infoMetrics];
-                                if (td.controlIcons !== null) tdIcons[newId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons];
+                                if (td.commands !== null) tdCmds[newId] = [...td.commands]; else delete tdCmds[newId];
+                                if (td.homeMetrics !== null) tdHome[newId] = [...td.homeMetrics]; else delete tdHome[newId];
+                                if (td.infoMetrics !== null) tdInfo[newId] = [...td.infoMetrics]; else delete tdInfo[newId];
+                                if (td.controlIcons !== null) tdIcons[newId] = td.controlIcons.length === 1 ? td.controlIcons[0] : [...td.controlIcons]; else delete tdIcons[newId];
 
                                 if (td.homeVisible !== null) {
                                     tdVisTouched = true;
@@ -5682,7 +5761,8 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
     const deviceType = String(body.deviceType || '').trim().toLowerCase();
     const isInternalTypeKey = VALID_INTERNAL_TYPES.has(deviceType);
     const isUnknownScopedKey = isUnknownTypeDefaultKey(deviceType);
-    if (!deviceType || (!isInternalTypeKey && !isUnknownScopedKey)) {
+    const isDriverTypeKey = isDriverTypeDefaultKey(deviceType);
+    if (!deviceType || (!isInternalTypeKey && !isUnknownScopedKey && !isDriverTypeKey)) {
         return res.status(400).json({ error: 'Invalid or missing deviceType' });
     }
 
@@ -5763,13 +5843,24 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
         const statuses = (typeof sensorStatuses === 'object' && sensorStatuses) ? sensorStatuses : {};
         const catalog = Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [];
 
-        // Collect device IDs that match this internal device type.
+        // Collect device IDs that match this device type key.
         const matchingIds = [];
         for (const sensor of sensors) {
             const id = String(sensor?.id || '').trim();
             if (!id) continue;
             const st = statuses[id] || {};
             const catalogEntry = catalog.find((d) => String(d.id) === id);
+
+            // Driver-type keys: match by Hubitat driver type directly.
+            if (isDriverTypeKey) {
+                const sensorDriverKey = buildDriverTypeDefaultKey(
+                    sensor?.hubitatType || st?.hubitatType || catalogEntry?.hubitatType || ''
+                );
+                if (sensorDriverKey && sensorDriverKey === deviceType) matchingIds.push(id);
+                continue;
+            }
+
+            // Internal type keys and unknown-scoped keys: full type inference.
             const caps = Array.isArray(sensor.capabilities) ? sensor.capabilities : [];
             const attrs = (st.attributes && typeof st.attributes === 'object') ? st.attributes : {};
             const cmds = Array.isArray(st.commands) ? st.commands : (Array.isArray(catalogEntry?.commands) ? catalogEntry.commands : []);
@@ -5814,7 +5905,22 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
                     catalogEntry?.driverNamespace,
                     catalogEntry?.driverName,
                 ]);
-                if (sensorUnknownKey && sensorUnknownKey === deviceType) matchingIds.push(id);
+                const sensorUnknownKeyWithType = buildUnknownTypeDefaultKey([
+                    sensor?.hubitatTypeName,
+                    sensor?.hubitatType,
+                    st?.hubitatTypeName,
+                    st?.hubitatType,
+                    catalogEntry?.hubitatTypeName,
+                    catalogEntry?.hubitatType,
+                    sensor?.driverNamespace,
+                    sensor?.driverName,
+                    st?.driverNamespace,
+                    st?.driverName,
+                    catalogEntry?.driverNamespace,
+                    catalogEntry?.driverName,
+                    sensor?.type,
+                ]);
+                if ((sensorUnknownKey && sensorUnknownKey === deviceType) || (sensorUnknownKeyWithType && sensorUnknownKeyWithType === deviceType)) matchingIds.push(id);
             }
         }
 
@@ -6062,7 +6168,19 @@ app.post('/api/ui/panels', (req, res) => {
             secondaryTextOpacityPct: presetProfile.secondaryTextOpacityPct ?? ui.secondaryTextOpacityPct,
             tertiaryTextColorId: presetProfile.tertiaryTextColorId ?? ui.tertiaryTextColorId,
             tertiaryTextOpacityPct: presetProfile.tertiaryTextOpacityPct ?? ui.tertiaryTextOpacityPct,
-            homeBackground: presetProfile.homeBackground ?? ui.homeBackground,
+            homeBackground: (() => {
+                const presetBg = (presetProfile.homeBackground && typeof presetProfile.homeBackground === 'object')
+                    ? presetProfile.homeBackground
+                    : null;
+                const fallbackBg = (ui.homeBackground && typeof ui.homeBackground === 'object') ? ui.homeBackground : null;
+                const rawUrl = presetBg?.url;
+                const safeUrl = sanitizeBackgroundUrl(rawUrl) || '/backgrounds/BlueSmoke.jpg';
+                return {
+                    enabled: presetBg?.enabled === true,
+                    url: safeUrl,
+                    opacityPct: clampInt(presetBg?.opacityPct, 0, 100, clampInt(fallbackBg?.opacityPct, 0, 100, 35)),
+                };
+            })(),
         }
         : {
             ...ui,

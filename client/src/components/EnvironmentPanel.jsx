@@ -202,7 +202,7 @@ const MetricCard = ({
         </div>
 
         <div
-          className={`shrink-0 self-start ${isScaled ? '' : 'mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl'} border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+          className={`shrink-0 self-start jvs-icon-box ${isScaled ? '' : 'mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl'} border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
           style={scaledIconWrapStyle}
         >
           {React.createElement(IconComponent, {
@@ -384,6 +384,10 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     const allowMotion = canUseMetric(dev.id, 'motion');
     const allowContact = canUseMetric(dev.id, 'contact');
     const allowDoor = canUseMetric(dev.id, 'door');
+    const allowSmoke = canUseMetric(dev.id, 'smoke');
+    const allowCo = canUseMetric(dev.id, 'carbonMonoxide');
+    const allowWater = canUseMetric(dev.id, 'water');
+    const allowPresence = canUseMetric(dev.id, 'presence');
 
     if (allowTemp) {
       if (caps.includes('TemperatureMeasurement') || attrs.temperature !== undefined) {
@@ -432,7 +436,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     if (allowDoor) maybeCountDoorState(attrs.door);
 
     // Smoke detector: smoke attribute = 'detected' | 'clear'
-    if (typeof attrs.smoke === 'string') {
+    if (allowSmoke && typeof attrs.smoke === 'string') {
       smokeCount += 1; // Track that this room HAS a smoke detector
       const v = String(attrs.smoke).toLowerCase();
       if (v === 'detected') {
@@ -442,7 +446,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     }
 
     // Carbon monoxide detector: carbonMonoxide attribute = 'detected' | 'clear'
-    if (typeof attrs.carbonMonoxide === 'string') {
+    if (allowCo && typeof attrs.carbonMonoxide === 'string') {
       coCount += 1; // Track that this room HAS a CO detector
       const v = String(attrs.carbonMonoxide).toLowerCase();
       if (v === 'detected') {
@@ -452,7 +456,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     }
 
     // Water/leak sensor: water attribute = 'wet' | 'dry'
-    if (typeof attrs.water === 'string') {
+    if (allowWater && typeof attrs.water === 'string') {
       waterCount += 1; // Track that this room HAS a water sensor
       const v = String(attrs.water).toLowerCase();
       if (v === 'wet') {
@@ -472,7 +476,7 @@ const computeRoomMetrics = (devices, allowedControlIds, deviceHomeMetricAllowlis
     }
 
     // Presence sensor: presence attribute = 'present' | 'not present'
-    if (typeof attrs.presence === 'string') {
+    if (allowPresence && typeof attrs.presence === 'string') {
       presenceCount += 1; // Track that this room HAS a presence sensor
       const v = String(attrs.presence).toLowerCase();
       if (v === 'present') {
@@ -766,7 +770,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 ${scaleNum === 1 ? (isWideCard ? 'w-8 h-8' : 'w-7 h-7') : ''}`;
+  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 jvs-icon-box ${scaleNum === 1 ? (isWideCard ? 'w-8 h-8' : 'w-7 h-7') : ''}`;
   const statusIconStyle = scaleNum === 1
     ? undefined
     : {
