@@ -1,5 +1,11 @@
 # Installation
 
+## Prefer Docker?
+
+**Recommended** for easier setup and updates. See the [Docker Guide](11-Docker.md) for quick start instructions.
+
+---
+
 ## Quick Start (Debian / Ubuntu)
 
 One command installs everything:

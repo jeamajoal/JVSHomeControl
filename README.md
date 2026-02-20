@@ -72,6 +72,12 @@
 
 ---
 
+## Prefer Docker?
+
+**Recommended** for easier setup and updates. See the [Docker Guide](docs/11-Docker.md) for quick start instructions.
+
+---
+
 ## One-Command Install (Debian/Ubuntu)
 
 ```bash
