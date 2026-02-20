@@ -178,6 +178,11 @@ const buildUnknownTypeDefaultKey = (parts = []) => {
 
 const isUnknownScopedTypeKey = (value) => /^unknown::[a-z0-9][a-z0-9-]{0,95}$/.test(String(value || '').trim().toLowerCase());
 
+const buildDriverTypeDefaultKey = (hubitatType) => {
+  const sig = normalizeUnknownTypeSignature(hubitatType);
+  return sig ? `driver::${sig}` : null;
+};
+
 async function saveAccentColorId(accentColorId, panelName) {
   const res = await fetch(`${API_HOST}/api/ui/accent-color`, {
     method: 'PUT',
@@ -7886,83 +7891,19 @@ const ConfigPanel = ({
                               {(() => {
                                 const st = statuses?.[String(d.id)] || {};
                                 const sensorEntry = (config?.sensors || []).find((s) => String(s?.id) === String(d.id));
-                                const deviceIdentityParts = [
-                                  sensorEntry?.hubitatTypeName,
-                                  sensorEntry?.hubitatType,
-                                  st?.hubitatTypeName,
-                                  st?.hubitatType,
-                                  sensorEntry?.driverNamespace,
-                                  sensorEntry?.driverName,
-                                  st?.driverNamespace,
-                                  st?.driverName,
-                                  sensorEntry?.type,
-                                ];
-                                const hubitatIdentityHint = [
-                                  sensorEntry?.hubitatType,
-                                  sensorEntry?.hubitatTypeName,
-                                  st?.hubitatType,
-                                  st?.hubitatTypeName,
-                                  sensorEntry?.driverNamespace,
-                                  sensorEntry?.driverName,
-                                  st?.driverNamespace,
-                                  st?.driverName,
-                                  sensorEntry?.type,
-                                ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
-                                const devType = inferInternalDeviceType({
-                                  hubitatType: hubitatIdentityHint,
-                                  capabilities: d.capabilities || [],
-                                  attributes: (st.attributes && typeof st.attributes === 'object') ? st.attributes : {},
-                                  state: st.state || '',
-                                  commandSchemas: d.commands || [],
-                                });
-                                const unknownScopedKey = devType === 'unknown' ? buildUnknownTypeDefaultKey(deviceIdentityParts) : null;
-                                const typeDefaultKey = unknownScopedKey || devType;
-                                const unknownModelLabel = (sensorEntry?.hubitatTypeName || st?.hubitatTypeName || sensorEntry?.hubitatType || st?.hubitatType || sensorEntry?.driverName || st?.driverName || '').trim();
-                                const typeLabel = unknownScopedKey && unknownModelLabel
-                                  ? `${unknownModelLabel} (Model)`
-                                  : (INTERNAL_TYPE_LABELS[devType] || devType);
-                                const existingDefault = config?.ui?.deviceTypeDefaults?.[typeDefaultKey]
-                                  || config?.ui?.deviceTypeDefaults?.[devType]
-                                  || null;
+                                const hubitatType = (sensorEntry?.hubitatType || st?.hubitatType || '').trim();
+                                const typeDefaultKey = buildDriverTypeDefaultKey(hubitatType);
+                                if (!typeDefaultKey) return null;
+                                const typeLabel = hubitatType || 'Unknown Device';
+                                const existingDefault = config?.ui?.deviceTypeDefaults?.[typeDefaultKey] || null;
                                 const isConfirming = typeDefaultConfirm && typeDefaultConfirm.deviceId === d.id;
 
-                                // Count matching devices of this type.
+                                // Count matching devices of this Hubitat driver type.
                                 const matchCount = allDevices.filter((other) => {
-                                  const otherSt = statuses?.[String(other.id)] || {};
                                   const otherSensor = (config?.sensors || []).find((s) => String(s?.id) === String(other.id));
-                                  const otherIdentityParts = [
-                                    otherSensor?.hubitatTypeName,
-                                    otherSensor?.hubitatType,
-                                    otherSt?.hubitatTypeName,
-                                    otherSt?.hubitatType,
-                                    otherSensor?.driverNamespace,
-                                    otherSensor?.driverName,
-                                    otherSt?.driverNamespace,
-                                    otherSt?.driverName,
-                                    otherSensor?.type,
-                                  ];
-                                  const otherHubitatIdentityHint = [
-                                    otherSensor?.hubitatType,
-                                    otherSensor?.hubitatTypeName,
-                                    otherSt?.hubitatType,
-                                    otherSt?.hubitatTypeName,
-                                    otherSensor?.driverNamespace,
-                                    otherSensor?.driverName,
-                                    otherSt?.driverNamespace,
-                                    otherSt?.driverName,
-                                    otherSensor?.type,
-                                  ].map((v) => String(v || '').trim()).filter(Boolean).join(' ');
-                                  const otherType = inferInternalDeviceType({
-                                    hubitatType: otherHubitatIdentityHint,
-                                    capabilities: other.capabilities || [],
-                                    attributes: (otherSt.attributes && typeof otherSt.attributes === 'object') ? otherSt.attributes : {},
-                                    state: otherSt.state || '',
-                                    commandSchemas: other.commands || [],
-                                  });
-                                  const otherUnknownKey = otherType === 'unknown' ? buildUnknownTypeDefaultKey(otherIdentityParts) : null;
-                                  const otherTypeKey = otherUnknownKey || otherType;
-                                  if (isUnknownScopedTypeKey(typeDefaultKey)) return otherTypeKey === typeDefaultKey;
-                                  return otherType === devType;
+                                  const otherSt = statuses?.[String(other.id)] || {};
+                                  const otherHubitatType = (otherSensor?.hubitatType || otherSt?.hubitatType || '').trim();
+                                  return otherHubitatType === hubitatType;
                                 }).length;
 
                                 // Build defaults payload from this device's current settings.

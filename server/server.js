@@ -2719,6 +2719,15 @@ function buildUnknownTypeDefaultKey(parts = []) {
     return sig ? `unknown::${sig}` : null;
 }
 
+function isDriverTypeDefaultKey(value) {
+    return /^driver::[a-z0-9][a-z0-9-]{0,95}$/.test(String(value || '').trim().toLowerCase());
+}
+
+function buildDriverTypeDefaultKey(hubitatType) {
+    const sig = normalizeUnknownTypeSignature(String(hubitatType || ''));
+    return sig ? `driver::${sig}` : null;
+}
+
 
 // Note: parseDmsOrDecimal is imported from ./utils
 
@@ -3023,7 +3032,8 @@ async function syncHubitatDataInner() {
                                 dev?.driverName,
                                 dev?.type,
                             ]);
-                            const td = (unknownKey && tdMap[unknownKey]) || (unknownKeyWithType && tdMap[unknownKeyWithType]) || tdMap[devType];
+                            const driverKey = buildDriverTypeDefaultKey(dev?.hubitatType || '');
+                            const td = (driverKey && tdMap[driverKey]) || (unknownKey && tdMap[unknownKey]) || (unknownKeyWithType && tdMap[unknownKeyWithType]) || tdMap[devType];
                             if (!td) continue;
                             appliedAny = true;
                             appliedDefaultsByDeviceId[devId] = td;
@@ -3211,7 +3221,8 @@ async function syncHubitatDataInner() {
                                     catEntry?.driverName,
                                     catEntry?.type,
                                 ]);
-                                const td = (unknownKey && typeDefaults[unknownKey]) || (unknownKeyWithType && typeDefaults[unknownKeyWithType]) || typeDefaults[devType];
+                                const driverKey = buildDriverTypeDefaultKey(catEntry?.hubitatType || '');
+                                const td = (driverKey && typeDefaults[driverKey]) || (unknownKey && typeDefaults[unknownKey]) || (unknownKeyWithType && typeDefaults[unknownKeyWithType]) || typeDefaults[devType];
                                 if (!td) continue;
                                 appliedAny = true;
                                 appliedDefaultsByDeviceId[newId] = td;
@@ -5750,7 +5761,8 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
     const deviceType = String(body.deviceType || '').trim().toLowerCase();
     const isInternalTypeKey = VALID_INTERNAL_TYPES.has(deviceType);
     const isUnknownScopedKey = isUnknownTypeDefaultKey(deviceType);
-    if (!deviceType || (!isInternalTypeKey && !isUnknownScopedKey)) {
+    const isDriverTypeKey = isDriverTypeDefaultKey(deviceType);
+    if (!deviceType || (!isInternalTypeKey && !isUnknownScopedKey && !isDriverTypeKey)) {
         return res.status(400).json({ error: 'Invalid or missing deviceType' });
     }
 
@@ -5831,13 +5843,24 @@ app.put('/api/ui/device-type-defaults', (req, res) => {
         const statuses = (typeof sensorStatuses === 'object' && sensorStatuses) ? sensorStatuses : {};
         const catalog = Array.isArray(discoveredDevicesCatalog) ? discoveredDevicesCatalog : [];
 
-        // Collect device IDs that match this internal device type.
+        // Collect device IDs that match this device type key.
         const matchingIds = [];
         for (const sensor of sensors) {
             const id = String(sensor?.id || '').trim();
             if (!id) continue;
             const st = statuses[id] || {};
             const catalogEntry = catalog.find((d) => String(d.id) === id);
+
+            // Driver-type keys: match by Hubitat driver type directly.
+            if (isDriverTypeKey) {
+                const sensorDriverKey = buildDriverTypeDefaultKey(
+                    sensor?.hubitatType || st?.hubitatType || catalogEntry?.hubitatType || ''
+                );
+                if (sensorDriverKey && sensorDriverKey === deviceType) matchingIds.push(id);
+                continue;
+            }
+
+            // Internal type keys and unknown-scoped keys: full type inference.
             const caps = Array.isArray(sensor.capabilities) ? sensor.capabilities : [];
             const attrs = (st.attributes && typeof st.attributes === 'object') ? st.attributes : {};
             const cmds = Array.isArray(st.commands) ? st.commands : (Array.isArray(catalogEntry?.commands) ? catalogEntry.commands : []);
