@@ -2590,6 +2590,43 @@ const ConfigPanel = ({
     return () => clearTimeout(t);
   }, [connected, globalHomeRoomColumnsXlDirty, globalHomeRoomColumnsXlDraft]);
 
+  // Autosave: Home room layout (mode, masonry row height, min width, per-room tiles).
+  useEffect(() => {
+    if (!connected) return;
+    if (!homeRoomLayoutDirty) return;
+
+    const t = setTimeout(async () => {
+      setHomeRoomLayoutError(null);
+      try {
+        const rawTiles = (homeRoomTilesDraft && typeof homeRoomTilesDraft === 'object') ? homeRoomTilesDraft : {};
+        const cleaned = {};
+        for (const [rid, vRaw] of Object.entries(rawTiles)) {
+          const id = String(rid || '').trim();
+          if (!id) continue;
+          const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
+          const spanNum = Number(v.span);
+          const rowSpanNum = Number(v.rowSpan);
+          const entry = {};
+          if (Number.isFinite(spanNum)) entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
+          if (Number.isFinite(rowSpanNum)) entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
+          if (Object.keys(entry).length) cleaned[id] = entry;
+        }
+
+        await homeRoomLayoutSave.run({
+          homeRoomLayoutMode: homeRoomLayoutModeDraft,
+          homeRoomMasonryRowHeightPx: homeRoomMasonryRowHeightPxDraft,
+          homeRoomMinWidthPx: homeRoomMinWidthPxDraft,
+          homeRoomTiles: cleaned,
+        });
+        setHomeRoomLayoutDirty(false);
+      } catch (err) {
+        setHomeRoomLayoutError(err?.message || String(err));
+      }
+    }, 650);
+
+    return () => clearTimeout(t);
+  }, [connected, homeRoomLayoutDirty, homeRoomLayoutModeDraft, homeRoomMasonryRowHeightPxDraft, homeRoomMinWidthPxDraft, homeRoomTilesDraft]);
+
   // Autosave: Home room metric columns.
   useEffect(() => {
     if (!connected) return;
@@ -6724,46 +6761,9 @@ const ConfigPanel = ({
 
                   <div className="mt-2 flex items-center justify-between gap-3">
                     <div className="text-xs text-white/45">
-                      {homeRoomLayoutDirty ? 'Pending changes…' : 'Saved'}
+                      {homeRoomLayoutDirty ? 'Saving…' : 'Saved'}
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-xs text-white/45">{statusText(homeRoomLayoutSave.status)}</div>
-                      <button
-                        type="button"
-                        disabled={!connected || busy || !homeRoomLayoutDirty}
-                        onClick={async () => {
-                          try {
-                            setHomeRoomLayoutError(null);
-                            const rawTiles = (homeRoomTilesDraft && typeof homeRoomTilesDraft === 'object') ? homeRoomTilesDraft : {};
-                            const cleaned = {};
-                            for (const [rid, vRaw] of Object.entries(rawTiles)) {
-                              const id = String(rid || '').trim();
-                              if (!id) continue;
-                              const v = (vRaw && typeof vRaw === 'object') ? vRaw : {};
-                              const spanNum = Number(v.span);
-                              const rowSpanNum = Number(v.rowSpan);
-                              const entry = {};
-                              if (Number.isFinite(spanNum)) entry.span = Math.max(1, Math.min(6, Math.round(spanNum)));
-                              if (Number.isFinite(rowSpanNum)) entry.rowSpan = Math.max(1, Math.min(999, Math.round(rowSpanNum)));
-                              if (Object.keys(entry).length) cleaned[id] = entry;
-                            }
-
-                            await homeRoomLayoutSave.run({
-                              homeRoomLayoutMode: homeRoomLayoutModeDraft,
-                              homeRoomMasonryRowHeightPx: homeRoomMasonryRowHeightPxDraft,
-                              homeRoomMinWidthPx: homeRoomMinWidthPxDraft,
-                              homeRoomTiles: cleaned,
-                            });
-                            setHomeRoomLayoutDirty(false);
-                          } catch (e) {
-                            setHomeRoomLayoutError(e?.message || String(e));
-                          }
-                        }}
-                        className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-semibold text-white/90 disabled:opacity-50"
-                      >
-                        Save layout
-                      </button>
-                    </div>
+                    <div className="text-xs text-white/45">{statusText(homeRoomLayoutSave.status)}</div>
                   </div>
 
                   {homeRoomLayoutError ? (

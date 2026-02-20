@@ -202,7 +202,7 @@ const MetricCard = ({
         </div>
 
         <div
-          className={`shrink-0 self-start ${isScaled ? '' : 'mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl'} border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
+          className={`shrink-0 self-start jvs-icon-box ${isScaled ? '' : 'mt-1 md:mt-1.5 translate-x-1.5 translate-y-3.5 w-10 h-10 md:w-12 md:h-12 rounded-2xl'} border border-white/10 bg-black/30 flex items-center justify-center ${iconWrapClassName || ''}`.trim()}
           style={scaledIconWrapStyle}
         >
           {React.createElement(IconComponent, {
@@ -770,7 +770,7 @@ const RoomPanel = ({ roomName, devices, connected, uiScheme, climateTolerances, 
     ? `${uiScheme?.selectedCard || 'border-primary/40'} ${uiScheme?.headerGlow || 'animate-glow-accent'}`
     : 'border-white/10';
 
-  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 ${scaleNum === 1 ? (isWideCard ? 'w-8 h-8' : 'w-7 h-7') : ''}`;
+  const statusIconBase = `inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/5 jvs-icon-box ${scaleNum === 1 ? (isWideCard ? 'w-8 h-8' : 'w-7 h-7') : ''}`;
   const statusIconStyle = scaleNum === 1
     ? undefined
     : {
